@@ -172,6 +172,7 @@ parseToken = do
             else do
                 skipSpace
                 x <- toText <$> takeWhile (/= qmark)
+                word8' qmark
                 word8' gt
                 return $ TokenInstruction $ Instruction name x
     parseComment = do

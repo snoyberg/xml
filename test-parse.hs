@@ -8,12 +8,12 @@ import Blaze.ByteString.Builder.Enumerator
 import Data.Enumerator.IO
 import System.IO (withBinaryFile, IOMode (WriteMode))
 import Text.XML.Enumerator.Render
+import System.Environment (getArgs)
 
 main :: IO ()
 main = do
-    x <- S.readFile "test16.xml"
-    run_ (enumList 1 [x] $$ joinI $ decode utf16_be $$ joinI $ encode utf8 $$ consume) >>= print
-    putStrLn "\n\n"
+    [fn] <- getArgs
+    x <- S.readFile fn
     run_ $ enumList 1 [x] $$ joinI $ detectUtf $$ joinI $ parseBytes $$ iterPrint
     withBinaryFile "test8.xml" WriteMode $ \h ->
         run_ $ enumList 1 [x] $$ joinI $ detectUtf $$ joinI $ parseBytes
