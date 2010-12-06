@@ -80,6 +80,8 @@ newStack sl =
         newAttr ns' pref = (TName (Just "xmlns") pref, [ContentText ns'])
 
 nameToTName :: StackLevel -> Name -> TName
+nameToTName _ (Name name _ (Just pref))
+    | pref == "xml" = TName (Just "xml") name
 nameToTName _ (Name name Nothing _) = TName Nothing name
 nameToTName sl (Name name (Just ns) _) =
     case Map.lookup ns sl of
