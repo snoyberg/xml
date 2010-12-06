@@ -22,6 +22,7 @@ import Data.Enumerator (Iteratee, Enumeratee, (>>==), Stream (..),
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.Text as E
 import Control.Monad (unless)
+import qualified Data.Text as TS
 
 amp, hash, charx, semicolon, char0, char9, charA, charZ, chara, charz
    , colon, equal, squote, dquote, lt, gt, qmark, fslash, exmark, dash
@@ -347,7 +348,9 @@ parseContent breakDouble breakSingle =
     valid _  = True
 
 toText :: S.ByteString -> Text
-toText = fromChunks . return . decodeUtf8With lenientDecode
+toText = fromChunks . return
+       . TS.replace "\r\n" "\n" -- FIXME do this more efficiently
+       . decodeUtf8With lenientDecode
 
 skipSpace :: Parser ()
 skipSpace = skipWhile isSpace
