@@ -1,0 +1,35 @@
+name:            xml-enumerator
+version:         0.0.0
+license:         BSD3
+license-file:    LICENSE
+author:          Michael Snoyman <michaels@suite-sol.com>
+maintainer:      Michael Snoyman <michaels@suite-sol.com>
+synopsis:        Pure-Haskell utilities for dealing with XML with the enumerator package.
+description:
+    Provides the ability to parse and render XML in a streaming manner using the enumerator package.
+category:        Web
+stability:       Stable
+cabal-version:   >= 1.6
+build-type:      Simple
+homepage:        http://github.com/snoyberg/xml-enumerator
+
+library
+    build-depends:   base                      >= 4        && < 5
+                   , enumerator                >= 0.4      && < 0.5
+                   , bytestring                >= 0.9      && < 0.10
+                   , text                      >= 0.7      && < 0.12
+                   , containers                >= 0.2      && < 0.5
+                   , xml-types                 >= 0.1      && < 0.2
+                   , attoparsec-enumerator     >= 0.2.0.3  && < 0.3
+                   , attoparsec                >= 0.8      && < 0.9
+                   , blaze-builder             >= 0.2      && < 0.3
+                   , blaze-builder-enumerator  >= 0.2      && < 0.3
+                   , transformers              >= 0.2      && < 0.3
+    exposed-modules: Text.XML.Enumerator.Parse
+                     Text.XML.Enumerator.Render
+                     Text.XML.Enumerator.Token
+    ghc-options:     -Wall
+
+source-repository head
+  type:     git
+  location: git://github.com/snoyberg/xml-enumerator.git
