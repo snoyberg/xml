@@ -25,6 +25,7 @@ import Control.Monad (unless)
 
 amp, hash, charx, semicolon, char0, char9, charA, charZ, chara, charz
    , colon, equal, squote, dquote, lt, gt, qmark, fslash, exmark, dash
+   , lsquare, rsquare
     :: Word8
 amp = 38
 hash = 35
@@ -46,6 +47,8 @@ qmark = 63
 fslash = 47
 exmark = 33
 dash = 45
+lsquare = 91
+rsquare = 93
 
 tokenToEvent :: [NSLevel] -> Token -> ([NSLevel], [Event])
 tokenToEvent n (TokenBeginDocument _) = (n, [])
@@ -189,6 +192,11 @@ parseToken = do
                fmap Just parseSystemID <|>
                return Nothing
         skipSpace
+        (do
+            word8' lsquare
+            skipWhile (/= rsquare)
+            word8' rsquare
+            skipSpace) <|> return ()
         word8' gt
         newline
         return $ TokenDoctype i eid
