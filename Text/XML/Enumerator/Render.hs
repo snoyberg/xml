@@ -2,7 +2,7 @@
 -- | 'Enumeratee's to render XML 'Event's. Unlike libxml-enumerator and
 -- expat-enumerator, this module does not provide IO and ST variants, since the
 -- underlying rendering operations are pure functions.
-module Text.XML.Render.Enumerator
+module Text.XML.Enumerator.Render
     ( {-renderText
     , renderTextLazy
     , renderBytes

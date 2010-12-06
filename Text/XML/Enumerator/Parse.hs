@@ -24,7 +24,6 @@ import qualified Data.Enumerator as E
 import qualified Data.Enumerator.Text as E
 import Control.Monad (unless)
 import qualified Data.Text as ST
-import Control.Monad.IO.Class
 
 amp, hash, charx, semicolon, char0, char9, charA, charZ, chara, charz
    , colon, equal, squote, dquote, lt, gt, qmark, fslash, exmark, dash
@@ -49,8 +48,6 @@ qmark = 63
 fslash = 47
 exmark = 33
 dash = 45
-
-main = print $ tokenToEvent [] $ TokenBeginElement "foo" [] False
 
 tokenToEvent :: [NSLevel] -> Token -> ([NSLevel], [Event])
 tokenToEvent n (TokenBeginDocument _) = (n, [])
@@ -95,7 +92,7 @@ tnameToName (NSLevel _ m) (TName (Just pref) name) =
         Just ns -> Name name (Just ns) (Just pref)
         Nothing -> Name name Nothing (Just pref) -- FIXME is this correct?
 
-detectUtf :: MonadIO m => Enumeratee S.ByteString S.ByteString m a
+detectUtf :: Monad m => Enumeratee S.ByteString S.ByteString m a
 detectUtf param = do
     x <- takeFourBytes S.empty
     let (toDrop, mcodec) =
@@ -112,7 +109,6 @@ detectUtf param = do
                 _                        -> (0, Nothing) -- Assuming UTF-8
     unless (toDrop == 4) $ yield () $ Chunks [S.drop toDrop x]
     x <- E.peek
-    liftIO $ print (toDrop, mcodec, x)
     iter <-
       case mcodec of
         Nothing -> return param
@@ -133,13 +129,13 @@ detectUtf param = do
 
 parseBytes :: Monad m => Enumeratee S.ByteString Event m a
 parseBytes =
-    loop []
+    checkDone $ \k -> k (Chunks [EventBeginDocument]) >>== loop []
   where
     loop levels = checkDone $ go levels
     go levels k = do
         mtoken <- iterToken
         case mtoken of
-            Nothing -> k EOF >>== return
+            Nothing -> k (Chunks [EventEndDocument]) >>== return
             Just token ->
                 let (levels', events) = tokenToEvent levels token
                  in k (Chunks events) >>== loop levels'
