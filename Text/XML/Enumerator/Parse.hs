@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Text.XML.Enumerator.Parse
-    ( parseToken
-    , parseBytes
+    ( parseBytes
     , detectUtf
     ) where
 import Data.Attoparsec
@@ -19,11 +18,10 @@ import qualified Data.ByteString as S
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Enumerator (Iteratee, Enumeratee, (>>==), Stream (..),
-                        checkDone, yield, Step, ($$), joinI, (==<<))
+                        checkDone, yield, ($$), joinI)
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.Text as E
 import Control.Monad (unless)
-import qualified Data.Text as ST
 
 amp, hash, charx, semicolon, char0, char9, charA, charZ, chara, charz
    , colon, equal, squote, dquote, lt, gt, qmark, fslash, exmark, dash
@@ -86,6 +84,7 @@ tokenToEvent n (TokenContent c) = (n, [EventContent c])
 tokenToEvent n (TokenComment c) = (n, [EventComment c])
 tokenToEvent n (TokenDoctype t eid) = (n, [EventDoctype $ Doctype t eid []])
 
+tnameToName :: NSLevel -> TName -> Name
 tnameToName (NSLevel def _) (TName Nothing name) = Name name def Nothing
 tnameToName (NSLevel _ m) (TName (Just pref) name) =
     case Map.lookup pref m of
@@ -108,7 +107,6 @@ detectUtf param = do
                 [0x3C, 0x00, 0x3F, 0x00] -> (0, Just E.utf16_le)
                 _                        -> (0, Nothing) -- Assuming UTF-8
     unless (toDrop == 4) $ yield () $ Chunks [S.drop toDrop x]
-    x <- E.peek
     iter <-
       case mcodec of
         Nothing -> return param
@@ -164,26 +162,26 @@ parseToken = do
             then do
                 as <- many parseAttribute
                 skipSpace
-                word8 qmark
-                word8 gt
+                word8' qmark
+                word8' gt
                 newline
                 return $ TokenBeginDocument as
             else do
                 skipSpace
                 x <- toText <$> takeWhile (/= qmark)
-                word8 gt
+                word8' gt
                 return $ TokenInstruction $ Instruction name x
     parseComment = do
-        word8 dash
-        word8 dash
+        word8' dash
+        word8' dash
         c <- toText . S.pack <$> manyTill anyWord8 (string "-->") -- FIXME use takeWhile instead
         return $ TokenComment c
     parseCdata = do
-        string "[CDATA["
+        _ <- string "[CDATA["
         t <- toText . S.pack <$> manyTill anyWord8 (string "]]>") -- FIXME use takeWhile instead
         return $ TokenContent $ ContentText t
     parseDoctype = do
-        string "DOCTYPE"
+        _ <- string "DOCTYPE"
         skipSpace
         i <- parseIdent
         skipSpace
@@ -191,31 +189,31 @@ parseToken = do
                fmap Just parseSystemID <|>
                return Nothing
         skipSpace
-        word8 gt
+        word8' gt
         newline
         return $ TokenDoctype i eid
     parsePublicID = do
-        string "PUBLIC"
+        _ <- string "PUBLIC"
         x <- quotedText
         y <- quotedText
         return $ PublicID x y
     parseSystemID = do
-        string "SYSTEM"
+        _ <- string "SYSTEM"
         x <- quotedText
         return $ SystemID x
     quotedText = do
         skipSpace
         toText <$> (between dquote <|> between squote)
     between c = do
-        word8 c
+        word8' c
         x <- takeWhile (/=c)
-        word8 c
+        word8' c
         return x
     parseEnd = do
         skipSpace
         n <- parseName
         skipSpace
-        word8 gt
+        word8' gt
         return $ TokenEndElement n
     parseBegin = do
         skipSpace
@@ -223,7 +221,7 @@ parseToken = do
         as <- many parseAttribute
         skipSpace
         isClose <- (word8 fslash >> skipSpace >> return True) <|> return False
-        word8 gt
+        word8' gt
         return $ TokenBeginElement n as isClose
 
 parseAttribute :: Parser TAttribute
@@ -231,16 +229,16 @@ parseAttribute = do
     skipSpace
     key <- parseName
     skipSpace
-    word8 equal
+    word8' equal
     skipSpace
     val <- squoted <|> dquoted
     return (key, val)
   where
     squoted = do
-        word8 squote
+        word8' squote
         manyTill (parseContent False True) (word8 squote)
     dquoted = do
-        word8 dquote
+        word8' dquote
         manyTill (parseContent True False) (word8 dquote)
 
 parseName :: Parser TName
@@ -280,16 +278,16 @@ parseContent breakDouble breakSingle =
     parseEntity <|> parseText
   where
     parseEntity = do
-        word8 amp
+        word8' amp
         parseEntityNum <|> parseEntityWord
     parseEntityNum = do
-        word8 hash
+        word8' hash
         w <- parseEntityHex <|> parseEntityDig
         return $ ContentText $ pack [toEnum w]
     parseEntityHex = do
-        word8 charx
+        word8' charx
         res <- hexadecimal
-        word8 semicolon
+        word8' semicolon
         return res
     hexadecimal = do
         x <- hex
@@ -306,7 +304,7 @@ parseContent breakDouble breakSingle =
         | otherwise = 16 -- failing case
     parseEntityDig = do
         res <- decimal
-        word8 semicolon
+        word8' semicolon
         return res
     decimal = do
         x <- dig
@@ -339,6 +337,14 @@ parseContent breakDouble breakSingle =
     valid 60 = False -- lt
     valid _  = True
 
+toText :: S.ByteString -> Text
 toText = fromChunks . return . decodeUtf8With lenientDecode
+
+skipSpace :: Parser ()
 skipSpace = skipWhile isSpace
-newline = (word8 13 >> word8 10) <|> word8 10
+
+newline :: Parser ()
+newline = ((word8 13 >> word8 10) <|> word8 10) >> return ()
+
+word8' :: Word8 -> Parser ()
+word8' c = word8 c >> return ()

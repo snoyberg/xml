@@ -3,12 +3,7 @@
 -- expat-enumerator, this module does not provide IO and ST variants, since the
 -- underlying rendering operations are pure functions.
 module Text.XML.Enumerator.Render
-    ( {-renderText
-    , renderTextLazy
-    , renderBytes
-    , renderBytesLazy
-    -}
-      renderBuilder
+    ( renderBuilder
     ) where
 
 import Data.XML.Types ( Event (..), Content (..), Name (..), Attribute (..)
@@ -17,11 +12,6 @@ import Text.XML.Enumerator.Token
 import qualified Data.Enumerator as E
 import Data.Enumerator ((>>==))
 import qualified Data.Text.Lazy as T
-import Control.Monad.IO.Class
-import qualified Data.ByteString as S
-import qualified Data.Text.Lazy.Encoding as T
-import qualified Data.Text as TS
-import qualified Data.ByteString.Lazy as L
 import Blaze.ByteString.Builder
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -61,7 +51,7 @@ eventToToken s (EventBeginElement name attrs) =
     names = name : map (\(Attribute n _) -> n) attrs
     prevsl = case s of
                 [] -> Map.empty
-                sl:_ -> sl
+                sl':_ -> sl'
     (sl, tattrs) = newStack prevsl names
 eventToToken s (EventEndElement name) =
     ((:) (TokenEndElement $ nameToTName sl name), s')
@@ -98,25 +88,3 @@ nameToTName sl (Name name (Just ns) _) =
 
 attrToTAttr :: StackLevel -> Attribute -> TAttribute
 attrToTAttr sl (Attribute key val) = (nameToTName sl key, val)
-
-{-
-renderText :: Monad m => E.Enumeratee Event TS.Text m b
-renderText = concatMap' $ T.toChunks . eventToText
-
--- | Performs UTF-8 encoding.
-renderBytesLazy :: Monad m => E.Enumeratee Event L.ByteString m b
-renderBytesLazy = E.map $ T.encodeUtf8 . eventToText
-
--- | Performs UTF-8 encoding.
-renderBytes :: Monad m => E.Enumeratee Event S.ByteString m b
-renderBytes = concatMap' $ L.toChunks . T.encodeUtf8 . eventToText
--}
-
-concatMap' :: Monad m => (ao -> [ai]) -> E.Enumeratee ao ai m b
-concatMap' f =
-    loop
-  where
-    loop = E.checkDone $ E.continue . step
-    step k E.EOF = E.yield (E.Continue k) E.EOF
-    step k (E.Chunks []) = E.continue $ step k
-    step k (E.Chunks xs) = k (E.Chunks (concatMap f xs)) >>== loop
