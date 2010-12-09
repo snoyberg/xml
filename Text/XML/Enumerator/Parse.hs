@@ -272,6 +272,7 @@ parseIdent =
     valid 61 = False -- equal
     valid 34 = False -- dquote
     valid 39 = False -- squote
+    valid 47 = False -- fslash
     valid c  = not $ isSpace c
 
 isSpace :: Word8 -> Bool
