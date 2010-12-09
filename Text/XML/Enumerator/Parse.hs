@@ -23,6 +23,7 @@ import qualified Data.Enumerator as E
 import qualified Data.Enumerator.Text as E
 import Control.Monad (unless)
 import qualified Data.Text as TS
+import Data.List (foldl')
 
 amp, hash, charx, semicolon, char0, char9, charA, charZ, chara, charz
    , colon, equal, squote, dquote, lt, gt, qmark, fslash, exmark, dash
@@ -60,8 +61,8 @@ tokenToEvent n (TokenBeginElement name as isClosed) =
     l0 = case n of
             [] -> NSLevel Nothing Map.empty
             x:_ -> x
-    (as', l') = foldr go (id, l0) as
-    go a@(TName kpref kname, val) (front, l)
+    (as', l') = foldl' go (id, l0) as
+    go (front, l) a@(TName kpref kname, val)
         | kpref == Just "xmlns" =
             (front, l { prefixes = Map.insert kname (contentsToText val)
                                  $ prefixes l })
