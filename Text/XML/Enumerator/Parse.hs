@@ -169,7 +169,7 @@ parseToken = do
                 skipSpace
                 word8' qmark
                 word8' gt
-                newline
+                newline <|> return ()
                 return $ TokenBeginDocument as
             else do
                 skipSpace
