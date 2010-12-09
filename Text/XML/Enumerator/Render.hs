@@ -21,18 +21,21 @@ renderBuilder :: Monad m => E.Enumeratee Event Builder m b
 renderBuilder =
     loop []
   where
-    loop stack = E.checkDone $ E.continue . step stack
-    step _ k E.EOF = E.yield (E.Continue k) E.EOF
-    step stack k (E.Chunks []) = E.continue $ step stack k
-    step stackInit k (E.Chunks events) =
-        k (E.Chunks $ map tokenToBuilder tokens) >>== loop stack'
+    loop stack = E.checkDone $ step stack
+    step stack k = do
+        x <- E.head
+        case x of
+            Nothing -> E.yield (E.Continue k) E.EOF
+            Just e@(EventBeginElement name as) -> do
+                x' <- E.peek
+                if x' == Just (EventEndElement name)
+                    then do
+                        E.drop 1
+                        go $ mkBeginToken True stack name as
+                    else go $ mkBeginToken False stack name as
+            Just e -> go $ eventToToken stack e
       where
-        (tokens, stack') = eventsToTokens stackInit events
-        eventsToTokens stack [] = ([], stack)
-        eventsToTokens stack (e:es) =
-            let (t1, stack'') = eventToToken stack e
-                (t2, stack''') = eventsToTokens stack'' es
-             in (t1 t2, stack''')
+        go (ts, stack') = k (E.Chunks $ map tokenToBuilder $ ts []) >>== loop stack'
 
 eventToToken :: Stack -> Event -> ([Token] -> [Token], [StackLevel])
 eventToToken s EventBeginDocument =
@@ -45,14 +48,7 @@ eventToToken s EventEndDocument = (id, s)
 eventToToken s (EventInstruction i) = ((:) (TokenInstruction i), s)
 eventToToken s (EventDoctype (Doctype n meid _)) =
     ((:) (TokenDoctype n meid), s)
-eventToToken s (EventBeginElement name attrs) =
-    ((:) (TokenBeginElement (nameToTName sl name) (map (attrToTAttr sl) attrs ++ tattrs) False), sl : s)
-  where
-    names = name : map (\(Attribute n _) -> n) attrs
-    prevsl = case s of
-                [] -> Map.empty
-                sl':_ -> sl'
-    (sl, tattrs) = newStack prevsl names
+eventToToken s (EventBeginElement name attrs) = mkBeginToken False s name attrs
 eventToToken s (EventEndElement name) =
     ((:) (TokenEndElement $ nameToTName sl name), s')
   where
@@ -90,3 +86,13 @@ nameToTName sl (Name name (Just ns) _) =
 
 attrToTAttr :: StackLevel -> Attribute -> TAttribute
 attrToTAttr sl (Attribute key val) = (nameToTName sl key, val)
+
+mkBeginToken isClosed s name attrs =
+    ((:) (TokenBeginElement (nameToTName sl name) (map (attrToTAttr sl) attrs ++ tattrs) isClosed),
+     if isClosed then s else sl : s)
+  where
+    names = name : map (\(Attribute n _) -> n) attrs
+    prevsl = case s of
+                [] -> Map.empty
+                sl':_ -> sl'
+    (sl, tattrs) = newStack prevsl names
