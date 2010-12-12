@@ -76,8 +76,19 @@ tnameToText (TName Nothing name) = fromLazyText name
 tnameToText (TName (Just prefix) name) = mconcat [fromLazyText prefix, fromByteString ":", fromLazyText name]
 
 contentToText :: Content -> Builder
-contentToText (ContentText t) = fromHtmlEscapedLazyText t
-contentToText (ContentEntity e) = mconcat [fromByteString "&", fromLazyText e, fromByteString ";"]
+contentToText (ContentText t) =
+    fromWrite1List go $ T.unpack t
+  where
+    go '<' = writeByteString "&lt;"
+    go '>' = writeByteString "&gt;"
+    go '&' = writeByteString "&amp;"
+    -- Not escaping quotes, since this is only called outside of attributes
+    go c   = writeChar c
+contentToText (ContentEntity e) = mconcat
+    [ fromByteString "&"
+    , fromLazyText e
+    , fromByteString ";"
+    ]
 
 type TAttribute = (TName, [Content])
 
@@ -90,8 +101,18 @@ foldAttrs attrs rest' =
       : tnameToText key
       : fromByteString "=\""
       : foldr go' (fromByteString "\"" : rest) val
-    go' (ContentText t) rest = fromHtmlEscapedLazyText t : rest
-    go' (ContentEntity t) rest = fromByteString "&" : fromLazyText t : fromByteString ";" : rest
+    go' (ContentText t) rest =
+        fromWrite1List h (T.unpack t) : rest
+      where
+        h '<' = writeByteString "&lt;"
+        h '>' = writeByteString "&gt;"
+        h '&' = writeByteString "&amp;"
+        h '"' = writeByteString "&quot;"
+        -- Not escaping single quotes, since our attributes are always double
+        -- quoted
+        h c   = writeChar c
+    go' (ContentEntity t) rest =
+        fromByteString "&" : fromLazyText t : fromByteString ";" : rest
 
 instance IsString TName where
     fromString = TName Nothing . T.pack
