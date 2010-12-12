@@ -12,7 +12,6 @@ import Data.Text.Lazy (Text)
 import Data.String
 import Blaze.ByteString.Builder
 import Blaze.ByteString.Builder.Char.Utf8
-import Blaze.ByteString.Builder.Html.Utf8
 import Data.Monoid
 import Data.ByteString.Char8 ()
 
