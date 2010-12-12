@@ -9,10 +9,11 @@ module Text.XML.Enumerator.Token
 import Data.XML.Types (Instruction (..), Content (..), ExternalID (..))
 import qualified Data.Text.Lazy as T
 import Data.Text.Lazy (Text)
-import Data.String
-import Blaze.ByteString.Builder
-import Blaze.ByteString.Builder.Char.Utf8
-import Data.Monoid
+import Data.String (IsString (fromString))
+import Blaze.ByteString.Builder (Builder, fromByteString, writeByteString)
+import Blaze.ByteString.Builder.Internal.Write (fromWriteList)
+import Blaze.ByteString.Builder.Char.Utf8 (writeChar, fromLazyText)
+import Data.Monoid (mconcat, mempty)
 import Data.ByteString.Char8 ()
 
 data Token = TokenBeginDocument [TAttribute]
@@ -76,7 +77,7 @@ tnameToText (TName (Just prefix) name) = mconcat [fromLazyText prefix, fromByteS
 
 contentToText :: Content -> Builder
 contentToText (ContentText t) =
-    fromWrite1List go $ T.unpack t
+    fromWriteList go $ T.unpack t
   where
     go '<' = writeByteString "&lt;"
     go '>' = writeByteString "&gt;"
@@ -101,7 +102,7 @@ foldAttrs attrs rest' =
       : fromByteString "=\""
       : foldr go' (fromByteString "\"" : rest) val
     go' (ContentText t) rest =
-        fromWrite1List h (T.unpack t) : rest
+        fromWriteList h (T.unpack t) : rest
       where
         h '<' = writeByteString "&lt;"
         h '>' = writeByteString "&gt;"

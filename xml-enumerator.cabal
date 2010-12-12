@@ -22,7 +22,7 @@ library
                    , xml-types                 >= 0.1      && < 0.2
                    , attoparsec-enumerator     >= 0.2.0.3  && < 0.3
                    , attoparsec                >= 0.8      && < 0.9
-                   , blaze-builder             >= 0.2      && < 0.3
+                   , blaze-builder             >= 0.2.1.0  && < 0.3
                    , blaze-builder-enumerator  >= 0.2      && < 0.3
                    , transformers              >= 0.2      && < 0.3
     exposed-modules: Text.XML.Enumerator.Parse
