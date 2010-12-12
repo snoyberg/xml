@@ -4,18 +4,25 @@
 -- underlying rendering operations are pure functions.
 module Text.XML.Enumerator.Render
     ( renderBuilder
+    , renderBytes
     ) where
 
 import Data.XML.Types ( Event (..), Content (..), Name (..), Attribute (..)
                       , Doctype (..))
 import Text.XML.Enumerator.Token
 import qualified Data.Enumerator as E
-import Data.Enumerator ((>>==))
+import Data.Enumerator ((>>==), ($$))
 import qualified Data.Text.Lazy as T
 import Blaze.ByteString.Builder
+import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
+import Data.ByteString (ByteString)
+import Control.Monad.IO.Class (MonadIO)
+
+renderBytes :: MonadIO m => E.Enumeratee Event ByteString m b
+renderBytes s = E.joinI $ renderBuilder $$ builderToByteString s
 
 renderBuilder :: Monad m => E.Enumeratee Event Builder m b
 renderBuilder =
@@ -26,7 +33,7 @@ renderBuilder =
         x <- E.head
         case x of
             Nothing -> E.yield (E.Continue k) E.EOF
-            Just e@(EventBeginElement name as) -> do
+            Just (EventBeginElement name as) -> do
                 x' <- E.peek
                 if x' == Just (EventEndElement name)
                     then do
@@ -87,6 +94,8 @@ nameToTName sl (Name name (Just ns) _) =
 attrToTAttr :: StackLevel -> Attribute -> TAttribute
 attrToTAttr sl (Attribute key val) = (nameToTName sl key, val)
 
+mkBeginToken :: Bool -> Stack -> Name -> [Attribute]
+             -> ([Token] -> [Token], Stack)
 mkBeginToken isClosed s name attrs =
     ((:) (TokenBeginElement (nameToTName sl name) (map (attrToTAttr sl) attrs ++ tattrs) isClosed),
      if isClosed then s else sl : s)
