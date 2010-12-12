@@ -331,6 +331,7 @@ parseContent breakDouble breakSingle =
         | otherwise = 10 -- failing case
     parseEntityWord = do
         s <- takeWhile1 (/= semicolon)
+        word8' semicolon
         return $ case s of
             _
                 | s == "amp"  -> ContentText "&"
