@@ -1,5 +1,43 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+-- | This module provides both a native Haskell solution for parsing XML
+-- documents into a stream of events, and a set of parser combinators for
+-- dealing with a stream of events.
+--
+-- The important thing to know about the combinators is that they do /not/ work
+-- on the fully-powered 'Event' datatype; rather, this module defines an
+-- 'SEvent' datatype which only deals with tags, attributes and content. For
+-- most uses, this is sufficient. If you need to parse doctypes, instructions
+-- or contents, you will not be able to use the combinators.
+--
+-- As a simple example, if you have the following XML file:
+--
+-- > <?xml version="1.0" encoding="utf-8"?>
+-- > <people>
+-- >     <person age="25">Michael</person>
+-- >     <person age="2">Eliezer</person>
+-- > </people>
+--
+-- Then this code:
+--
+-- > {-# LANGUAGE OverloadedStrings #-}
+-- > import Text.XML.Enumerator.Parse
+-- > import Data.Text.Lazy (Text, unpack)
+-- > 
+-- > data Person = Person { age :: Int, name :: Text }
+-- >     deriving Show
+-- > 
+-- > parsePerson = tag' "person" (requireAttr "age") $ \age -> do
+-- >     name <- content'
+-- >     return $ Person (read $ unpack age) name
+-- > 
+-- > parsePeople = tag'' "people" $ many parsePerson
+-- > 
+-- > main = parseFile_ "people.xml" (const Nothing) $ force "people required" parsePeople
+--
+-- will produce:
+--
+-- > [Person {age = 25, name = "Michael"},Person {age = 2, name = "Eliezer"}]
 module Text.XML.Enumerator.Parse
     ( -- * Parsing XML files
       parseBytes
@@ -17,6 +55,7 @@ module Text.XML.Enumerator.Parse
     , content
     , content'
       -- * Attribute parsing
+    , AttrParser
     , requireAttr
     , optionalAttr
     , requireAttrRaw
@@ -129,6 +168,11 @@ tnameToName (NSLevel _ m) (TName (Just pref) name) =
         Just ns -> Name name (Just ns) (Just pref)
         Nothing -> Name name Nothing (Just pref) -- FIXME is this correct?
 
+-- | Automatically determine which UTF variant is being used. This function
+-- first checks for BOMs, removing them as necessary, and then check for the
+-- equivalent of <?xml for each of UTF-8, UTF-16LE/BE, and UTF-32LE/BE. It
+-- defaults to assuming UTF-8. The output byte stream is guaranteed to be valid
+-- UTF-8 bytes.
 detectUtf :: Monad m => Enumeratee S.ByteString S.ByteString m a
 detectUtf param = do
     x <- takeFourBytes S.empty
@@ -163,6 +207,14 @@ detectUtf param = do
                         let (a, b) = S.splitAt 4 z
                         E.yield a $ Chunks [b]
 
+-- | Parses a UTF8-encoded byte stream into 'Event's. This function is
+-- implemented fully in Haskell using attoparsec for parsing. The produced
+-- error messages do not give line/column information, so you may prefer to
+-- stick with the parser provided by libxml-enumerator. However, this has the
+-- advantage of not relying on any C libraries.
+--
+-- If you are uncertain of the character encoding, use the 'detectUtf'
+-- enumeratee.
 parseBytes :: Monad m => Enumeratee S.ByteString Event m a
 parseBytes =
     checkDone $ \k -> k (Chunks [EventBeginDocument]) >>== loop []
@@ -397,12 +449,17 @@ newline = ((word8 13 >> word8 10) <|> word8 10) >> return ()
 word8' :: Word8 -> Parser ()
 word8' c = word8 c >> return ()
 
+-- | A simplified attribute, having all entities converted to text.
 type SAttr = (Name, Text)
+
+-- | A greatly simplified XML event datatype. The best way to produce these
+-- values is the 'simplify' enumeratee.
 data SEvent = SBeginElement Name [SAttr]
             | SEndElement
             | SContent Text
     deriving (Show, Eq)
 
+-- | Grabs the next piece of content if available.
 content :: Monad m => Iteratee SEvent m (Maybe Text)
 content = do
     x <- E.peek
@@ -410,6 +467,7 @@ content = do
         Just (SContent t) -> E.drop 1 >> return (Just t)
         _ -> return Nothing
 
+-- | Grabs the next piece of content. If none if available, returns 'T.empty'.
 content' :: Monad m => Iteratee SEvent m Text
 content' = do
     x <- content
@@ -417,6 +475,13 @@ content' = do
         Nothing -> return T.empty
         Just y -> return y
 
+-- | The most generic way to parse a tag. It takes a predicate for checking if
+-- this is the correct tag name, an 'AttrParser' for handling attributes, and
+-- then a parser for dealing with content.
+--
+-- This function automatically absorbs its balancing closing tag, and will
+-- throw an exception if not all of the attributes or child elements are
+-- consumed. If you want to allow extra attributes, see 'ignoreAttrs'.
 tag :: Monad m
     => (Name -> Maybe a)
     -> (a -> AttrParser b)
@@ -452,6 +517,10 @@ tag checkName attrParser f = do
             Right ([], x) -> Right x
             Right (attr, _) -> Left $ UnparsedAttributes attr
 
+-- | A simplified version of 'tag' which matches for specific tag names instead
+-- of taking a predicate function. This is often sufficient, and when combined
+-- with OverloadedStrings and the IsString instance of 'Name', can prove to be
+-- very concise.
 tag' :: Monad m
      => Name
      -> AttrParser a
@@ -461,9 +530,12 @@ tag' name attrParser = tag
     (\x -> if x == name then Just () else Nothing)
     (const attrParser)
 
+-- | A further simplified tag parser, which requires that no attributes exist.
 tag'' :: Monad m => Name -> Iteratee SEvent m a -> Iteratee SEvent m (Maybe a)
 tag'' name f = tag' name (return ()) $ const f
 
+-- | Get the value of the first parser which returns 'Just'. If none return
+-- 'Just', returns 'Nothing'.
 choose :: Monad m
        => [Iteratee SEvent m (Maybe a)]
        -> Iteratee SEvent m (Maybe a)
@@ -474,6 +546,9 @@ choose (i:is) = do
         Nothing -> choose is
         Just a -> return $ Just a
 
+-- | Force an optional parser into a required parser. All of the 'tag'
+-- functions, 'choose' and 'many' deal with 'Maybe' parsers. Use this when you
+-- want to finally force something to happen.
 force :: Monad m
       => String -- ^ Error message
       -> Iteratee SEvent m (Maybe a)
@@ -484,7 +559,24 @@ force msg i = do
         Nothing -> throwError $ XmlException msg Nothing
         Just a -> return a
 
--- FIXME toSEvent :: Monad m => (Text -> Maybe Text) -> Enumeratee Event ([Name], SEvent) m b
+-- | Convert a stream of 'Event's into a stream 'SEvent's. The first argument
+-- is a function to decode character entity references. Some things to note
+-- about this function:
+--
+-- * It drops events for document begin/end, comments, and instructions.
+--
+-- * It concatenates all pieces of content together. The output of this
+-- function is guaranteed to not have two consecutive 'SContent's.
+--
+-- * It automatically checks that tag beginnings and endings are well balanced,
+-- and throws an exception otherwise.
+--
+-- * It also throws an exception if your supplied entity function does not know
+-- how to deal with a character entity.
+--
+-- Please also note that you do /not/ need to handle the 5 XML-defined
+-- character entity references (lt, gt, amp, quot and apos), nor deal with
+-- numeric entities (decimal and hex).
 simplify :: Monad m => (Text -> Maybe Text) -> Enumeratee Event SEvent m b
 simplify renderEntity =
     loop []
@@ -544,6 +636,7 @@ simplify renderEntity =
                 Just EventDoctype{} -> takeContents front
                 Just EventComment{} -> takeContents front
 
+-- | The same as 'parseFile', but throws any exceptions.
 parseFile_ :: String -> (Text -> Maybe Text) -> Iteratee SEvent IO a -> IO a
 parseFile_ fn re p =
     parseFile fn re p >>= go
@@ -551,6 +644,10 @@ parseFile_ fn re p =
     go (Left e) = liftIO $ throwIO e
     go (Right a) = return a
 
+-- | A helper function which reads a file from disk using 'enumFile', detects
+-- character encoding using 'detectUtf', parses the XML using 'parseBytes',
+-- converts to an 'SEvent' stream using 'simplify' and then handing off control
+-- to your supplied parser.
 parseFile :: String -> (Text -> Maybe Text) -> Iteratee SEvent IO a -> IO (Either SomeException a)
 parseFile fn re p =
     run $ enumFile fn     $$ joinI
@@ -572,6 +669,11 @@ data XmlException = XmlException
     deriving (Show, Typeable)
 instance Exception XmlException
 
+-- | A monad for parsing attributes. By default, it requires you to deal with
+-- all attributes present on an element, and will throw an exception if there
+-- are unhandled attributes. Use the 'requireAttr', 'optionalAttr' et al
+-- functions for handling an attribute, and 'ignoreAttrs' if you would like to
+-- skip the rest of the attributes on an element.
 newtype AttrParser a = AttrParser { runAttrParser :: [SAttr] -> Either XmlException ([SAttr], a) }
 
 instance Monad AttrParser where
@@ -603,18 +705,24 @@ requireAttrRaw msg f = do
         Just b -> return b
         Nothing -> AttrParser $ const $ Left $ XmlException msg Nothing
 
+-- | Require that a certain attribute be present and return its value.
 requireAttr :: Name -> AttrParser Text
 requireAttr n = requireAttrRaw
     ("Missing attribute: " ++ show n)
     (\(x, y) -> if x == n then Just y else Nothing)
 
+-- | Return the value for an attribute if present.
 optionalAttr :: Name -> AttrParser (Maybe Text)
 optionalAttr n = optionalAttrRaw
     (\(x, y) -> if x == n then Just y else Nothing)
 
+-- | Skip the remaining attributes on an element. Since this will clear the
+-- list of attributes, you must call this /after/ any calls to 'requireAttr',
+-- 'optionalAttr', etc.
 ignoreAttrs :: AttrParser ()
 ignoreAttrs = AttrParser $ \_ -> Right ([], ())
 
+-- | Keep parsing elements as long as the parser returns 'Just'.
 many :: Monad m => Iteratee SEvent m (Maybe a) -> Iteratee SEvent m [a]
 many i =
     go id
