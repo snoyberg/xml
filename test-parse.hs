@@ -2,7 +2,6 @@ import Text.XML.Enumerator.Parse
 import qualified Data.ByteString as S
 import Data.Enumerator
 import qualified Data.Enumerator as E
-import Data.Enumerator.Text hiding (iterHandle)
 import Control.Monad.IO.Class
 import Blaze.ByteString.Builder.Enumerator
 import Data.Enumerator.IO

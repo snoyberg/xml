@@ -4,6 +4,7 @@ module Text.XML.Enumerator.Token
     , TName (..)
     , Token (..)
     , TAttribute
+    , NSLevel (..)
     ) where
 
 import Data.XML.Types (Instruction (..), Content (..), ExternalID (..))
@@ -15,6 +16,7 @@ import Blaze.ByteString.Builder.Internal.Write (fromWriteList)
 import Blaze.ByteString.Builder.Char.Utf8 (writeChar, fromLazyText)
 import Data.Monoid (mconcat, mempty)
 import Data.ByteString.Char8 ()
+import Data.Map (Map)
 
 data Token = TokenBeginDocument [TAttribute]
            | TokenInstruction Instruction
@@ -116,3 +118,9 @@ foldAttrs attrs rest' =
 
 instance IsString TName where
     fromString = TName Nothing . T.pack
+
+data NSLevel = NSLevel
+    { defaultNS :: Maybe Text
+    , prefixes :: Map Text Text
+    }
+    deriving Show

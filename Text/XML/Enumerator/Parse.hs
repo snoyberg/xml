@@ -82,7 +82,6 @@ import Text.XML.Enumerator.Token
 import Prelude hiding (takeWhile)
 import qualified Data.ByteString as S
 import qualified Data.Map as Map
-import Data.Map (Map)
 import Data.Enumerator (Iteratee, Enumeratee, (>>==), Stream (..),
                         checkDone, yield, ($$), joinI, run, throwError)
 import qualified Data.Enumerator as E
@@ -231,12 +230,6 @@ parseBytes =
 
 iterToken :: Monad m => Iteratee S.ByteString m (Maybe Token)
 iterToken = iterParser ((endOfInput >> return Nothing) <|> fmap Just parseToken)
-
-data NSLevel = NSLevel
-    { defaultNS :: Maybe Text
-    , prefixes :: Map Text Text
-    }
-    deriving Show
 
 parseToken :: Parser Token
 parseToken = do

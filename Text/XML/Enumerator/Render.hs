@@ -13,6 +13,7 @@ import Text.XML.Enumerator.Token
 import qualified Data.Enumerator as E
 import Data.Enumerator ((>>==), ($$))
 import qualified Data.Text.Lazy as T
+import Data.Text.Lazy (Text)
 import Blaze.ByteString.Builder
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import qualified Data.Map as Map
@@ -50,7 +51,7 @@ renderBuilder =
       where
         go (ts, stack') = k (E.Chunks $ map tokenToBuilder $ ts []) >>== loop stack'
 
-eventToToken :: Stack -> Event -> ([Token] -> [Token], [StackLevel])
+eventToToken :: Stack -> Event -> ([Token] -> [Token], [NSLevel])
 eventToToken s EventBeginDocument =
     ((:) (TokenBeginDocument
             [ ("version", [ContentText "1.0"])
@@ -69,45 +70,63 @@ eventToToken s (EventEndElement name) =
 eventToToken s (EventContent c) = ((:) (TokenContent c), s)
 eventToToken s (EventComment t) = ((:) (TokenComment t), s)
 
-type Stack = [StackLevel]
-type StackLevel = Map T.Text T.Text
+type Stack = [NSLevel]
 
-newStack :: StackLevel -> [Name] -> (StackLevel, [TAttribute])
-newStack sl =
-    foldr go (sl, [])
-  where
-    go (Name _ Nothing _) (m, tattrs) = (m, tattrs)
-    go (Name _ (Just ns) mpref) (m, tattrs) =
-        case Map.lookup ns m of
-            Just _ -> (m, tattrs)
-            Nothing -> go' $ fromMaybe "x" mpref
-      where
-        go' pref =
-            if pref `elem` Map.elems m
-                then go' $ T.append pref "x"
-                else (Map.insert ns pref m, newAttr ns pref : tattrs)
-        newAttr ns' pref = (TName (Just "xmlns") pref, [ContentText ns'])
-
-nameToTName :: StackLevel -> Name -> TName
+nameToTName :: NSLevel -> Name -> TName
 nameToTName _ (Name name _ (Just pref))
     | pref == "xml" = TName (Just "xml") name
-nameToTName _ (Name name Nothing _) = TName Nothing name
-nameToTName sl (Name name (Just ns) _) =
-    case Map.lookup ns sl of
-        Nothing -> error "nameToTName"
-        Just pref -> TName (Just pref) name
-
-attrToTAttr :: StackLevel -> Attribute -> TAttribute
-attrToTAttr sl (Attribute key val) = (nameToTName sl key, val)
+nameToTName _ (Name name Nothing _) = TName Nothing name -- invariant that this is true
+nameToTName (NSLevel def sl) (Name name (Just ns) _)
+    | def == Just ns = TName Nothing name
+    | otherwise =
+        case Map.lookup ns sl of
+            Nothing -> error "nameToTName"
+            Just pref -> TName (Just pref) name
 
 mkBeginToken :: Bool -> Stack -> Name -> [Attribute]
              -> ([Token] -> [Token], Stack)
 mkBeginToken isClosed s name attrs =
-    ((:) (TokenBeginElement (nameToTName sl name) (map (attrToTAttr sl) attrs ++ tattrs) isClosed),
-     if isClosed then s else sl : s)
+    ((:) (TokenBeginElement tname tattrs2 isClosed),
+     if isClosed then s else sl2 : s)
   where
-    names = name : map (\(Attribute n _) -> n) attrs
     prevsl = case s of
-                [] -> Map.empty
+                [] -> NSLevel Nothing Map.empty
                 sl':_ -> sl'
-    (sl, tattrs) = newStack prevsl names
+    (sl1, tname, tattrs1) = newElemStack prevsl name
+    (sl2, tattrs2) = foldr newAttrStack (sl1, tattrs1) attrs
+
+newElemStack :: NSLevel -> Name -> (NSLevel, TName, [TAttribute])
+newElemStack nsl@(NSLevel def _) (Name local ns _)
+    | def == ns = (nsl, TName Nothing local, [])
+newElemStack (NSLevel _ nsmap) (Name local Nothing _) =
+    (NSLevel Nothing nsmap, TName Nothing local, [(TName Nothing "xmlns", [])])
+newElemStack (NSLevel _ nsmap) (Name local (Just ns) Nothing) =
+    (NSLevel (Just ns) nsmap, TName Nothing local, [(TName Nothing "xmlns", [ContentText ns])])
+newElemStack (NSLevel def nsmap) (Name local (Just ns) (Just pref)) =
+    (NSLevel def nsmap', TName (Just pref) local, [(TName (Just "xmlns") pref, [ContentText ns])])
+  where
+    nsmap' = Map.insert ns pref nsmap
+
+newAttrStack :: Attribute -> (NSLevel, [TAttribute]) -> (NSLevel, [TAttribute])
+newAttrStack (Attribute name value) (NSLevel def nsmap, attrs) =
+    (NSLevel def nsmap', addNS $ (tname, value) : attrs)
+  where
+    (nsmap', tname, addNS) =
+        case name of
+            Name local Nothing _ -> (nsmap, TName Nothing local, id)
+            Name local (Just ns) mpref ->
+                let ppref = fromMaybe "ns" mpref
+                    (pref, addNS') = getPrefix ppref nsmap ns
+                 in (Map.insert ns pref nsmap, TName (Just pref) local, addNS')
+
+getPrefix :: Text -> Map Text Text -> Text -> (Text, [TAttribute] -> [TAttribute])
+getPrefix ppref nsmap ns =
+    case Map.lookup ns nsmap of
+        Just pref -> (pref, id)
+        Nothing ->
+            let pref = findUnused ppref $ Map.elems nsmap
+             in (pref, (:) (TName (Just "xmlns") pref, [ContentText ns]))
+  where
+    findUnused x xs
+        | x `elem` xs = findUnused (x `T.snoc` '_') xs
+        | otherwise = x
