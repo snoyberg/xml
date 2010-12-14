@@ -147,11 +147,11 @@ tokenToEvent n (TokenBeginElement name as isClosed) =
     contentsToText = T.concat . map helper
     helper (ContentText t) = t
     helper (ContentEntity _) = T.empty -- FIXME
-    fixAttName level (name', val) = Attribute (tnameToName level name') val
-    begin = EventBeginElement (tnameToName l' name) $ map (fixAttName l') $ as' []
-    end = EventEndElement $ tnameToName l' name
+    fixAttName level (name', val) = Attribute (tnameToName True level name') val
+    begin = EventBeginElement (tnameToName False l' name) $ map (fixAttName l') $ as' []
+    end = EventEndElement $ tnameToName False l' name
 tokenToEvent n (TokenEndElement name) =
-    (n', [EventEndElement $ tnameToName l name])
+    (n', [EventEndElement $ tnameToName False l name])
   where
     (l, n') =
         case n of
@@ -161,9 +161,10 @@ tokenToEvent n (TokenContent c) = (n, [EventContent c])
 tokenToEvent n (TokenComment c) = (n, [EventComment c])
 tokenToEvent n (TokenDoctype t eid) = (n, [EventDoctype $ Doctype t eid []])
 
-tnameToName :: NSLevel -> TName -> Name
-tnameToName (NSLevel def _) (TName Nothing name) = Name name def Nothing
-tnameToName (NSLevel _ m) (TName (Just pref) name) =
+tnameToName :: Bool -> NSLevel -> TName -> Name
+tnameToName isAttr (NSLevel def _) (TName Nothing name) =
+    Name name (if isAttr then Nothing else def) Nothing
+tnameToName _ (NSLevel _ m) (TName (Just pref) name) =
     case Map.lookup pref m of
         Just ns -> Name name (Just ns) (Just pref)
         Nothing -> Name name Nothing (Just pref) -- FIXME is this correct?
