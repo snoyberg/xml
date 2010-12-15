@@ -1,5 +1,5 @@
 name:            xml-enumerator
-version:         0.0.0
+version:         0.0.0.1
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michaels@suite-sol.com>
@@ -7,7 +7,7 @@ maintainer:      Michael Snoyman <michaels@suite-sol.com>
 synopsis:        Pure-Haskell utilities for dealing with XML with the enumerator package.
 description:
     Provides the ability to parse and render XML in a streaming manner using the enumerator package.
-category:        Web
+category:        XML, Enumerator
 stability:       Stable
 cabal-version:   >= 1.6
 build-type:      Simple
