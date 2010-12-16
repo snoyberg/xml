@@ -161,6 +161,8 @@ tokenToEvent n (TokenComment c) = (n, [EventComment c])
 tokenToEvent n (TokenDoctype t eid) = (n, [EventDoctype $ Doctype t eid []])
 
 tnameToName :: Bool -> NSLevel -> TName -> Name
+tnameToName _ _ (TName (Just "xml") name) =
+    Name name (Just "http://www.w3.org/XML/1998/namespace") (Just "xml")
 tnameToName isAttr (NSLevel def _) (TName Nothing name) =
     Name name (if isAttr then Nothing else def) Nothing
 tnameToName _ (NSLevel _ m) (TName (Just pref) name) =

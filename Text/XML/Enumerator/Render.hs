@@ -120,6 +120,7 @@ newAttrStack (Attribute name value) (NSLevel def nsmap, attrs) =
                  in (Map.insert ns pref nsmap, TName (Just pref) local, addNS')
 
 getPrefix :: Text -> Map Text Text -> Text -> (Text, [TAttribute] -> [TAttribute])
+getPrefix _ _ "http://www.w3.org/XML/1998/namespace" = ("xml", id)
 getPrefix ppref nsmap ns =
     case Map.lookup ns nsmap of
         Just pref -> (pref, id)
