@@ -254,9 +254,7 @@ parseToken = do
                 return $ TokenBeginDocument as
             else do
                 skipSpace
-                x <- toText <$> takeWhile (/= qmark)
-                word8' qmark
-                word8' gt
+                x <- toText . S.pack <$> manyTill anyWord8 (try $ string "?>")
                 return $ TokenInstruction $ Instruction name x
     parseComment = do
         word8' dash
