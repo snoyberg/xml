@@ -7,7 +7,6 @@ module Text.XML.Enumerator.Render
     , renderBytes
     ) where
 
-import Debug.Trace
 import Data.XML.Types ( Event (..), Content (..), Name (..), Attribute (..)
                       , Doctype (..))
 import Text.XML.Enumerator.Token
@@ -87,7 +86,6 @@ nameToTName (NSLevel def sl) (Name name (Just ns) _)
 mkBeginToken :: Bool -> Stack -> Name -> [Attribute]
              -> ([Token] -> [Token], Stack)
 mkBeginToken isClosed s name attrs =
-    traceShow (name, s, tattrs2) $
     ((:) (TokenBeginElement tname tattrs2 isClosed),
      if isClosed then s else sl2 : s)
   where
