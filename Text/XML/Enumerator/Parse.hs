@@ -624,11 +624,13 @@ simplify renderEntity =
                     E.drop 1
                     t <- contentToText c
                     takeContents $ front . (:) t
-                Just EventBeginDocument -> takeContents front
-                Just EventEndDocument -> takeContents front
-                Just EventInstruction{} -> takeContents front
-                Just EventDoctype{} -> takeContents front
-                Just EventComment{} -> takeContents front
+                Just EventBeginDocument -> helper
+                Just EventEndDocument -> helper
+                Just EventInstruction{} -> helper
+                Just EventDoctype{} -> helper
+                Just EventComment{} -> helper
+          where
+            helper = E.drop 1 >> takeContents front
 
 -- | The same as 'parseFile', but throws any exceptions.
 parseFile_ :: String -> (Text -> Maybe Text) -> Iteratee SEvent IO a -> IO a
