@@ -7,6 +7,7 @@ module Text.XML.Enumerator.Render
     , renderBytes
     ) where
 
+import Debug.Trace
 import Data.XML.Types ( Event (..), Content (..), Name (..), Attribute (..)
                       , Doctype (..))
 import Text.XML.Enumerator.Token
@@ -86,6 +87,7 @@ nameToTName (NSLevel def sl) (Name name (Just ns) _)
 mkBeginToken :: Bool -> Stack -> Name -> [Attribute]
              -> ([Token] -> [Token], Stack)
 mkBeginToken isClosed s name attrs =
+    traceShow (name, s, tattrs2) $
     ((:) (TokenBeginElement tname tattrs2 isClosed),
      if isClosed then s else sl2 : s)
   where
@@ -103,7 +105,17 @@ newElemStack (NSLevel _ nsmap) (Name local Nothing _) =
 newElemStack (NSLevel _ nsmap) (Name local (Just ns) Nothing) =
     (NSLevel (Just ns) nsmap, TName Nothing local, [(TName Nothing "xmlns", [ContentText ns])])
 newElemStack (NSLevel def nsmap) (Name local (Just ns) (Just pref)) =
-    (NSLevel def nsmap', TName (Just pref) local, [(TName (Just "xmlns") pref, [ContentText ns])])
+    case Map.lookup ns nsmap of
+        Just pref'
+            | pref == pref' ->
+                ( NSLevel def nsmap
+                , TName (Just pref) local
+                , []
+                )
+        _ -> ( NSLevel def nsmap'
+             , TName (Just pref) local
+             , [(TName (Just "xmlns") pref, [ContentText ns])]
+             )
   where
     nsmap' = Map.insert ns pref nsmap
 
