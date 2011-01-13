@@ -41,6 +41,7 @@
 module Text.XML.Enumerator.Parse
     ( -- * Parsing XML files
       parseBytes
+    , parseText
     , detectUtf
       -- * Simplified events
     , SEvent (..)
@@ -68,25 +69,24 @@ module Text.XML.Enumerator.Parse
       -- * Exceptions
     , XmlException (..)
     ) where
-import Data.Attoparsec hiding (many)
-import qualified Data.Attoparsec as A
-import Data.Attoparsec.Enumerator
+import Data.Attoparsec.Text hiding (many)
+import qualified Data.Attoparsec.Text as A
+import Data.Attoparsec.Text.Enumerator
 import Data.XML.Types
-import Data.Word (Word8)
 import Control.Applicative ((<|>), (<$>))
-import Data.Text.Encoding (decodeUtf8With)
-import Data.Text.Lazy (fromChunks, pack, Text)
+import Data.Text.Lazy (pack, Text)
 import qualified Data.Text.Lazy as T
-import Data.Text.Encoding.Error (lenientDecode)
 import Text.XML.Enumerator.Token
 import Prelude hiding (takeWhile)
 import qualified Data.ByteString as S
+import qualified Data.ByteString.Lazy as L
 import qualified Data.Map as Map
 import Data.Enumerator (Iteratee, Enumeratee, (>>==), Stream (..),
                         checkDone, yield, ($$), joinI, run, throwError)
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import qualified Data.Enumerator.Text as ET
+import qualified Data.Enumerator.Binary as EB
 import Control.Monad (unless, ap, liftM)
 import qualified Data.Text as TS
 import Data.List (foldl')
@@ -96,33 +96,6 @@ import Control.Exception (Exception, throwIO, SomeException)
 import Data.Enumerator.Binary (enumFile)
 import Control.Monad.IO.Class (liftIO)
 import Data.Char (isSpace)
-
-amp, hash, charx, semicolon, char0, char9, charA, charZ, chara, charz
-   , colon, equal, squote, dquote, lt, gt, qmark, fslash, exmark, dash
-   , lsquare, rsquare
-    :: Word8
-amp = 38
-hash = 35
-charx = 120
-semicolon = 59
-char0 = 48
-char9 = 57
-charA = 65
-charZ = 90
-chara = 97
-charz = 122
-colon = 58
-equal = 61
-squote = 39
-dquote = 34
-lt = 60
-gt = 62
-qmark = 63
-fslash = 47
-exmark = 33
-dash = 45
-lsquare = 91
-rsquare = 93
 
 tokenToEvent :: [NSLevel] -> Token -> ([NSLevel], [Event])
 tokenToEvent n (TokenBeginDocument _) = (n, [])
@@ -174,52 +147,43 @@ tnameToName _ (NSLevel _ m) (TName (Just pref) name) =
 -- | Automatically determine which UTF variant is being used. This function
 -- first checks for BOMs, removing them as necessary, and then check for the
 -- equivalent of <?xml for each of UTF-8, UTF-16LE/BE, and UTF-32LE/BE. It
--- defaults to assuming UTF-8. The output byte stream is guaranteed to be valid
--- UTF-8 bytes.
-detectUtf :: Monad m => Enumeratee S.ByteString S.ByteString m a
-detectUtf param = do
-    x <- takeFourBytes S.empty
-    let (toDrop, mcodec) =
-            case S.unpack x of
-                [0x00, 0x00, 0xFE, 0xFF] -> (4, Just ET.utf32_be)
-                [0xFF, 0xFE, 0x00, 0x00] -> (4, Just ET.utf32_le)
-                0xFE : 0xFF: _           -> (2, Just ET.utf16_be)
-                0xFF : 0xFE: _           -> (2, Just ET.utf16_le)
-                0xEF : 0xBB: 0xBF : _    -> (3, Nothing)
-                [0x00, 0x00, 0x00, 0x3C] -> (0, Just ET.utf32_be)
-                [0x3C, 0x00, 0x00, 0x00] -> (0, Just ET.utf32_le)
-                [0x00, 0x3C, 0x00, 0x3F] -> (0, Just ET.utf16_be)
-                [0x3C, 0x00, 0x3F, 0x00] -> (0, Just ET.utf16_le)
-                _                        -> (0, Nothing) -- Assuming UTF-8
-    unless (toDrop == 4) $ yield () $ Chunks [S.drop toDrop x]
-    iter <-
-      case mcodec of
-        Nothing -> return param
-        Just codec -> (joinI $ ET.decode codec $$ joinI $ ET.encode ET.utf8 param) >>== return
-    E.map id iter
-  where
-    takeFourBytes front = do
-        x <- EL.head
-        case x of
-            Nothing -> return front
-            Just y -> do
-                let z = S.append front y
-                if S.length z < 4
-                    then takeFourBytes z
-                    else do
-                        let (a, b) = S.splitAt 4 z
-                        E.yield a $ Chunks [b]
+-- defaults to assuming UTF-8.
+detectUtf :: Monad m => Enumeratee S.ByteString TS.Text m a
+detectUtf step = do
+    x <- EB.take 4
+    let (toDrop, codec) =
+            case L.unpack x of
+                [0x00, 0x00, 0xFE, 0xFF] -> (4, ET.utf32_be)
+                [0xFF, 0xFE, 0x00, 0x00] -> (4, ET.utf32_le)
+                0xFE : 0xFF: _           -> (2, ET.utf16_be)
+                0xFF : 0xFE: _           -> (2, ET.utf16_le)
+                0xEF : 0xBB: 0xBF : _    -> (3, ET.utf8)
+                [0x00, 0x00, 0x00, 0x3C] -> (0, ET.utf32_be)
+                [0x3C, 0x00, 0x00, 0x00] -> (0, ET.utf32_le)
+                [0x00, 0x3C, 0x00, 0x3F] -> (0, ET.utf16_be)
+                [0x3C, 0x00, 0x3F, 0x00] -> (0, ET.utf16_le)
+                _                        -> (0, ET.utf8) -- Assuming UTF-8
+    unless (toDrop == 4) $ yield () $ Chunks $ L.toChunks $ L.drop toDrop x
+    ET.decode codec step
 
--- | Parses a UTF8-encoded byte stream into 'Event's. This function is
--- implemented fully in Haskell using attoparsec for parsing. The produced
--- error messages do not give line/column information, so you may prefer to
--- stick with the parser provided by libxml-enumerator. However, this has the
--- advantage of not relying on any C libraries.
+-- | Parses a byte stream into 'Event's. This function is implemented fully in
+-- Haskell using attoparsec-text for parsing. The produced error messages do
+-- not give line/column information, so you may prefer to stick with the parser
+-- provided by libxml-enumerator. However, this has the advantage of not
+-- relying on any C libraries.
 --
--- If you are uncertain of the character encoding, use the 'detectUtf'
--- enumeratee.
+-- This relies on 'detectUtf' to determine character encoding, and 'parseText'
+-- to do the actual parsing.
 parseBytes :: Monad m => Enumeratee S.ByteString Event m a
-parseBytes =
+parseBytes step = joinI $ detectUtf $$ parseText step
+
+-- | Parses a character stream into 'Event's. This function is implemented
+-- fully in Haskell using attoparsec-text for parsing. The produced error
+-- messages do not give line/column information, so you may prefer to stick
+-- with the parser provided by libxml-enumerator. However, this has the
+-- advantage of not relying on any C libraries.
+parseText :: Monad m => Enumeratee TS.Text Event m a
+parseText =
     checkDone $ \k -> k (Chunks [EventBeginDocument]) >>== loop []
   where
     loop levels = checkDone $ go levels
@@ -231,17 +195,17 @@ parseBytes =
                 let (levels', events) = tokenToEvent levels token
                  in k (Chunks events) >>== loop levels'
 
-iterToken :: Monad m => Iteratee S.ByteString m (Maybe Token)
+iterToken :: Monad m => Iteratee TS.Text m (Maybe Token)
 iterToken = iterParser ((endOfInput >> return Nothing) <|> fmap Just parseToken)
 
 parseToken :: Parser Token
 parseToken = do
-    (word8 lt >> parseLt) <|> fmap TokenContent (parseContent False False)
+    (char '<' >> parseLt) <|> fmap TokenContent (parseContent False False)
   where
     parseLt =
-        (word8 qmark >> parseInstr) <|>
-        (word8 exmark >> (parseComment <|> parseCdata <|> parseDoctype)) <|>
-        (word8 fslash >> parseEnd) <|>
+        (char '?' >> parseInstr) <|>
+        (char '!' >> (parseComment <|> parseCdata <|> parseDoctype)) <|>
+        (char '/' >> parseEnd) <|>
         parseBegin
     parseInstr = do
         name <- parseIdent
@@ -249,22 +213,22 @@ parseToken = do
             then do
                 as <- A.many parseAttribute
                 skipSpace
-                word8' qmark
-                word8' gt
+                char' '?'
+                char' '>'
                 newline <|> return ()
                 return $ TokenBeginDocument as
             else do
                 skipSpace
-                x <- toText . S.pack <$> manyTill anyWord8 (try $ string "?>")
+                x <- T.pack <$> manyTill anyChar (try $ string "?>")
                 return $ TokenInstruction $ Instruction name x
     parseComment = do
-        word8' dash
-        word8' dash
-        c <- toText . S.pack <$> manyTill anyWord8 (string "-->") -- FIXME use takeWhile instead
+        char' '-'
+        char' '-'
+        c <- T.pack <$> manyTill anyChar (string "-->") -- FIXME use takeWhile instead
         return $ TokenComment c
     parseCdata = do
         _ <- string "[CDATA["
-        t <- toText . S.pack <$> manyTill anyWord8 (string "]]>") -- FIXME use takeWhile instead
+        t <- T.pack <$> manyTill anyChar (string "]]>") -- FIXME use takeWhile instead
         return $ TokenContent $ ContentText t
     parseDoctype = do
         _ <- string "DOCTYPE"
@@ -276,11 +240,11 @@ parseToken = do
                return Nothing
         skipSpace
         (do
-            word8' lsquare
-            skipWhile (/= rsquare)
-            word8' rsquare
+            char' '['
+            skipWhile (/= ']')
+            char' ']'
             skipSpace) <|> return ()
-        word8' gt
+        char' '>'
         newline
         return $ TokenDoctype i eid
     parsePublicID = do
@@ -294,25 +258,25 @@ parseToken = do
         return $ SystemID x
     quotedText = do
         skipSpace
-        toText <$> (between dquote <|> between squote)
+        T.fromChunks . return <$> (between '"' <|> between '\'')
     between c = do
-        word8' c
+        char' c
         x <- takeWhile (/=c)
-        word8' c
+        char' c
         return x
     parseEnd = do
         skipSpace
         n <- parseName
         skipSpace
-        word8' gt
+        char' '>'
         return $ TokenEndElement n
     parseBegin = do
         skipSpace
         n <- parseName
         as <- A.many parseAttribute
         skipSpace
-        isClose <- (word8 fslash >> skipSpace >> return True) <|> return False
-        word8' gt
+        isClose <- (char '/' >> skipSpace >> return True) <|> return False
+        char' '>'
         return $ TokenBeginElement n as isClose
 
 parseAttribute :: Parser TAttribute
@@ -320,22 +284,22 @@ parseAttribute = do
     skipSpace
     key <- parseName
     skipSpace
-    word8' equal
+    char' '='
     skipSpace
     val <- squoted <|> dquoted
     return (key, val)
   where
     squoted = do
-        word8' squote
-        manyTill (parseContent False True) (word8 squote)
+        char' '\''
+        manyTill (parseContent False True) (char '\'')
     dquoted = do
-        word8' dquote
-        manyTill (parseContent True False) (word8 dquote)
+        char' '"'
+        manyTill (parseContent True False) (char '"')
 
 parseName :: Parser TName
 parseName = do
     i1 <- parseIdent
-    mi2 <- (word8 colon >> fmap Just parseIdent) <|> return Nothing
+    mi2 <- (char ':' >> fmap Just parseIdent) <|> return Nothing
     return $
         case mi2 of
             Nothing -> TName Nothing i1
@@ -343,75 +307,68 @@ parseName = do
 
 parseIdent :: Parser Text
 parseIdent =
-    toText <$> takeWhile1 valid
+    T.fromChunks . return <$> takeWhile1 valid
   where
-    valid 38 = False -- amp
-    valid 60 = False -- lt
-    valid 62 = False -- gt
-    valid 58 = False -- colon
-    valid 63 = False -- qmark
-    valid 61 = False -- equal
-    valid 34 = False -- dquote
-    valid 39 = False -- squote
-    valid 47 = False -- fslash
-    valid c  = not $ isSpaceW c
-
-isSpaceW :: Word8 -> Bool
-isSpaceW 0x09 = True
-isSpaceW 0x0A = True
-isSpaceW 0x0D = True
-isSpaceW 0x20 = True
-isSpaceW _    = False
+    valid '&' = False
+    valid '<' = False
+    valid '>' = False
+    valid ':' = False
+    valid '?' = False
+    valid '=' = False
+    valid '"' = False
+    valid '\'' = False
+    valid '/' = False
+    valid c  = not $ isSpace c
 
 parseContent :: Bool -- break on double quote
              -> Bool -- break on single quote
              -> Parser Content
 parseContent breakDouble breakSingle =
-    parseEntity <|> parseText
+    parseEntity <|> parseText'
   where
     parseEntity = do
-        word8' amp
+        char' '&'
         parseEntityNum <|> parseEntityWord
     parseEntityNum = do
-        word8' hash
+        char' '#'
         w <- parseEntityHex <|> parseEntityDig
         return $ ContentText $ pack [toEnum w]
     parseEntityHex = do
-        word8' charx
+        char' 'x'
         res <- hexadecimal
-        word8' semicolon
+        char' ';'
         return res
     hexadecimal = do
         x <- hex
-        hexadecimal' $ fromIntegral x
+        hexadecimal' x
     hexadecimal' x = (do
         y <- hex
-        hexadecimal' $ x * 16 + fromIntegral y
+        hexadecimal' $ x * 16 + y
         ) <|> return x
     hex = satisfyWith hex' (< 16)
     hex' w
-        | char0 <= w && w <= char9 = w - char0
-        | charA <= w && w <= charZ = w - charA + 10
-        | chara <= w && w <= charz = w - chara + 10
+        | '0' <= w && w <= '9' = fromEnum w - fromEnum '0'
+        | 'A' <= w && w <= 'Z' = fromEnum w - fromEnum 'A' + 10
+        | 'a' <= w && w <= 'z' = fromEnum w - fromEnum 'a' + 10
         | otherwise = 16 -- failing case
     parseEntityDig = do
         res <- decimal
-        word8' semicolon
+        char' ';'
         return res
     decimal = do
         x <- dig
-        decimal' $ fromIntegral x
+        decimal' x
     decimal' x = (do
         y <- dig
-        decimal' $ x * 10 + fromIntegral y
+        decimal' $ x * 10 + y
         ) <|> return x
     dig = satisfyWith dig' (< 10)
     dig' w
-        | char0 <= w && w <= char9 = w - char0
+        | '0' <= w && w <= '9' = fromEnum w - fromEnum '0'
         | otherwise = 10 -- failing case
     parseEntityWord = do
-        s <- takeWhile1 (/= semicolon)
-        word8' semicolon
+        s <- takeWhile1 (/= ';')
+        char' ';'
         return $ case s of
             _
                 | s == "amp"  -> ContentText "&"
@@ -420,29 +377,24 @@ parseContent breakDouble breakSingle =
                 | s == "apos" -> ContentText "'"
                 | s == "quot" -> ContentText "\""
                 | otherwise   ->
-                    ContentEntity $ toText s
-    parseText = do
+                    ContentEntity $ T.fromChunks [s]
+    parseText' = do
         bs <- takeWhile1 valid
-        return $ ContentText $ toText bs
-    valid 34 = not breakDouble
-    valid 39 = not breakSingle
-    valid 38 = False -- amp
-    valid 60 = False -- lt
+        return $ ContentText $ T.fromChunks [bs]
+    valid '"' = not breakDouble
+    valid '\'' = not breakSingle
+    valid '&' = False -- amp
+    valid '<' = False -- lt
     valid _  = True
 
-toText :: S.ByteString -> Text
-toText = fromChunks . return
-       . TS.replace "\r\n" "\n" -- FIXME do this more efficiently
-       . decodeUtf8With lenientDecode
-
 skipSpace :: Parser ()
-skipSpace = skipWhile isSpaceW
+skipSpace = skipWhile isSpace
 
 newline :: Parser ()
-newline = ((word8 13 >> word8 10) <|> word8 10) >> return ()
+newline = ((char '\r' >> char '\n') <|> char '\n') >> return ()
 
-word8' :: Word8 -> Parser ()
-word8' c = word8 c >> return ()
+char' :: Char -> Parser ()
+char' c = char c >> return ()
 
 -- | A simplified attribute, having all entities converted to text.
 type SAttr = (Name, Text)
@@ -648,7 +600,6 @@ parseFile_ fn re p =
 parseFile :: String -> (Text -> Maybe Text) -> Iteratee SEvent IO a -> IO (Either SomeException a)
 parseFile fn re p =
     run $ enumFile fn     $$ joinI
-        $ detectUtf       $$ joinI
         $ parseBytes      $$ joinI
         $ simplify re     $$ p
 
