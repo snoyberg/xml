@@ -85,14 +85,15 @@ import qualified Data.Map as Map
 import Data.Enumerator (Iteratee, Enumeratee, (>>==), Stream (..),
                         checkDone, yield, ($$), joinI, run, throwError)
 import qualified Data.Enumerator as E
-import qualified Data.Enumerator.Text as E
+import qualified Data.Enumerator.List as EL
+import qualified Data.Enumerator.Text as ET
 import Control.Monad (unless, ap, liftM)
 import qualified Data.Text as TS
 import Data.List (foldl')
 import Control.Applicative (Applicative (..))
 import Data.Typeable (Typeable)
 import Control.Exception (Exception, throwIO, SomeException)
-import Data.Enumerator.IO (enumFile)
+import Data.Enumerator.Binary (enumFile)
 import Control.Monad.IO.Class (liftIO)
 import Data.Char (isSpace)
 
@@ -180,25 +181,25 @@ detectUtf param = do
     x <- takeFourBytes S.empty
     let (toDrop, mcodec) =
             case S.unpack x of
-                [0x00, 0x00, 0xFE, 0xFF] -> (4, Just E.utf32_be)
-                [0xFF, 0xFE, 0x00, 0x00] -> (4, Just E.utf32_le)
-                0xFE : 0xFF: _           -> (2, Just E.utf16_be)
-                0xFF : 0xFE: _           -> (2, Just E.utf16_le)
+                [0x00, 0x00, 0xFE, 0xFF] -> (4, Just ET.utf32_be)
+                [0xFF, 0xFE, 0x00, 0x00] -> (4, Just ET.utf32_le)
+                0xFE : 0xFF: _           -> (2, Just ET.utf16_be)
+                0xFF : 0xFE: _           -> (2, Just ET.utf16_le)
                 0xEF : 0xBB: 0xBF : _    -> (3, Nothing)
-                [0x00, 0x00, 0x00, 0x3C] -> (0, Just E.utf32_be)
-                [0x3C, 0x00, 0x00, 0x00] -> (0, Just E.utf32_le)
-                [0x00, 0x3C, 0x00, 0x3F] -> (0, Just E.utf16_be)
-                [0x3C, 0x00, 0x3F, 0x00] -> (0, Just E.utf16_le)
+                [0x00, 0x00, 0x00, 0x3C] -> (0, Just ET.utf32_be)
+                [0x3C, 0x00, 0x00, 0x00] -> (0, Just ET.utf32_le)
+                [0x00, 0x3C, 0x00, 0x3F] -> (0, Just ET.utf16_be)
+                [0x3C, 0x00, 0x3F, 0x00] -> (0, Just ET.utf16_le)
                 _                        -> (0, Nothing) -- Assuming UTF-8
     unless (toDrop == 4) $ yield () $ Chunks [S.drop toDrop x]
     iter <-
       case mcodec of
         Nothing -> return param
-        Just codec -> (joinI $ E.decode codec $$ joinI $ E.encode E.utf8 param) >>== return
+        Just codec -> (joinI $ ET.decode codec $$ joinI $ ET.encode ET.utf8 param) >>== return
     E.map id iter
   where
     takeFourBytes front = do
-        x <- E.head
+        x <- EL.head
         case x of
             Nothing -> return front
             Just y -> do
@@ -458,7 +459,7 @@ content :: Monad m => Iteratee SEvent m (Maybe Text)
 content = do
     x <- E.peek
     case x of
-        Just (SContent t) -> E.drop 1 >> return (Just t)
+        Just (SContent t) -> EL.drop 1 >> return (Just t)
         _ -> return Nothing
 
 -- | Grabs the next piece of content. If none if available, returns 'T.empty'.
@@ -490,11 +491,11 @@ tag checkName attrParser f = do
                     case runAttrParser' (attrParser y) as of
                         Left e -> throwError e
                         Right z -> do
-                            E.drop 1
+                            EL.drop 1
                             z' <- f z
                             a <- dropWS
                             case a of
-                                Just SEndElement -> E.drop 1 >> return (Just z')
+                                Just SEndElement -> EL.drop 1 >> return (Just z')
                                 _ -> throwError $ SXmlException ("Expected end tag for: " ++ show name) a
                 Nothing -> return Nothing
         _ -> return Nothing
@@ -503,7 +504,7 @@ tag checkName attrParser f = do
         x <- E.peek
         case x of
             Just (SContent t)
-                | T.all isSpace t -> E.drop 1 >> E.peek
+                | T.all isSpace t -> EL.drop 1 >> E.peek
             _ -> return x
     runAttrParser' p as =
         case runAttrParser p as of
@@ -586,7 +587,7 @@ simplify renderEntity =
                         Nothing -> throwError $ InvalidEntity t
         return (x, T.concat y')
     go stack k = do
-        x <- E.head
+        x <- EL.head
         case x of
             Nothing -> k EOF >>== return
             Just EventBeginDocument -> go stack k
@@ -621,7 +622,7 @@ simplify renderEntity =
                 Just EventBeginElement{} -> return front
                 Just EventEndElement{} -> return front
                 Just (EventContent c) -> do
-                    E.drop 1
+                    EL.drop 1
                     t <- contentToText c
                     takeContents $ front . (:) t
                 Just EventBeginDocument -> helper
@@ -630,7 +631,7 @@ simplify renderEntity =
                 Just EventDoctype{} -> helper
                 Just EventComment{} -> helper
           where
-            helper = E.drop 1 >> takeContents front
+            helper = EL.drop 1 >> takeContents front
 
 -- | The same as 'parseFile', but throws any exceptions.
 parseFile_ :: String -> (Text -> Maybe Text) -> Iteratee SEvent IO a -> IO a
