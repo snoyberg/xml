@@ -5,13 +5,17 @@
 module Text.XML.Enumerator.Render
     ( renderBuilder
     , renderBytes
+    , renderText
     ) where
 
 import Data.XML.Types ( Event (..), Content (..), Name (..), Attribute (..)
                       , Doctype (..))
 import Text.XML.Enumerator.Token
 import qualified Data.Enumerator as E
+import qualified Data.Enumerator.List as EL
+import qualified Data.Enumerator.Text as ET
 import Data.Enumerator ((>>==), ($$))
+import qualified Data.Text as TS
 import qualified Data.Text.Lazy as T
 import Data.Text.Lazy (Text)
 import Blaze.ByteString.Builder
@@ -25,8 +29,16 @@ import Control.Monad.IO.Class (MonadIO)
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder' and 'builderToByteString', so it produces
 -- optimally sized 'ByteString's with minimal buffer copying.
+--
+-- The output is UTF8 encoded.
 renderBytes :: MonadIO m => E.Enumeratee Event ByteString m b
 renderBytes s = E.joinI $ renderBuilder $$ builderToByteString s
+
+-- | Render a stream of 'Event's into a stream of 'ByteString's. This function
+-- wraps around 'renderBuilder', 'builderToByteString' and 'renderBytes', so it
+-- produces optimally sized 'ByteString's with minimal buffer copying.
+renderText :: MonadIO m => E.Enumeratee Event TS.Text m b
+renderText s = E.joinI $ renderBytes $$ ET.decode ET.utf8 s
 
 -- | Render a stream of 'Event's into a stream of 'Builder's. Builders are from
 -- the blaze-builder package, and allow the create of optimally sized
@@ -37,14 +49,14 @@ renderBuilder =
   where
     loop stack = E.checkDone $ step stack
     step stack k = do
-        x <- E.head
+        x <- EL.head
         case x of
             Nothing -> E.yield (E.Continue k) E.EOF
             Just (EventBeginElement name as) -> do
                 x' <- E.peek
                 if x' == Just (EventEndElement name)
                     then do
-                        E.drop 1
+                        EL.drop 1
                         go $ mkBeginToken True stack name as
                     else go $ mkBeginToken False stack name as
             Just e -> go $ eventToToken stack e
