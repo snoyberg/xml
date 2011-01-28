@@ -69,7 +69,7 @@ module Text.XML.Enumerator.Parse
       -- * Exceptions
     , XmlException (..)
     ) where
-import Data.Attoparsec.Text hiding (many)
+import Data.Attoparsec.Text hiding (many, skipSpace)
 import qualified Data.Attoparsec.Text as A
 import Data.Attoparsec.Text.Enumerator
 import Data.XML.Types
