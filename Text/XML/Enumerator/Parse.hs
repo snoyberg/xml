@@ -69,10 +69,16 @@ module Text.XML.Enumerator.Parse
       -- * Exceptions
     , XmlException (..)
     ) where
-import Data.Attoparsec.Text hiding (many, skipSpace)
+import Data.Attoparsec.Text
+    ( char, Parser, takeWhile1, skipWhile, string
+    , manyTill, takeWhile, try, anyChar, satisfyWith, endOfInput
+    )
 import qualified Data.Attoparsec.Text as A
-import Data.Attoparsec.Text.Enumerator
+import Data.Attoparsec.Text.Enumerator (iterParser)
 import Data.XML.Types
+    ( Name (..), Event (..), Content (..), Attribute (..)
+    , Doctype (..), Instruction (..), ExternalID (..)
+    )
 import Control.Applicative ((<|>), (<$>))
 import Data.Text.Lazy (pack, Text)
 import qualified Data.Text.Lazy as T
