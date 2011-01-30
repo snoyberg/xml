@@ -71,7 +71,7 @@ module Text.XML.Enumerator.Parse
     ) where
 import Data.Attoparsec.Text
     ( char, Parser, takeWhile1, skipWhile, string
-    , manyTill, takeWhile, try, anyChar, satisfyWith, endOfInput
+    , manyTill, takeWhile, try, anyChar, endOfInput, hexadecimal, decimal
     )
 import qualified Data.Attoparsec.Text as A
 import Data.Attoparsec.Text.Enumerator (iterParser)
@@ -344,34 +344,10 @@ parseContent breakDouble breakSingle =
         res <- hexadecimal
         char' ';'
         return res
-    hexadecimal = do
-        x <- hex
-        hexadecimal' x
-    hexadecimal' x = (do
-        y <- hex
-        hexadecimal' $ x * 16 + y
-        ) <|> return x
-    hex = satisfyWith hex' (< 16)
-    hex' w
-        | '0' <= w && w <= '9' = fromEnum w - fromEnum '0'
-        | 'A' <= w && w <= 'Z' = fromEnum w - fromEnum 'A' + 10
-        | 'a' <= w && w <= 'z' = fromEnum w - fromEnum 'a' + 10
-        | otherwise = 16 -- failing case
     parseEntityDig = do
         res <- decimal
         char' ';'
         return res
-    decimal = do
-        x <- dig
-        decimal' x
-    decimal' x = (do
-        y <- dig
-        decimal' $ x * 10 + y
-        ) <|> return x
-    dig = satisfyWith dig' (< 10)
-    dig' w
-        | '0' <= w && w <= '9' = fromEnum w - fromEnum '0'
-        | otherwise = 10 -- failing case
     parseEntityWord = do
         s <- takeWhile1 (/= ';')
         char' ';'
