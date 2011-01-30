@@ -1,5 +1,5 @@
 name:            xml-enumerator
-version:         0.1.0.2
+version:         0.1.1
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michaels@suite-sol.com>
@@ -27,6 +27,7 @@ library
                    , transformers              >= 0.2      && < 0.3
     exposed-modules: Text.XML.Enumerator.Parse
                      Text.XML.Enumerator.Render
+                     Text.XML.Enumerator.Document
     other-modules:   Text.XML.Enumerator.Token
     ghc-options:     -Wall
 
