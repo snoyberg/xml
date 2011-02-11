@@ -52,7 +52,9 @@ module Text.XML.Enumerator.Parse
       -- * SEvent parsing
     , tag
     , tag'
+    , tagName
     , tag''
+    , tagNoAttr
     , content
     , content'
       -- * Attribute parsing
@@ -450,7 +452,7 @@ tag checkName attrParser f = do
 -- of taking a predicate function. This is often sufficient, and when combined
 -- with OverloadedStrings and the IsString instance of 'Name', can prove to be
 -- very concise.
-tag' :: Monad m
+tag', tagName :: Monad m
      => Name
      -> AttrParser a
      -> (a -> Iteratee SEvent m b)
@@ -458,10 +460,16 @@ tag' :: Monad m
 tag' name attrParser = tag
     (\x -> if x == name then Just () else Nothing)
     (const attrParser)
+tagName = tag'
+
+{-# DEPRECATED tag' "Use tagName instead" #-}
 
 -- | A further simplified tag parser, which requires that no attributes exist.
-tag'' :: Monad m => Name -> Iteratee SEvent m a -> Iteratee SEvent m (Maybe a)
+tag'', tagNoAttr :: Monad m => Name -> Iteratee SEvent m a -> Iteratee SEvent m (Maybe a)
 tag'' name f = tag' name (return ()) $ const f
+tagNoAttr = tag''
+
+{-# DEPRECATED tag'' "Use tagNoAttr instead" #-}
 
 -- | Get the value of the first parser which returns 'Just'. If none return
 -- 'Just', returns 'Nothing'.
