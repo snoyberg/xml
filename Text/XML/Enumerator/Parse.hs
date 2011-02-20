@@ -253,7 +253,7 @@ parseToken = do
             char' ']'
             skipSpace) <|> return ()
         char' '>'
-        newline
+        newline <|> return ()
         return $ TokenDoctype i eid
     parsePublicID = do
         _ <- string "PUBLIC"
