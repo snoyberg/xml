@@ -670,3 +670,61 @@ many i =
         case x of
             Nothing -> return $ front []
             Just y -> go $ front . (:) y
+
+{-
+-- There is some possible realisations using higher interface
+-- ignoreSiblings' is about 30 percent slowly than ignoreSiblings
+-- if ignoreSiblings' uses ignoreElem (instead of ignoreElem') it is about 5 percent slowly than ignoreSiblings 
+
+-- | Ignore  content if exists
+ignoreContent :: Monad m => Iteratee SEvent m (Maybe ())
+ignoreContent = fmap (fmap $ const ()) content
+-- | Iteratee to skip the next element. 
+ignoreElem' :: Monad m => Iteratee SEvent m (Maybe ())
+ignoreElem' = tag (const $ Just ()) (const ignoreAttrs) (const $ ignoreSiblings' >> return ())
+
+-- | Iteratee to skip the siblings element. 
+ignoreSiblings' :: Monad m => Iteratee SEvent m [()]
+ignoreSiblings' = many (choose [ignoreElem', ignoreContent])
+-}
+
+-- | Iteratee to skip the siblings element. 
+ignoreSiblings :: Monad m => Iteratee SEvent m ()
+ignoreSiblings = E.continue (loop 0) 
+  where
+    loop :: Monad m => Int -> Stream SEvent -> Iteratee SEvent m ()
+    loop n (Chunks []) = E.continue (loop n)
+    loop n chs@(Chunks (x:_)) = case x of
+        (SBeginElement _ _) -> E.continue (loop (n+1))
+        SEndElement 
+            | n == 0    -> yield () chs 
+            | otherwise -> E.continue (loop (n-1))
+        _ -> E.continue (loop n)
+    loop _ EOF = throwError $ XmlException "Unbalanced xml-tree. (Error in skipSiblings)" Nothing
+
+-- | Iteratee to skip the next element. 
+ignoreElem :: Monad m => Iteratee SEvent m (Maybe ())
+ignoreElem = E.continue (loop 0) 
+  where
+    loop :: Monad m => Int -> Stream SEvent -> Iteratee SEvent m (Maybe ())
+    loop n (Chunks []) = E.continue (loop n)
+    loop n chs@(Chunks (x:xs)) = case x of
+        (SBeginElement _ _) -> E.continue (loop (n+1))
+        SEndElement 
+            | n == 0    -> yield Nothing chs 
+            | n == 1    -> yield (Just ()) (Chunks xs) 
+            | otherwise -> E.continue (loop (n-1))
+        _ -> E.continue (loop n)
+    loop _ EOF = throwError $ XmlException "Unbalanced xml-tree. (Error in skipSiblings)" Nothing
+    
+-- | Skip the siblings elements until iteratee not right. 
+skipTill :: Monad m => Iteratee SEvent m (Maybe a) -> Iteratee SEvent m (Maybe a)
+skipTill i = go
+  where
+    go = i >>= \x -> case x of
+        Nothing -> ignoreElem >>= (\x -> if x == Nothing then return Nothing else go)
+        r -> return r
+
+-- | Combinator to skip the siblings element. 
+skipSiblings :: Monad m => Iteratee SEvent m a -> Iteratee SEvent m a
+skipSiblings i = i >>= \r -> ignoreSiblings >> return r
