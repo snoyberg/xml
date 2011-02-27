@@ -57,6 +57,8 @@ module Text.XML.Enumerator.Parse
     , tagNoAttr
     , content
     , content'
+    , ignoreElem
+    , ignoreSiblings
       -- * Attribute parsing
     , AttrParser
     , requireAttr
@@ -68,6 +70,8 @@ module Text.XML.Enumerator.Parse
     , choose
     , many
     , force
+    , skipTill
+    , skipSiblings
       -- * Exceptions
     , XmlException (..)
     ) where
@@ -728,3 +732,4 @@ skipTill i = go
 -- | Combinator to skip the siblings element. 
 skipSiblings :: Monad m => Iteratee SEvent m a -> Iteratee SEvent m a
 skipSiblings i = i >>= \r -> ignoreSiblings >> return r
+
