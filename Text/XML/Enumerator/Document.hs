@@ -4,6 +4,8 @@ module Text.XML.Enumerator.Document
       writeFile
     , readFile
     , readFile_
+      -- * Lazy bytestrings
+    , renderDocument
       -- * Streaming functions
     , toEvents
     , fromEvents
@@ -34,6 +36,8 @@ import qualified System.IO as SIO
 import Data.Enumerator.Binary (enumFile, iterHandle)
 import qualified Data.Text.Lazy as T
 import Data.Char (isSpace)
+import qualified Data.ByteString.Lazy as L
+import System.IO.Unsafe (unsafePerformIO)
 
 readFile :: FilePath -> IO (Either SomeException Document)
 readFile fn = run $ enumFile fn $$ joinI $ P.parseBytes $$ fromEvents
@@ -44,6 +48,14 @@ readFile_ fn = run_ $ enumFile fn $$ joinI $ P.parseBytes $$ fromEvents
 writeFile :: FilePath -> Document -> IO ()
 writeFile fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->
     run_ $ renderBytes doc $$ iterHandle h
+
+renderDocument :: Document -> L.ByteString
+renderDocument doc =
+    L.fromChunks $ unsafePerformIO $ lazyConsume $ renderBytes doc
+
+-- The name is a lie: this is actually strict.
+lazyConsume :: Enumerator a IO [a] -> IO [a]
+lazyConsume enum = run_ $ enum $$ EL.consume
 
 data InvalidEventStream = InvalidEventStream String
     deriving (Show, Typeable)
