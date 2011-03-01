@@ -38,6 +38,10 @@ import qualified Data.Text.Lazy as T
 import Data.Char (isSpace)
 import qualified Data.ByteString.Lazy as L
 import System.IO.Unsafe (unsafePerformIO)
+import qualified Control.Concurrent.MVar as M
+import System.IO.Unsafe (unsafeInterleaveIO)
+import Control.Monad.IO.Class (liftIO)
+import Control.Concurrent (forkIO)
 
 readFile :: FilePath -> IO (Either SomeException Document)
 readFile fn = run $ enumFile fn $$ joinI $ P.parseBytes $$ fromEvents
@@ -53,9 +57,31 @@ renderDocument :: Document -> L.ByteString
 renderDocument doc =
     L.fromChunks $ unsafePerformIO $ lazyConsume $ renderBytes doc
 
--- The name is a lie: this is actually strict.
-lazyConsume :: Enumerator a IO [a] -> IO [a]
-lazyConsume enum = run_ $ enum $$ EL.consume
+lazyConsume :: Enumerator a IO () -> IO [a]
+lazyConsume enum = do
+    toGrabber <- M.newEmptyMVar
+    toFiller <- M.newMVar True
+    _ <- forkIO $ run_ $ enum $$ filler toGrabber toFiller
+    grabber toGrabber toFiller
+  where
+    grabber toGrabber toFiller = do
+        x <- M.takeMVar toGrabber
+        case x of
+            Nothing -> return []
+            Just x' -> do
+                M.putMVar toFiller True
+                xs <- unsafeInterleaveIO $ grabber toGrabber toFiller
+                return $ x' : xs
+    filler toGrabber toFiller = do
+        cont <- liftIO $ M.takeMVar toFiller
+        if cont
+            then do
+                x <- EL.head
+                liftIO $ M.putMVar toGrabber x
+                case x of
+                    Nothing -> return ()
+                    Just _ -> filler toGrabber toFiller
+            else liftIO $ M.putMVar toGrabber Nothing
 
 data InvalidEventStream = InvalidEventStream String
     deriving (Show, Typeable)
