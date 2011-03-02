@@ -733,3 +733,7 @@ skipTill i = go
 skipSiblings :: Monad m => Iteratee SEvent m a -> Iteratee SEvent m a
 skipSiblings i = i >>= \r -> ignoreSiblings >> return r
 
+-- | Combinator to skip the attributes.
+skipAttrs :: AttrParser a -> AttrParser a
+skipAttrs i = i >>= \r -> ignoreAttrs >> return r
+
