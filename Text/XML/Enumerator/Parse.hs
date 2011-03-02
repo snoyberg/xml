@@ -51,12 +51,10 @@ module Text.XML.Enumerator.Parse
     , parseFile_
       -- * SEvent parsing
     , tag
-    , tag'
     , tagName
-    , tag''
     , tagNoAttr
     , content
-    , content'
+    , contentMaybe
     , ignoreElem
     , ignoreSiblings
       -- * Attribute parsing
@@ -395,17 +393,17 @@ data SEvent = SBeginElement Name [SAttr]
     deriving (Show, Eq)
 
 -- | Grabs the next piece of content if available.
-content :: Monad m => Iteratee SEvent m (Maybe Text)
-content = do
+contentMaybe :: Monad m => Iteratee SEvent m (Maybe Text)
+contentMaybe = do
     x <- E.peek
     case x of
         Just (SContent t) -> EL.drop 1 >> return (Just t)
         _ -> return Nothing
 
--- | Grabs the next piece of content. If none is available, returns 'T.empty'.
-content' :: Monad m => Iteratee SEvent m Text
-content' = do
-    x <- content
+-- | Grabs the next piece of content. If none if available, returns 'T.empty'.
+content :: Monad m => Iteratee SEvent m Text
+content = do
+    x <- contentMaybe
     case x of
         Nothing -> return T.empty
         Just y -> return y
@@ -456,24 +454,18 @@ tag checkName attrParser f = do
 -- of taking a predicate function. This is often sufficient, and when combined
 -- with OverloadedStrings and the IsString instance of 'Name', can prove to be
 -- very concise.
-tag', tagName :: Monad m
+tagName :: Monad m
      => Name
      -> AttrParser a
      -> (a -> Iteratee SEvent m b)
      -> Iteratee SEvent m (Maybe b)
-tag' name attrParser = tag
+tagName name attrParser = tag
     (\x -> if x == name then Just () else Nothing)
     (const attrParser)
-tagName = tag'
-
-{-# DEPRECATED tag' "Use tagName instead" #-}
 
 -- | A further simplified tag parser, which requires that no attributes exist.
-tag'', tagNoAttr :: Monad m => Name -> Iteratee SEvent m a -> Iteratee SEvent m (Maybe a)
-tag'' name f = tag' name (return ()) $ const f
-tagNoAttr = tag''
-
-{-# DEPRECATED tag'' "Use tagNoAttr instead" #-}
+tagNoAttr :: Monad m => Name -> Iteratee SEvent m a -> Iteratee SEvent m (Maybe a)
+tagNoAttr name f = tagName name (return ()) $ const f
 
 -- | Get the value of the first parser which returns 'Just'. If none return
 -- 'Just', returns 'Nothing'.
@@ -726,7 +718,7 @@ skipTill :: Monad m => Iteratee SEvent m (Maybe a) -> Iteratee SEvent m (Maybe a
 skipTill i = go
   where
     go = i >>= \x -> case x of
-        Nothing -> ignoreElem >>= (\x -> if x == Nothing then return Nothing else go)
+        Nothing -> ignoreElem >>= (\y -> if y == Nothing then return Nothing else go)
         r -> return r
 
 -- | Combinator to skip the siblings element. 
