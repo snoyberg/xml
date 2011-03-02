@@ -402,7 +402,7 @@ content = do
         Just (SContent t) -> EL.drop 1 >> return (Just t)
         _ -> return Nothing
 
--- | Grabs the next piece of content. If none if available, returns 'T.empty'.
+-- | Grabs the next piece of content. If none is available, returns 'T.empty'.
 content' :: Monad m => Iteratee SEvent m Text
 content' = do
     x <- content
