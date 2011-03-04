@@ -43,13 +43,9 @@ module Text.XML.Enumerator.Parse
       parseBytes
     , parseText
     , detectUtf
-      -- * Simplified events
-    , SEvent (..)
-    , simplify
-    , SAttr
     , parseFile
     , parseFile_
-      -- * SEvent parsing
+      -- * Event parsing
     , tag
     , tagName
     , tagNoAttr
@@ -64,6 +60,7 @@ module Text.XML.Enumerator.Parse
     , requireAttrRaw
     , optionalAttrRaw
     , ignoreAttrs
+    , skipAttrs
       -- * Combinators
     , choose
     , many
@@ -127,9 +124,6 @@ tokenToEvent n (TokenBeginElement name as isClosed) =
                                         else Just $ contentsToText val })
         | otherwise = (front . (:) a, l)
     n' = if isClosed then n else l' : n
-    contentsToText = T.concat . map helper
-    helper (ContentText t) = t
-    helper (ContentEntity _) = T.empty -- FIXME
     fixAttName level (name', val) = Attribute (tnameToName True level name') val
     begin = EventBeginElement (tnameToName False l' name) $ map (fixAttName l') $ as' []
     end = EventEndElement $ tnameToName False l' name
@@ -382,26 +376,22 @@ newline = ((char '\r' >> char '\n') <|> char '\n') >> return ()
 char' :: Char -> Parser ()
 char' c = char c >> return ()
 
--- | A simplified attribute, having all entities converted to text.
-type SAttr = (Name, Text)
-
--- | A greatly simplified XML event datatype. The best way to produce these
--- values is the 'simplify' enumeratee.
-data SEvent = SBeginElement Name [SAttr]
-            | SEndElement
-            | SContent Text
-    deriving (Show, Eq)
-
 -- | Grabs the next piece of content if available.
-contentMaybe :: Monad m => Iteratee SEvent m (Maybe Text)
+contentMaybe :: Monad m => Iteratee Event m (Maybe Text)
 contentMaybe = do
     x <- E.peek
     case x of
-        Just (SContent t) -> EL.drop 1 >> return (Just t)
+        Just (EventContent t) -> EL.drop 1 >> fmap Just (takeContents (t:))
         _ -> return Nothing
+  where
+    takeContents front = do
+        x <- E.peek
+        case x of
+            Just (EventContent c) -> takeContents $ front . (:) c
+            _ -> return $ contentsToText $ front []
 
 -- | Grabs the next piece of content. If none if available, returns 'T.empty'.
-content :: Monad m => Iteratee SEvent m Text
+content :: Monad m => Iteratee Event m Text
 content = do
     x <- contentMaybe
     case x of
@@ -418,12 +408,12 @@ content = do
 tag :: Monad m
     => (Name -> Maybe a)
     -> (a -> AttrParser b)
-    -> (b -> Iteratee SEvent m c)
-    -> Iteratee SEvent m (Maybe c)
+    -> (b -> Iteratee Event m c)
+    -> Iteratee Event m (Maybe c)
 tag checkName attrParser f = do
     x <- dropWS
     case x of
-        Just (SBeginElement name as) ->
+        Just (EventBeginElement name as) ->
             case checkName name of
                 Just y ->
                     case runAttrParser' (attrParser y) as of
@@ -433,15 +423,16 @@ tag checkName attrParser f = do
                             z' <- f z
                             a <- dropWS
                             case a of
-                                Just SEndElement -> EL.drop 1 >> return (Just z')
-                                _ -> throwError $ SXmlException ("Expected end tag for: " ++ show name) a
+                                Just (EventEndElement name')
+                                    | name == name' -> EL.drop 1 >> return (Just z')
+                                _ -> throwError $ XmlException ("Expected end tag for: " ++ show name) a
                 Nothing -> return Nothing
         _ -> return Nothing
   where
     dropWS = do
         x <- E.peek
         case x of
-            Just (SContent t)
+            Just (EventContent (ContentText t))
                 | T.all isSpace t -> EL.drop 1 >> E.peek
             _ -> return x
     runAttrParser' p as =
@@ -457,21 +448,21 @@ tag checkName attrParser f = do
 tagName :: Monad m
      => Name
      -> AttrParser a
-     -> (a -> Iteratee SEvent m b)
-     -> Iteratee SEvent m (Maybe b)
+     -> (a -> Iteratee Event m b)
+     -> Iteratee Event m (Maybe b)
 tagName name attrParser = tag
     (\x -> if x == name then Just () else Nothing)
     (const attrParser)
 
 -- | A further simplified tag parser, which requires that no attributes exist.
-tagNoAttr :: Monad m => Name -> Iteratee SEvent m a -> Iteratee SEvent m (Maybe a)
+tagNoAttr :: Monad m => Name -> Iteratee Event m a -> Iteratee Event m (Maybe a)
 tagNoAttr name f = tagName name (return ()) $ const f
 
 -- | Get the value of the first parser which returns 'Just'. If none return
 -- 'Just', returns 'Nothing'.
 choose :: Monad m
-       => [Iteratee SEvent m (Maybe a)]
-       -> Iteratee SEvent m (Maybe a)
+       => [Iteratee Event m (Maybe a)]
+       -> Iteratee Event m (Maybe a)
 choose [] = return Nothing
 choose (i:is) = do
     x <- i
@@ -484,97 +475,18 @@ choose (i:is) = do
 -- want to finally force something to happen.
 force :: Monad m
       => String -- ^ Error message
-      -> Iteratee SEvent m (Maybe a)
-      -> Iteratee SEvent m a
+      -> Iteratee Event m (Maybe a)
+      -> Iteratee Event m a
 force msg i = do
     x <- i
     case x of
         Nothing -> throwError $ XmlException msg Nothing
         Just a -> return a
 
--- | Convert a stream of 'Event's into a stream 'SEvent's. The first argument
--- is a function to decode character entity references. Some things to note
--- about this function:
---
--- * It drops events for document begin/end, comments, and instructions.
---
--- * It concatenates all pieces of content together. The output of this
--- function is guaranteed to not have two consecutive 'SContent's.
---
--- * It automatically checks that tag beginnings and endings are well balanced,
--- and throws an exception otherwise.
---
--- * It also throws an exception if your supplied entity function does not know
--- how to deal with a character entity.
---
--- Please also note that you do /not/ need to handle the 5 XML-defined
--- character entity references (lt, gt, amp, quot and apos), nor deal with
--- numeric entities (decimal and hex).
-simplify :: Monad m => (Text -> Maybe Text) -> Enumeratee Event SEvent m b
-simplify renderEntity =
-    loop []
-  where
-    loop stack = E.checkDone $ go stack
-    sattr (Attribute x y) = do
-        y' <- flip mapM y $ \z ->
-            case z of
-                ContentText t -> return t
-                ContentEntity t ->
-                    case renderEntity t of
-                        Just t' -> return t'
-                        Nothing -> throwError $ InvalidEntity t
-        return (x, T.concat y')
-    go stack k = do
-        x <- EL.head
-        case x of
-            Nothing -> k EOF >>== return
-            Just EventBeginDocument -> go stack k
-            Just EventEndDocument ->
-                k EOF >>== return
-            Just EventInstruction{} -> go stack k
-            Just EventDoctype{} -> go stack k
-            Just (EventBeginElement n as) -> do
-                as' <- mapM sattr as
-                k (Chunks [SBeginElement n as']) >>== loop (n : stack)
-            Just (EventEndElement n) ->
-                case stack of
-                    [] -> throwError $ InvalidEndElement n
-                    n':rest
-                        | n == n' -> k (Chunks [SEndElement]) >>== loop rest
-                        | otherwise -> throwError $ InvalidEndElement n
-            Just (EventContent c) -> do
-                t <- contentToText c
-                ts <- takeContents $ (:) t
-                k (Chunks [SContent $ T.concat $ ts []]) >>== loop stack
-            Just EventComment{} -> go stack k
-      where
-        contentToText (ContentEntity e) =
-            case renderEntity e of
-                Nothing -> throwError $ InvalidEntity e
-                Just t -> return t
-        contentToText (ContentText t) = return t
-        takeContents front = do
-            x <- E.peek
-            case x of
-                Nothing -> return front
-                Just EventBeginElement{} -> return front
-                Just EventEndElement{} -> return front
-                Just (EventContent c) -> do
-                    EL.drop 1
-                    t <- contentToText c
-                    takeContents $ front . (:) t
-                Just EventBeginDocument -> helper
-                Just EventEndDocument -> helper
-                Just EventInstruction{} -> helper
-                Just EventDoctype{} -> helper
-                Just EventComment{} -> helper
-          where
-            helper = EL.drop 1 >> takeContents front
-
 -- | The same as 'parseFile', but throws any exceptions.
-parseFile_ :: String -> (Text -> Maybe Text) -> Iteratee SEvent IO a -> IO a
-parseFile_ fn re p =
-    parseFile fn re p >>= go
+parseFile_ :: String -> Iteratee Event IO a -> IO a
+parseFile_ fn p =
+    parseFile fn p >>= go
   where
     go (Left e) = liftIO $ throwIO e
     go (Right a) = return a
@@ -583,11 +495,10 @@ parseFile_ fn re p =
 -- character encoding using 'detectUtf', parses the XML using 'parseBytes',
 -- converts to an 'SEvent' stream using 'simplify' and then handing off control
 -- to your supplied parser.
-parseFile :: String -> (Text -> Maybe Text) -> Iteratee SEvent IO a -> IO (Either SomeException a)
-parseFile fn re p =
+parseFile :: String -> Iteratee Event IO a -> IO (Either SomeException a)
+parseFile fn p =
     run $ enumFile fn     $$ joinI
-        $ parseBytes      $$ joinI
-        $ simplify re     $$ p
+        $ parseBytes      $$ p
 
 data XmlException = XmlException
     { xmlErrorMessage :: String
@@ -595,11 +506,7 @@ data XmlException = XmlException
     }
                   | InvalidEndElement Name
                   | InvalidEntity Text
-                  | SXmlException
-    { xmlErrorMessage :: String
-    , sxmlBadInput :: Maybe SEvent
-    }
-                  | UnparsedAttributes [SAttr]
+                  | UnparsedAttributes [Attribute]
     deriving (Show, Typeable)
 instance Exception XmlException
 
@@ -608,7 +515,7 @@ instance Exception XmlException
 -- are unhandled attributes. Use the 'requireAttr', 'optionalAttr' et al
 -- functions for handling an attribute, and 'ignoreAttrs' if you would like to
 -- skip the rest of the attributes on an element.
-newtype AttrParser a = AttrParser { runAttrParser :: [SAttr] -> Either XmlException ([SAttr], a) }
+newtype AttrParser a = AttrParser { runAttrParser :: [Attribute] -> Either XmlException ([Attribute], a) }
 
 instance Monad AttrParser where
     return a = AttrParser $ \as -> Right (as, a)
@@ -622,7 +529,7 @@ instance Applicative AttrParser where
     pure = return
     (<*>) = ap
 
-optionalAttrRaw :: (SAttr -> Maybe b) -> AttrParser (Maybe b)
+optionalAttrRaw :: (Attribute -> Maybe b) -> AttrParser (Maybe b)
 optionalAttrRaw f =
     AttrParser $ go id
   where
@@ -632,7 +539,7 @@ optionalAttrRaw f =
             Nothing -> go (front . (:) a) as
             Just b -> Right (front as, Just b)
 
-requireAttrRaw :: String -> (SAttr -> Maybe b) -> AttrParser b
+requireAttrRaw :: String -> (Attribute -> Maybe b) -> AttrParser b
 requireAttrRaw msg f = do
     x <- optionalAttrRaw f
     case x of
@@ -643,12 +550,19 @@ requireAttrRaw msg f = do
 requireAttr :: Name -> AttrParser Text
 requireAttr n = requireAttrRaw
     ("Missing attribute: " ++ show n)
-    (\(x, y) -> if x == n then Just y else Nothing)
+    (\(Attribute x y) -> if x == n then Just (contentsToText y) else Nothing)
 
 -- | Return the value for an attribute if present.
 optionalAttr :: Name -> AttrParser (Maybe Text)
 optionalAttr n = optionalAttrRaw
-    (\(x, y) -> if x == n then Just y else Nothing)
+    (\(Attribute x y) -> if x == n then Just (contentsToText y) else Nothing)
+
+contentsToText :: [Content] -> Text
+contentsToText =
+    T.concat . map toText
+  where
+    toText (ContentText t) = t
+    toText (ContentEntity e) = T.concat ["&", e, ";"]
 
 -- | Skip the remaining attributes on an element. Since this will clear the
 -- list of attributes, you must call this /after/ any calls to 'requireAttr',
@@ -657,7 +571,7 @@ ignoreAttrs :: AttrParser ()
 ignoreAttrs = AttrParser $ \_ -> Right ([], ())
 
 -- | Keep parsing elements as long as the parser returns 'Just'.
-many :: Monad m => Iteratee SEvent m (Maybe a) -> Iteratee SEvent m [a]
+many :: Monad m => Iteratee Event m (Maybe a) -> Iteratee Event m [a]
 many i =
     go id
   where
@@ -676,37 +590,37 @@ many i =
 ignoreContent :: Monad m => Iteratee SEvent m (Maybe ())
 ignoreContent = fmap (fmap $ const ()) content
 -- | Iteratee to skip the next element. 
-ignoreElem' :: Monad m => Iteratee SEvent m (Maybe ())
+ignoreElem' :: Monad m => Iteratee Event m (Maybe ())
 ignoreElem' = tag (const $ Just ()) (const ignoreAttrs) (const $ ignoreSiblings' >> return ())
 
 -- | Iteratee to skip the siblings element. 
-ignoreSiblings' :: Monad m => Iteratee SEvent m [()]
+ignoreSiblings' :: Monad m => Iteratee Event m [()]
 ignoreSiblings' = many (choose [ignoreElem', ignoreContent])
 -}
 
 -- | Iteratee to skip the siblings element. 
-ignoreSiblings :: Monad m => Iteratee SEvent m ()
+ignoreSiblings :: Monad m => Iteratee Event m ()
 ignoreSiblings = E.continue (loop 0) 
   where
-    loop :: Monad m => Int -> Stream SEvent -> Iteratee SEvent m ()
+    loop :: Monad m => Int -> Stream Event -> Iteratee Event m ()
     loop n (Chunks []) = E.continue (loop n)
     loop n chs@(Chunks (x:_)) = case x of
-        (SBeginElement _ _) -> E.continue (loop (n+1))
-        SEndElement 
+        (EventBeginElement _ _) -> E.continue (loop (n+1))
+        (EventEndElement _)
             | n == 0    -> yield () chs 
             | otherwise -> E.continue (loop (n-1))
         _ -> E.continue (loop n)
     loop _ EOF = throwError $ XmlException "Unbalanced xml-tree. (Error in skipSiblings)" Nothing
 
 -- | Iteratee to skip the next element. 
-ignoreElem :: Monad m => Iteratee SEvent m (Maybe ())
+ignoreElem :: Monad m => Iteratee Event m (Maybe ())
 ignoreElem = E.continue (loop 0) 
   where
-    loop :: Monad m => Int -> Stream SEvent -> Iteratee SEvent m (Maybe ())
+    loop :: Monad m => Int -> Stream Event -> Iteratee Event m (Maybe ())
     loop n (Chunks []) = E.continue (loop n)
     loop n chs@(Chunks (x:xs)) = case x of
-        (SBeginElement _ _) -> E.continue (loop (n+1))
-        SEndElement 
+        (EventBeginElement _ _) -> E.continue (loop (n+1))
+        (EventEndElement _)
             | n == 0    -> yield Nothing chs 
             | n == 1    -> yield (Just ()) (Chunks xs) 
             | otherwise -> E.continue (loop (n-1))
@@ -714,7 +628,7 @@ ignoreElem = E.continue (loop 0)
     loop _ EOF = throwError $ XmlException "Unbalanced xml-tree. (Error in skipSiblings)" Nothing
     
 -- | Skip the siblings elements until iteratee not right. 
-skipTill :: Monad m => Iteratee SEvent m (Maybe a) -> Iteratee SEvent m (Maybe a)
+skipTill :: Monad m => Iteratee Event m (Maybe a) -> Iteratee Event m (Maybe a)
 skipTill i = go
   where
     go = i >>= \x -> case x of
@@ -722,7 +636,7 @@ skipTill i = go
         r -> return r
 
 -- | Combinator to skip the siblings element. 
-skipSiblings :: Monad m => Iteratee SEvent m a -> Iteratee SEvent m a
+skipSiblings :: Monad m => Iteratee Event m a -> Iteratee Event m a
 skipSiblings i = i >>= \r -> ignoreSiblings >> return r
 
 -- | Combinator to skip the attributes.
