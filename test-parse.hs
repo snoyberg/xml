@@ -13,9 +13,9 @@ main :: IO ()
 main = do
     [fn] <- getArgs
     x <- S.readFile fn
-    run_ $ enumList 1 [x] $$ joinI $ parseBytes $$ iterPrint
+    run_ $ enumList 1 [x] $$ joinI $ parseBytes decodeEntities $$ iterPrint
     withBinaryFile "test8.xml" WriteMode $ \h ->
-        run_ $ enumList 1 [x] $$ joinI $ parseBytes
+        run_ $ enumList 1 [x] $$ joinI $ parseBytes decodeEntities
             $$ joinI $ renderBuilder
             $$ joinI $ builderToByteString
             $$ iterHandle h
