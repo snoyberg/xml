@@ -43,11 +43,11 @@ import System.IO.Unsafe (unsafeInterleaveIO)
 import Control.Monad.IO.Class (liftIO)
 import Control.Concurrent (forkIO)
 
-readFile :: FilePath -> IO (Either SomeException Document)
-readFile fn = run $ enumFile fn $$ joinI $ P.parseBytes $$ fromEvents
+readFile :: FilePath -> P.DecodeEntities -> IO (Either SomeException Document)
+readFile fn de = run $ enumFile fn $$ joinI $ P.parseBytes de $$ fromEvents
 
-readFile_ :: FilePath -> IO Document
-readFile_ fn = run_ $ enumFile fn $$ joinI $ P.parseBytes $$ fromEvents
+readFile_ :: FilePath -> P.DecodeEntities -> IO Document
+readFile_ fn de = run_ $ enumFile fn $$ joinI $ P.parseBytes de $$ fromEvents
 
 writeFile :: FilePath -> Document -> IO ()
 writeFile fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->

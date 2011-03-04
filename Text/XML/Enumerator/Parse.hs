@@ -45,6 +45,9 @@ module Text.XML.Enumerator.Parse
     , detectUtf
     , parseFile
     , parseFile_
+      -- ** Entity decoding
+    , DecodeEntities
+    , decodeEntities
       -- * Event parsing
     , tag
     , tagName
@@ -182,33 +185,33 @@ detectUtf step = do
 --
 -- This relies on 'detectUtf' to determine character encoding, and 'parseText'
 -- to do the actual parsing.
-parseBytes :: Monad m => Enumeratee S.ByteString Event m a
-parseBytes step = joinI $ detectUtf $$ parseText step
+parseBytes :: Monad m => DecodeEntities -> Enumeratee S.ByteString Event m a
+parseBytes de step = joinI $ detectUtf $$ parseText de step
 
 -- | Parses a character stream into 'Event's. This function is implemented
 -- fully in Haskell using attoparsec-text for parsing. The produced error
 -- messages do not give line/column information, so you may prefer to stick
 -- with the parser provided by libxml-enumerator. However, this has the
 -- advantage of not relying on any C libraries.
-parseText :: Monad m => Enumeratee TS.Text Event m a
-parseText =
+parseText :: Monad m => DecodeEntities -> Enumeratee TS.Text Event m a
+parseText de =
     checkDone $ \k -> k (Chunks [EventBeginDocument]) >>== loop []
   where
     loop levels = checkDone $ go levels
     go levels k = do
-        mtoken <- iterToken
+        mtoken <- iterToken de
         case mtoken of
             Nothing -> k (Chunks [EventEndDocument]) >>== return
             Just token ->
                 let (levels', events) = tokenToEvent levels token
                  in k (Chunks events) >>== loop levels'
 
-iterToken :: Monad m => Iteratee TS.Text m (Maybe Token)
-iterToken = iterParser ((endOfInput >> return Nothing) <|> fmap Just parseToken)
+iterToken :: Monad m => DecodeEntities -> Iteratee TS.Text m (Maybe Token)
+iterToken de = iterParser ((endOfInput >> return Nothing) <|> fmap Just (parseToken de))
 
-parseToken :: Parser Token
-parseToken = do
-    (char '<' >> parseLt) <|> fmap TokenContent (parseContent False False)
+parseToken :: DecodeEntities -> Parser Token
+parseToken de = do
+    (char '<' >> parseLt) <|> fmap TokenContent (parseContent de False False)
   where
     parseLt =
         (char '?' >> parseInstr) <|>
@@ -219,7 +222,7 @@ parseToken = do
         name <- parseIdent
         if name == "xml"
             then do
-                as <- A.many parseAttribute
+                as <- A.many $ parseAttribute de
                 skipSpace
                 char' '?'
                 char' '>'
@@ -281,14 +284,14 @@ parseToken = do
     parseBegin = do
         skipSpace
         n <- parseName
-        as <- A.many parseAttribute
+        as <- A.many $ parseAttribute de
         skipSpace
         isClose <- (char '/' >> skipSpace >> return True) <|> return False
         char' '>'
         return $ TokenBeginElement n as isClose
 
-parseAttribute :: Parser TAttribute
-parseAttribute = do
+parseAttribute :: DecodeEntities -> Parser TAttribute
+parseAttribute de = do
     skipSpace
     key <- parseName
     skipSpace
@@ -299,10 +302,10 @@ parseAttribute = do
   where
     squoted = do
         char' '\''
-        manyTill (parseContent False True) (char '\'')
+        manyTill (parseContent de False True) (char '\'')
     dquoted = do
         char' '"'
-        manyTill (parseContent True False) (char '"')
+        manyTill (parseContent de True False) (char '"')
 
 parseName :: Parser TName
 parseName = do
@@ -328,39 +331,18 @@ parseIdent =
     valid '/' = False
     valid c  = not $ isSpace c
 
-parseContent :: Bool -- break on double quote
+parseContent :: DecodeEntities
+             -> Bool -- break on double quote
              -> Bool -- break on single quote
              -> Parser Content
-parseContent breakDouble breakSingle =
+parseContent de breakDouble breakSingle =
     parseEntity <|> parseText'
   where
     parseEntity = do
         char' '&'
-        parseEntityNum <|> parseEntityWord
-    parseEntityNum = do
-        char' '#'
-        w <- parseEntityHex <|> parseEntityDig
-        return $ ContentText $ pack [toEnum w]
-    parseEntityHex = do
-        char' 'x'
-        res <- hexadecimal
+        t <- takeWhile1 (/= ';')
         char' ';'
-        return res
-    parseEntityDig = do
-        res <- decimal
-        char' ';'
-        return res
-    parseEntityWord = do
-        s <- takeWhile1 (/= ';')
-        char' ';'
-        return $ case s of
-            _
-                | s == "amp"  -> ContentText "&"
-                | s == "gt"   -> ContentText ">"
-                | s == "lt"   -> ContentText "<"
-                | s == "apos" -> ContentText "'"
-                | s == "quot" -> ContentText "\""
-                | otherwise   -> ContentEntity s
+        return $ de t
     parseText' = do
         bs <- takeWhile1 valid
         return $ ContentText bs
@@ -487,9 +469,9 @@ force msg i = do
         Just a -> return a
 
 -- | The same as 'parseFile', but throws any exceptions.
-parseFile_ :: String -> Iteratee Event IO a -> IO a
-parseFile_ fn p =
-    parseFile fn p >>= go
+parseFile_ :: FilePath -> DecodeEntities -> Iteratee Event IO a -> IO a
+parseFile_ fn de p =
+    parseFile fn de p >>= go
   where
     go (Left e) = liftIO $ throwIO e
     go (Right a) = return a
@@ -498,10 +480,13 @@ parseFile_ fn p =
 -- character encoding using 'detectUtf', parses the XML using 'parseBytes',
 -- converts to an 'SEvent' stream using 'simplify' and then handing off control
 -- to your supplied parser.
-parseFile :: String -> Iteratee Event IO a -> IO (Either SomeException a)
-parseFile fn p =
+parseFile :: FilePath
+          -> DecodeEntities
+          -> Iteratee Event IO a
+          -> IO (Either SomeException a)
+parseFile fn de p =
     run $ enumFile fn     $$ joinI
-        $ parseBytes      $$ p
+        $ parseBytes de   $$ p
 
 data XmlException = XmlException
     { xmlErrorMessage :: String
@@ -646,3 +631,44 @@ skipSiblings i = i >>= \r -> ignoreSiblings >> return r
 skipAttrs :: AttrParser a -> AttrParser a
 skipAttrs i = i >>= \r -> ignoreAttrs >> return r
 
+type DecodeEntities = Text -> Content
+
+-- | Default implementation of 'DecodeEntities': handles numeric entities and
+-- the five standard character entities (lt, gt, amp, quot, apos).
+decodeEntities :: DecodeEntities
+decodeEntities "lt" = ContentText "<"
+decodeEntities "gt" = ContentText ">"
+decodeEntities "amp" = ContentText "&"
+decodeEntities "quot" = ContentText "\""
+decodeEntities "apos" = ContentText "'"
+decodeEntities t =
+    case T.uncons t of
+        Just ('#', t') ->
+            case T.uncons t' of
+                Just ('x', t'') -> decodeHex (ContentEntity t) t''
+                _ -> decodeDec (ContentEntity t) t'
+        _ -> ContentEntity t
+
+decodeHex backup val
+    | T.null val = backup
+decodeHex backup val =
+    go (T.unpack val) 0
+  where
+    go [] i = ContentText $ T.singleton $ toEnum i
+    go (c:cs) i = maybe backup (go cs . ((i * 16) +)) $ getHex c
+    getHex c
+        | '0' <= c && c <= '9' = Just $ fromEnum c - fromEnum '0'
+        | 'A' <= c && c <= 'F' = Just $ fromEnum c - fromEnum 'A' + 10
+        | 'a' <= c && c <= 'f' = Just $ fromEnum c - fromEnum 'a' + 10
+        | otherwise = Nothing
+
+decodeDec backup val
+    | T.null val = backup
+decodeDec backup val =
+    go (T.unpack val) 0
+  where
+    go [] i = ContentText $ T.singleton $ toEnum i
+    go (c:cs) i = maybe backup (go cs . ((i * 10) +)) $ getHex c
+    getHex c
+        | '0' <= c && c <= '9' = Just $ fromEnum c - fromEnum '0'
+        | otherwise = Nothing
