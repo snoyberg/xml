@@ -34,7 +34,7 @@ import Data.Text (Text)
 import Control.Applicative ((<$>), (<*>))
 import qualified System.IO as SIO
 import Data.Enumerator.Binary (enumFile, iterHandle)
-import qualified Data.Text.Lazy as T
+import qualified Data.Text as T
 import Data.Char (isSpace)
 import qualified Data.ByteString.Lazy as L
 import System.IO.Unsafe (unsafePerformIO)
@@ -138,8 +138,17 @@ fromEvents = do
     goD = do
         x <- peek
         case x of
-            Just (EventDoctype d) -> EL.drop 1 >> return (Just d)
+            Just (EventBeginDoctype name meid) -> do
+                EL.drop 1
+                dropTillDoctype
+                return (Just $ Doctype name meid [])
             _ -> return Nothing
+    dropTillDoctype = do
+        x <- EL.head
+        case x of
+            Just (EventDeclaration _) -> dropTillDoctype
+            Just EventEndDoctype -> return ()
+            _ -> throwError $ InvalidEventStream $ "Invalid event during doctype, got: " ++ show x
     goE = do
         x <- peek
         case x of
@@ -173,7 +182,9 @@ toEvents (Document prol root epi) =
     goM (x:xs) = (goM' x :) . goM xs
     goM' (MiscInstruction i) = EventInstruction i
     goM' (MiscComment t) = EventComment t
-    goD = (:) . EventDoctype
+    goD (Doctype name meid _) =
+        (:) (EventBeginDoctype name meid)
+      . (:) EventEndDoctype
     goE (Element name as ns) =
           (EventBeginElement name as :)
         . goN ns

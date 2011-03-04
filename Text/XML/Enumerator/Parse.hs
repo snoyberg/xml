@@ -77,12 +77,12 @@ import Data.Attoparsec.Text
 import qualified Data.Attoparsec.Text as A
 import Data.Attoparsec.Text.Enumerator (iterParser)
 import Data.XML.Types
-    ( Name (..), Event (..), Content (..), Attribute (..)
-    , Doctype (..), Instruction (..), ExternalID (..)
+    ( Name (..), Event (..), Content (..)
+    , Instruction (..), ExternalID (..)
     )
 import Control.Applicative ((<|>), (<$>))
-import Data.Text.Lazy (pack, Text)
-import qualified Data.Text.Lazy as T
+import Data.Text (pack, Text)
+import qualified Data.Text as T
 import Text.XML.Enumerator.Token
 import Prelude hiding (takeWhile)
 import qualified Data.ByteString as S
@@ -124,8 +124,11 @@ tokenToEvent n (TokenBeginElement name as isClosed) =
                                         else Just $ contentsToText val })
         | otherwise = (front . (:) a, l)
     n' = if isClosed then n else l' : n
-    fixAttName level (name', val) = Attribute (tnameToName True level name') val
-    begin = EventBeginElement (tnameToName False l' name) $ map (fixAttName l') $ as' []
+    fixAttName level (name', val) = (tnameToName True level name', val)
+    begin = EventBeginElement (tnameToName False l' name)
+          $ Map.fromList
+          $ map (fixAttName l')
+          $ as' []
     end = EventEndElement $ tnameToName False l' name
 tokenToEvent n (TokenEndElement name) =
     (n', [EventEndElement $ tnameToName False l name])
@@ -136,7 +139,8 @@ tokenToEvent n (TokenEndElement name) =
             x:xs -> (x, xs)
 tokenToEvent n (TokenContent c) = (n, [EventContent c])
 tokenToEvent n (TokenComment c) = (n, [EventComment c])
-tokenToEvent n (TokenDoctype t eid) = (n, [EventDoctype $ Doctype t eid []])
+tokenToEvent n (TokenDoctype t eid) = (n, [EventBeginDoctype t eid, EventEndDoctype])
+tokenToEvent n (TokenCDATA t) = (n, [EventCDATA t])
 
 tnameToName :: Bool -> NSLevel -> TName -> Name
 tnameToName _ _ (TName (Just "xml") name) =
@@ -233,7 +237,7 @@ parseToken = do
     parseCdata = do
         _ <- string "[CDATA["
         t <- T.pack <$> manyTill anyChar (string "]]>") -- FIXME use takeWhile instead
-        return $ TokenContent $ ContentText t
+        return $ TokenCDATA t
     parseDoctype = do
         _ <- string "DOCTYPE"
         skipSpace
@@ -262,7 +266,7 @@ parseToken = do
         return $ SystemID x
     quotedText = do
         skipSpace
-        T.fromChunks . return <$> (between '"' <|> between '\'')
+        between '"' <|> between '\''
     between c = do
         char' c
         x <- takeWhile (/=c)
@@ -311,7 +315,7 @@ parseName = do
 
 parseIdent :: Parser Text
 parseIdent =
-    T.fromChunks . return <$> takeWhile1 valid
+    takeWhile1 valid
   where
     valid '&' = False
     valid '<' = False
@@ -356,11 +360,10 @@ parseContent breakDouble breakSingle =
                 | s == "lt"   -> ContentText "<"
                 | s == "apos" -> ContentText "'"
                 | s == "quot" -> ContentText "\""
-                | otherwise   ->
-                    ContentEntity $ T.fromChunks [s]
+                | otherwise   -> ContentEntity s
     parseText' = do
         bs <- takeWhile1 valid
-        return $ ContentText $ T.fromChunks [bs]
+        return $ ContentText bs
     valid '"' = not breakDouble
     valid '\'' = not breakSingle
     valid '&' = False -- amp
@@ -416,7 +419,7 @@ tag checkName attrParser f = do
         Just (EventBeginElement name as) ->
             case checkName name of
                 Just y ->
-                    case runAttrParser' (attrParser y) as of
+                    case runAttrParser' (attrParser y) $ Map.toList as of
                         Left e -> throwError e
                         Right z -> do
                             EL.drop 1
@@ -506,7 +509,7 @@ data XmlException = XmlException
     }
                   | InvalidEndElement Name
                   | InvalidEntity Text
-                  | UnparsedAttributes [Attribute]
+                  | UnparsedAttributes [(Name, [Content])]
     deriving (Show, Typeable)
 instance Exception XmlException
 
@@ -515,7 +518,7 @@ instance Exception XmlException
 -- are unhandled attributes. Use the 'requireAttr', 'optionalAttr' et al
 -- functions for handling an attribute, and 'ignoreAttrs' if you would like to
 -- skip the rest of the attributes on an element.
-newtype AttrParser a = AttrParser { runAttrParser :: [Attribute] -> Either XmlException ([Attribute], a) }
+newtype AttrParser a = AttrParser { runAttrParser :: [(Name, [Content])] -> Either XmlException ([(Name, [Content])], a) }
 
 instance Monad AttrParser where
     return a = AttrParser $ \as -> Right (as, a)
@@ -529,7 +532,7 @@ instance Applicative AttrParser where
     pure = return
     (<*>) = ap
 
-optionalAttrRaw :: (Attribute -> Maybe b) -> AttrParser (Maybe b)
+optionalAttrRaw :: ((Name, [Content]) -> Maybe b) -> AttrParser (Maybe b)
 optionalAttrRaw f =
     AttrParser $ go id
   where
@@ -539,7 +542,7 @@ optionalAttrRaw f =
             Nothing -> go (front . (:) a) as
             Just b -> Right (front as, Just b)
 
-requireAttrRaw :: String -> (Attribute -> Maybe b) -> AttrParser b
+requireAttrRaw :: String -> ((Name, [Content]) -> Maybe b) -> AttrParser b
 requireAttrRaw msg f = do
     x <- optionalAttrRaw f
     case x of
@@ -550,12 +553,12 @@ requireAttrRaw msg f = do
 requireAttr :: Name -> AttrParser Text
 requireAttr n = requireAttrRaw
     ("Missing attribute: " ++ show n)
-    (\(Attribute x y) -> if x == n then Just (contentsToText y) else Nothing)
+    (\(x, y) -> if x == n then Just (contentsToText y) else Nothing)
 
 -- | Return the value for an attribute if present.
 optionalAttr :: Name -> AttrParser (Maybe Text)
 optionalAttr n = optionalAttrRaw
-    (\(Attribute x y) -> if x == n then Just (contentsToText y) else Nothing)
+    (\(x, y) -> if x == n then Just (contentsToText y) else Nothing)
 
 contentsToText :: [Content] -> Text
 contentsToText =

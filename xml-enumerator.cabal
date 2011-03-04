@@ -19,7 +19,7 @@ library
                    , bytestring                >= 0.9      && < 0.10
                    , text                      >= 0.7      && < 0.12
                    , containers                >= 0.2      && < 0.5
-                   , xml-types                 >= 0.1      && < 0.2
+                   , xml-types                 >= 0.2      && < 0.3
                    , attoparsec-text-enumerator >= 0.2     && < 0.3
                    , attoparsec-text           >= 0.8.2    && < 0.9
                    , blaze-builder             >= 0.2.1.0  && < 0.3

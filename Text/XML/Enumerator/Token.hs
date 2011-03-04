@@ -8,13 +8,14 @@ module Text.XML.Enumerator.Token
     ) where
 
 import Data.XML.Types (Instruction (..), Content (..), ExternalID (..))
-import qualified Data.Text.Lazy as T
-import Data.Text.Lazy (Text)
+import qualified Data.Text as T
+import Data.Text (Text)
 import Data.String (IsString (fromString))
-import Blaze.ByteString.Builder (Builder, fromByteString, writeByteString)
+import Blaze.ByteString.Builder
+    (Builder, fromByteString, writeByteString, copyByteString)
 import Blaze.ByteString.Builder.Internal.Write (fromWriteList)
-import Blaze.ByteString.Builder.Char.Utf8 (writeChar, fromLazyText)
-import Data.Monoid (mconcat, mempty)
+import Blaze.ByteString.Builder.Char.Utf8 (writeChar, fromText)
+import Data.Monoid (mconcat, mempty, mappend)
 import Data.ByteString.Char8 ()
 import Data.Map (Map)
 
@@ -25,15 +26,16 @@ data Token = TokenBeginDocument [TAttribute]
            | TokenContent Content
            | TokenComment Text
            | TokenDoctype Text (Maybe ExternalID)
+           | TokenCDATA Text
     deriving Show
 tokenToBuilder :: Token -> Builder
 tokenToBuilder (TokenBeginDocument attrs) =
     mconcat $ fromByteString "<?xml" : foldAttrs attrs [fromByteString "?>\n"]
 tokenToBuilder (TokenInstruction (Instruction target data_)) = mconcat
     [ fromByteString "<?"
-    , fromLazyText target
+    , fromText target
     , fromByteString " "
-    , fromLazyText data_
+    , fromText data_
     , fromByteString "?>"
     ]
 tokenToBuilder (TokenBeginElement name attrs isEmpty) = mconcat
@@ -48,10 +50,14 @@ tokenToBuilder (TokenEndElement name) = mconcat
     , fromByteString ">"
     ]
 tokenToBuilder (TokenContent c) = contentToText c
-tokenToBuilder (TokenComment t) = mconcat [fromByteString "<!--", fromLazyText t, fromByteString "-->"]
+tokenToBuilder (TokenCDATA t) =
+    copyByteString "<![CDATA["
+    `mappend` fromText t
+    `mappend` copyByteString "]]>"
+tokenToBuilder (TokenComment t) = mconcat [fromByteString "<!--", fromText t, fromByteString "-->"]
 tokenToBuilder (TokenDoctype name eid) = mconcat
     [ fromByteString "<!DOCTYPE "
-    , fromLazyText name
+    , fromText name
     , go eid
     , fromByteString ">\n"
     ]
@@ -59,14 +65,14 @@ tokenToBuilder (TokenDoctype name eid) = mconcat
     go Nothing = mempty
     go (Just (SystemID uri)) = mconcat
         [ fromByteString " SYSTEM \""
-        , fromLazyText uri
+        , fromText uri
         , fromByteString "\""
         ]
     go (Just (PublicID pid uri)) = mconcat
         [ fromByteString " PUBLIC \""
-        , fromLazyText pid
+        , fromText pid
         , fromByteString "\" \""
-        , fromLazyText uri
+        , fromText uri
         , fromByteString "\""
         ]
 
@@ -74,8 +80,8 @@ data TName = TName (Maybe Text) Text
     deriving Show
 
 tnameToText :: TName -> Builder
-tnameToText (TName Nothing name) = fromLazyText name
-tnameToText (TName (Just prefix) name) = mconcat [fromLazyText prefix, fromByteString ":", fromLazyText name]
+tnameToText (TName Nothing name) = fromText name
+tnameToText (TName (Just prefix) name) = mconcat [fromText prefix, fromByteString ":", fromText name]
 
 contentToText :: Content -> Builder
 contentToText (ContentText t) =
@@ -88,7 +94,7 @@ contentToText (ContentText t) =
     go c   = writeChar c
 contentToText (ContentEntity e) = mconcat
     [ fromByteString "&"
-    , fromLazyText e
+    , fromText e
     , fromByteString ";"
     ]
 
@@ -114,7 +120,7 @@ foldAttrs attrs rest' =
         -- quoted
         h c   = writeChar c
     go' (ContentEntity t) rest =
-        fromByteString "&" : fromLazyText t : fromByteString ";" : rest
+        fromByteString "&" : fromText t : fromByteString ";" : rest
 
 instance IsString TName where
     fromString = TName Nothing . T.pack

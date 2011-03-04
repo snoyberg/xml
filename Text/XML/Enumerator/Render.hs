@@ -8,16 +8,14 @@ module Text.XML.Enumerator.Render
     , renderText
     ) where
 
-import Data.XML.Types ( Event (..), Content (..), Name (..), Attribute (..)
-                      , Doctype (..))
+import Data.XML.Types (Event (..), Content (..), Name (..))
 import Text.XML.Enumerator.Token
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import qualified Data.Enumerator.Text as ET
 import Data.Enumerator ((>>==), ($$))
-import qualified Data.Text as TS
-import qualified Data.Text.Lazy as T
-import Data.Text.Lazy (Text)
+import qualified Data.Text as T
+import Data.Text (Text)
 import Blaze.ByteString.Builder
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import qualified Data.Map as Map
@@ -37,7 +35,7 @@ renderBytes s = E.joinI $ renderBuilder $$ builderToByteString s
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder', 'builderToByteString' and 'renderBytes', so it
 -- produces optimally sized 'ByteString's with minimal buffer copying.
-renderText :: MonadIO m => E.Enumeratee Event TS.Text m b
+renderText :: MonadIO m => E.Enumeratee Event Text m b
 renderText s = E.joinI $ renderBytes $$ ET.decode ET.utf8 s
 
 -- | Render a stream of 'Event's into a stream of 'Builder's. Builders are from
@@ -72,8 +70,10 @@ eventToToken s EventBeginDocument =
      , s)
 eventToToken s EventEndDocument = (id, s)
 eventToToken s (EventInstruction i) = ((:) (TokenInstruction i), s)
-eventToToken s (EventDoctype (Doctype n meid _)) =
-    ((:) (TokenDoctype n meid), s)
+eventToToken s (EventBeginDoctype n meid) = ((:) (TokenDoctype n meid), s)
+eventToToken s EventEndDoctype = (id, s)
+eventToToken s (EventDeclaration _) = (id, s)
+eventToToken s (EventCDATA t) = ((:) (TokenCDATA t), s)
 eventToToken s (EventBeginElement name attrs) = mkBeginToken False s name attrs
 eventToToken s (EventEndElement name) =
     ((:) (TokenEndElement $ nameToTName sl name), s')
@@ -95,7 +95,9 @@ nameToTName (NSLevel def sl) (Name name (Just ns) _)
             Nothing -> error "nameToTName"
             Just pref -> TName (Just pref) name
 
-mkBeginToken :: Bool -> Stack -> Name -> [Attribute]
+type Attributes = [(Name, [Content])]
+
+mkBeginToken :: Bool -> Stack -> Name -> Map Name [Content]
              -> ([Token] -> [Token], Stack)
 mkBeginToken isClosed s name attrs =
     ((:) (TokenBeginElement tname tattrs2 isClosed),
@@ -105,7 +107,7 @@ mkBeginToken isClosed s name attrs =
                 [] -> NSLevel Nothing Map.empty
                 sl':_ -> sl'
     (sl1, tname, tattrs1) = newElemStack prevsl name
-    (sl2, tattrs2) = foldr newAttrStack (sl1, tattrs1) attrs
+    (sl2, tattrs2) = foldr newAttrStack (sl1, tattrs1) $ Map.toList attrs
 
 newElemStack :: NSLevel -> Name -> (NSLevel, TName, [TAttribute])
 newElemStack nsl@(NSLevel def _) (Name local ns _)
@@ -129,8 +131,8 @@ newElemStack (NSLevel def nsmap) (Name local (Just ns) (Just pref)) =
   where
     nsmap' = Map.insert ns pref nsmap
 
-newAttrStack :: Attribute -> (NSLevel, [TAttribute]) -> (NSLevel, [TAttribute])
-newAttrStack (Attribute name value) (NSLevel def nsmap, attrs) =
+newAttrStack :: (Name, [Content]) -> (NSLevel, [TAttribute]) -> (NSLevel, [TAttribute])
+newAttrStack (name, value) (NSLevel def nsmap, attrs) =
     (NSLevel def nsmap', addNS $ (tname, value) : attrs)
   where
     (nsmap', tname, addNS) =
