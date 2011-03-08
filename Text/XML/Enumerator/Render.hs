@@ -95,8 +95,6 @@ nameToTName (NSLevel def sl) (Name name (Just ns) _)
             Nothing -> error "nameToTName"
             Just pref -> TName (Just pref) name
 
-type Attributes = [(Name, [Content])]
-
 mkBeginToken :: Bool -> Stack -> Name -> Map Name [Content]
              -> ([Token] -> [Token], Stack)
 mkBeginToken isClosed s name attrs =

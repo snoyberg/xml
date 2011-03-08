@@ -5,7 +5,9 @@ module Text.XML.Enumerator.Document
     , readFile
     , readFile_
       -- * Lazy bytestrings
-    , renderDocument
+    , renderLBS
+    , parseLBS
+    , parseLBS_
       -- * Streaming functions
     , toEvents
     , fromEvents
@@ -19,8 +21,8 @@ module Text.XML.Enumerator.Document
 import Prelude hiding (writeFile, readFile)
 import Data.XML.Types
 import Data.Enumerator
-    ( ($$), enumList, joinE, Enumerator, Iteratee, peek
-    , throwError, joinI, run, run_
+    ( ($$), enumList, joinE, Enumerator, Iteratee, peek, returnI
+    , throwError, joinI, run, run_, Step (Continue), Stream (Chunks)
     )
 import Control.Exception (Exception, SomeException)
 import Data.Typeable (Typeable)
@@ -42,6 +44,7 @@ import qualified Control.Concurrent.MVar as M
 import System.IO.Unsafe (unsafeInterleaveIO)
 import Control.Monad.IO.Class (liftIO)
 import Control.Concurrent (forkIO)
+import Data.Functor.Identity (runIdentity)
 
 readFile :: FilePath -> P.DecodeEntities -> IO (Either SomeException Document)
 readFile fn de = run $ enumFile fn $$ joinI $ P.parseBytes de $$ fromEvents
@@ -53,9 +56,23 @@ writeFile :: FilePath -> Document -> IO ()
 writeFile fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->
     run_ $ renderBytes doc $$ iterHandle h
 
-renderDocument :: Document -> L.ByteString
-renderDocument doc =
+renderLBS :: Document -> L.ByteString
+renderLBS doc =
     L.fromChunks $ unsafePerformIO $ lazyConsume $ renderBytes doc
+
+parseLBS :: L.ByteString -> P.DecodeEntities -> Either SomeException Document
+parseLBS lbs de = runIdentity
+                $ run $ enumSingle (L.toChunks lbs)
+                     $$ joinI $ P.parseBytes de $$ fromEvents
+
+parseLBS_ :: L.ByteString -> P.DecodeEntities -> Document
+parseLBS_ lbs de = runIdentity
+                 $ run_ $ enumSingle (L.toChunks lbs)
+                       $$ joinI $ P.parseBytes de $$ fromEvents
+
+enumSingle :: Monad m => [a] -> Enumerator a m b
+enumSingle as (Continue k) = k $ Chunks as
+enumSingle _ step = returnI step
 
 lazyConsume :: Enumerator a IO () -> IO [a]
 lazyConsume enum = do
@@ -159,7 +176,7 @@ fromEvents = do
         ns <- many goN
         y <- EL.head
         if y == Just (EventEndElement n)
-            then return $ Element n as ns
+            then return $ Element n as $ compressNodes ns
             else throwError $ InvalidEventStream $ "Missing end element for " ++ show n ++ ", got: " ++ show y
     goN = do
         x <- peek
@@ -168,6 +185,7 @@ fromEvents = do
             Just (EventInstruction i) -> dropReturn $ Just $ NodeInstruction i
             Just (EventContent c) -> dropReturn $ Just $ NodeContent c
             Just (EventComment t) -> dropReturn $ Just $ NodeComment t
+            Just (EventCDATA t) -> dropReturn $ Just $ NodeContent $ ContentText t
             _ -> return Nothing
 
 toEvents :: Document -> [Event]
@@ -196,3 +214,10 @@ toEvents (Document prol root epi) =
     goN' (NodeInstruction i) = (EventInstruction i :)
     goN' (NodeContent c) = (EventContent c :)
     goN' (NodeComment t) = (EventComment t :)
+
+compressNodes :: [Node] -> [Node]
+compressNodes [] = []
+compressNodes [x] = [x]
+compressNodes (NodeContent (ContentText x) : NodeContent (ContentText y) : z) =
+    compressNodes $ NodeContent (ContentText $ x `T.append` y) : z
+compressNodes (x:xs) = x : compressNodes xs

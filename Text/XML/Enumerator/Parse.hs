@@ -45,6 +45,8 @@ module Text.XML.Enumerator.Parse
     , detectUtf
     , parseFile
     , parseFile_
+    , parseLBS
+    , parseLBS_
       -- ** Entity decoding
     , DecodeEntities
     , decodeEntities
@@ -91,8 +93,10 @@ import Prelude hiding (takeWhile)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Map as Map
-import Data.Enumerator (Iteratee, Enumeratee, (>>==), Stream (..),
-                        checkDone, yield, ($$), joinI, run, throwError)
+import Data.Enumerator
+    ( Iteratee, Enumeratee, (>>==), Stream (..), run_, Enumerator, Step (..)
+    , checkDone, yield, ($$), joinI, run, throwError, returnI
+    )
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import qualified Data.Enumerator.Text as ET
@@ -361,19 +365,40 @@ newline = ((char '\r' >> char '\n') <|> char '\n') >> return ()
 char' :: Char -> Parser ()
 char' c = char c >> return ()
 
+data ContentType =
+    Ignore | IsContent Text | IsError String | NotContent
+
 -- | Grabs the next piece of content if available.
 contentMaybe :: Monad m => Iteratee Event m (Maybe Text)
 contentMaybe = do
     x <- E.peek
-    case x of
-        Just (EventContent t) -> EL.drop 1 >> fmap Just (takeContents (t:))
-        _ -> return Nothing
+    case pc' x of
+        Ignore -> EL.drop 1 >> contentMaybe
+        IsContent t -> EL.drop 1 >> fmap Just (takeContents (t:))
+        IsError e -> throwError $ XmlException e x
+        NotContent -> return Nothing
   where
+    pc' Nothing = NotContent
+    pc' (Just x) = pc x
+    pc (EventContent (ContentText t)) = IsContent t
+    pc (EventContent (ContentEntity e)) = IsError $ "Unknown entity: " ++ show e
+    pc (EventCDATA t) = IsContent t
+    pc EventBeginElement{} = NotContent
+    pc EventEndElement{} = NotContent
+    pc EventBeginDocument{} = Ignore
+    pc EventEndDocument = Ignore
+    pc EventBeginDoctype{} = Ignore
+    pc EventDeclaration{} = Ignore
+    pc EventEndDoctype = Ignore
+    pc EventInstruction{} = Ignore
+    pc EventComment{} = Ignore
     takeContents front = do
         x <- E.peek
-        case x of
-            Just (EventContent c) -> takeContents $ front . (:) c
-            _ -> return $ contentsToText $ front []
+        case pc' x of
+            Ignore -> EL.drop 1 >> takeContents front
+            IsContent t -> EL.drop 1 >> takeContents (front . (:) t)
+            IsError e -> throwError $ XmlException e x
+            NotContent -> return $ T.concat $ front []
 
 -- | Grabs the next piece of content. If none if available, returns 'T.empty'.
 content :: Monad m => Iteratee Event m Text
@@ -501,6 +526,20 @@ parseFile :: FilePath
 parseFile fn de p =
     run $ enumFile fn     $$ joinI
         $ parseBytes de   $$ p
+
+parseLBS :: L.ByteString -> DecodeEntities -> Iteratee Event IO a -> IO (Either SomeException a)
+parseLBS lbs de p =
+    run $ enumSingle (L.toChunks lbs)   $$ joinI
+        $ parseBytes de                 $$ p
+
+parseLBS_ :: L.ByteString -> DecodeEntities -> Iteratee Event IO a -> IO a
+parseLBS_ lbs de p =
+    run_ $ enumSingle (L.toChunks lbs)   $$ joinI
+         $ parseBytes de                 $$ p
+
+enumSingle :: Monad m => [a] -> Enumerator a m b
+enumSingle as (Continue k) = k $ Chunks as
+enumSingle _ step = returnI step
 
 data XmlException = XmlException
     { xmlErrorMessage :: String
