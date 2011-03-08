@@ -75,7 +75,7 @@ module Text.XML.Enumerator.Parse
     ) where
 import Data.Attoparsec.Text
     ( char, Parser, takeWhile1, skipWhile, string
-    , manyTill, takeWhile, try, anyChar, endOfInput, hexadecimal, decimal
+    , manyTill, takeWhile, try, anyChar, endOfInput
     )
 import qualified Data.Attoparsec.Text as A
 import Data.Attoparsec.Text.Enumerator (iterParser)
@@ -84,7 +84,7 @@ import Data.XML.Types
     , Instruction (..), ExternalID (..)
     )
 import Control.Applicative ((<|>), (<$>))
-import Data.Text (pack, Text)
+import Data.Text (Text)
 import qualified Data.Text as T
 import Text.XML.Enumerator.Token
 import Prelude hiding (takeWhile)
@@ -416,10 +416,24 @@ tag checkName attrParser f = do
   where
     dropWS = do
         x <- E.peek
-        case x of
-            Just (EventContent (ContentText t))
-                | T.all isSpace t -> EL.drop 1 >> E.peek
-            _ -> return x
+        let isWS =
+                case x of
+                    Just EventBeginDocument -> True
+                    Just EventEndDocument -> True
+                    Just EventBeginDoctype{} -> True
+                    Just EventDeclaration{} -> True
+                    Just EventEndDoctype -> True
+                    Just EventInstruction{} -> True
+                    Just EventBeginElement{} -> False
+                    Just EventEndElement{} -> False
+                    Just (EventContent (ContentText t))
+                        | T.all isSpace t -> True
+                        | otherwise -> False
+                    Just (EventContent ContentEntity{}) -> False
+                    Just EventComment{} -> True
+                    Just EventCDATA{} -> False
+                    Nothing -> False
+        if isWS then EL.drop 1 >> dropWS else return x
     runAttrParser' p as =
         case runAttrParser p as of
             Left e -> Left e
@@ -649,6 +663,7 @@ decodeEntities t =
                 _ -> decodeDec (ContentEntity t) t'
         _ -> ContentEntity t
 
+decodeHex :: Content -> Text -> Content
 decodeHex backup val
     | T.null val = backup
 decodeHex backup val =
@@ -662,6 +677,7 @@ decodeHex backup val =
         | 'a' <= c && c <= 'f' = Just $ fromEnum c - fromEnum 'a' + 10
         | otherwise = Nothing
 
+decodeDec :: Content -> Text -> Content
 decodeDec backup val
     | T.null val = backup
 decodeDec backup val =
