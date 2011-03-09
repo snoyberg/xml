@@ -1,11 +1,8 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
-import Debug.Trace
-import Test.Framework (defaultMain, testGroup, Test)
-import Test.Framework.Providers.QuickCheck2
-import Test.Framework.Providers.HUnit
-import Test.QuickCheck
+import Test.Hspec
+import Test.Hspec.HUnit
 import Test.HUnit hiding (Test)
 
 import Data.XML.Types
@@ -17,9 +14,9 @@ import qualified Data.ByteString.Lazy.Char8 as L
 import Control.Monad.IO.Class (liftIO)
 
 main :: IO ()
-main = defaultMain
-    [ testCase "document parse/render" documentParseRender
-    , testCase "parser combinators" combinators
+main = hspec $ describe "XML parsing and rendering"
+    [ it "is idempotent to parse and render a document" documentParseRender
+    , it "has valid parser combinators" combinators
     ]
 
 documentParseRender =

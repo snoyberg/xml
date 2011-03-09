@@ -13,6 +13,9 @@ cabal-version:   >= 1.6
 build-type:      Simple
 homepage:        http://github.com/snoyberg/xml-enumerator
 
+flag test
+    default: False
+
 library
     build-depends:   base                      >= 4        && < 5
                    , enumerator                >= 0.4.5    && < 0.5
@@ -30,6 +33,14 @@ library
                      Text.XML.Enumerator.Document
     other-modules:   Text.XML.Enumerator.Token
     ghc-options:     -Wall
+
+executable runtests
+    main-is:         runtests.hs
+    if flag(test)
+        Buildable: True
+        Build-depends: base, HUnit, hspec >= 0.3 && < 0.4
+    else
+        Buildable: False
 
 source-repository head
   type:     git
