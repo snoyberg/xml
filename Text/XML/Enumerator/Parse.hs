@@ -4,12 +4,6 @@
 -- documents into a stream of events, and a set of parser combinators for
 -- dealing with a stream of events.
 --
--- The important thing to know about the combinators is that they do /not/ work
--- on the fully-powered 'Event' datatype; rather, this module defines an
--- 'SEvent' datatype which only deals with tags, attributes and content. For
--- most uses, this is sufficient. If you need to parse doctypes, instructions
--- or contents, you will not be able to use the combinators.
---
 -- As a simple example, if you have the following XML file:
 --
 -- > <?xml version="1.0" encoding="utf-8"?>
@@ -368,7 +362,9 @@ char' c = char c >> return ()
 data ContentType =
     Ignore | IsContent Text | IsError String | NotContent
 
--- | Grabs the next piece of content if available.
+-- | Grabs the next piece of content if available. This function skips over any
+-- comments and instructions and concatenates all content until the next start
+-- or end tag.
 contentMaybe :: Monad m => Iteratee Event m (Maybe Text)
 contentMaybe = do
     x <- E.peek
@@ -401,6 +397,7 @@ contentMaybe = do
             NotContent -> return $ T.concat $ front []
 
 -- | Grabs the next piece of content. If none if available, returns 'T.empty'.
+-- This is simply a wrapper around 'contentMaybe'.
 content :: Monad m => Iteratee Event m Text
 content = do
     x <- contentMaybe
@@ -415,6 +412,8 @@ content = do
 -- This function automatically absorbs its balancing closing tag, and will
 -- throw an exception if not all of the attributes or child elements are
 -- consumed. If you want to allow extra attributes, see 'ignoreAttrs'.
+--
+-- This function automatically ignores comments, instructions and whitespace.
 tag :: Monad m
     => (Name -> Maybe a)
     -> (a -> AttrParser b)
@@ -482,8 +481,8 @@ tagName name attrParser = tag
 tagNoAttr :: Monad m => Name -> Iteratee Event m a -> Iteratee Event m (Maybe a)
 tagNoAttr name f = tagName name (return ()) $ const f
 
--- | Get the value of the first parser which returns 'Just'. If none return
--- 'Just', returns 'Nothing'.
+-- | Get the value of the first parser which returns 'Just'. If no parsers
+-- succeed (i.e., return 'Just'), this function returns 'Nothing'.
 choose :: Monad m
        => [Iteratee Event m (Maybe a)]
        -> Iteratee Event m (Maybe a)
@@ -516,9 +515,8 @@ parseFile_ fn de p =
     go (Right a) = return a
 
 -- | A helper function which reads a file from disk using 'enumFile', detects
--- character encoding using 'detectUtf', parses the XML using 'parseBytes',
--- converts to an 'SEvent' stream using 'simplify' and then handing off control
--- to your supplied parser.
+-- character encoding using 'detectUtf', parses the XML using 'parseBytes', and
+-- then hands off control to your supplied parser.
 parseFile :: FilePath
           -> DecodeEntities
           -> Iteratee Event IO a
@@ -527,11 +525,13 @@ parseFile fn de p =
     run $ enumFile fn     $$ joinI
         $ parseBytes de   $$ p
 
+-- | Parse an event stream from a lazy 'L.ByteString'.
 parseLBS :: L.ByteString -> DecodeEntities -> Iteratee Event IO a -> IO (Either SomeException a)
 parseLBS lbs de p =
     run $ enumSingle (L.toChunks lbs)   $$ joinI
         $ parseBytes de                 $$ p
 
+-- | Same as 'parseLBS', but throws exceptions.
 parseLBS_ :: L.ByteString -> DecodeEntities -> Iteratee Event IO a -> IO a
 parseLBS_ lbs de p =
     run_ $ enumSingle (L.toChunks lbs)   $$ joinI
@@ -639,7 +639,7 @@ ignoreSiblings' :: Monad m => Iteratee Event m [()]
 ignoreSiblings' = many (choose [ignoreElem', ignoreContent])
 -}
 
--- | Iteratee to skip the siblings element. 
+-- | Iteratee to skip sibling elements.
 ignoreSiblings :: Monad m => Iteratee Event m ()
 ignoreSiblings = E.continue (loop 0) 
   where
@@ -653,7 +653,9 @@ ignoreSiblings = E.continue (loop 0)
         _ -> E.continue (loop n)
     loop _ EOF = throwError $ XmlException "Unbalanced xml-tree. (Error in skipSiblings)" Nothing
 
--- | Iteratee to skip the next element. 
+-- | Iteratee to skip the next element. Skips all events before the next
+-- element as well. Returns 'Nothing' if a element end event is encountered
+-- before any element begin events.
 ignoreElem :: Monad m => Iteratee Event m (Maybe ())
 ignoreElem = E.continue (loop 0) 
   where
@@ -662,13 +664,13 @@ ignoreElem = E.continue (loop 0)
     loop n chs@(Chunks (x:xs)) = case x of
         (EventBeginElement _ _) -> E.continue (loop (n+1))
         (EventEndElement _)
-            | n == 0    -> yield Nothing chs 
+            | n == 0    -> yield Nothing chs -- FIXME in the future, it would probably make more sense to use Bool in place of Maybe ()
             | n == 1    -> yield (Just ()) (Chunks xs) 
             | otherwise -> E.continue (loop (n-1))
         _ -> E.continue (loop n)
     loop _ EOF = throwError $ XmlException "Unbalanced xml-tree. (Error in skipSiblings)" Nothing
     
--- | Skip the siblings elements until iteratee not right. 
+-- | Skip the sibling elements until iteratee returns 'Just'.
 skipTill :: Monad m => Iteratee Event m (Maybe a) -> Iteratee Event m (Maybe a)
 skipTill i = go
   where
