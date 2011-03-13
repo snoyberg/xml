@@ -645,8 +645,10 @@ ignoreSiblings = E.continue (loop 0)
   where
     loop :: Monad m => Int -> Stream Event -> Iteratee Event m ()
     loop n (Chunks []) = E.continue (loop n)
-    loop n chs@(Chunks (x:_)) = case x of
-        (EventBeginElement _ _) -> E.continue (loop (n+1))
+    loop n chs@(Chunks (x:xs)) = case x of
+        (EventBeginElement _ _) -> case xs of
+                                    (EventEndElement _:_) -> E.continue (loop n)
+                                    _                     -> E.continue (loop (n+1))
         (EventEndElement _)
             | n == 0    -> yield () chs 
             | otherwise -> E.continue (loop (n-1))
