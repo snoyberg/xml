@@ -71,10 +71,9 @@ combinators = P.parseLBS_ input decodeEntities $ do
 
 testIgnoreSiblings = P.parseLBS_ input decodeEntities $ do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
-        P.many ignore
+        P.ignoreSiblings
         return ()
   where
-    ignore = P.tag (const $ Just ()) (const P.ignoreAttrs) (const $ P.ignoreSiblings >> return ())
     input = L.concat
         [ "<?xml version='1.0'?>\n"
         , "<!DOCTYPE foo []>\n"
