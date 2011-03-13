@@ -17,6 +17,7 @@ main :: IO ()
 main = hspec $ describe "XML parsing and rendering"
     [ it "is idempotent to parse and render a document" documentParseRender
     , it "has valid parser combinators" combinators
+    , it "has working ignoreSiblings function" testIgnoreSiblings
     ]
 
 documentParseRender =
@@ -65,5 +66,24 @@ combinators = P.parseLBS_ input decodeEntities $ do
         , "<!-- this should be ignored -->"
         , "<child2>   </child2>"
         , "<child3>combine &lt;all&gt; <![CDATA[&content]]></child3>\n"
+        , "</hello>"
+        ]
+
+testIgnoreSiblings = P.parseLBS_ input decodeEntities $ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        P.many ignore
+        return ()
+  where
+    ignore = P.tag (const $ Just ()) (const P.ignoreAttrs) (const $ P.ignoreSiblings >> return ())
+    input = L.concat
+        [ "<?xml version='1.0'?>\n"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<success/>"
+        , "<ignore>"
+        , "<nested>"
+        , "<fail/>"
+        , "</nested>"
+        , "</ignore>\n"
         , "</hello>"
         ]
