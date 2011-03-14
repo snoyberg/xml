@@ -21,11 +21,11 @@
 -- > data Person = Person { age :: Int, name :: Text }
 -- >     deriving Show
 -- > 
--- > parsePerson = tag' "person" (requireAttr "age") $ \age -> do
--- >     name <- content'
+-- > parsePerson = tagName "person" (requireAttr "age") $ \age -> do
+-- >     name <- content
 -- >     return $ Person (read $ unpack age) name
 -- > 
--- > parsePeople = tag'' "people" $ many parsePerson
+-- > parsePeople = tagNoAttr "people" $ many parsePerson
 -- > 
 -- > main = parseFile_ "people.xml" (const Nothing) $ force "people required" parsePeople
 --
