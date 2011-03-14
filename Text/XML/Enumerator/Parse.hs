@@ -27,7 +27,7 @@
 -- > 
 -- > parsePeople = tagNoAttr "people" $ many parsePerson
 -- > 
--- > main = parseFile_ "people.xml" (const Nothing) $ force "people required" parsePeople
+-- > main = parseFile_ "people.xml" decodeEntities $ force "people required" parsePeople
 --
 -- will produce:
 --
@@ -664,7 +664,9 @@ ignoreElem = E.continue (loop 0)
     loop :: Monad m => Int -> Stream Event -> Iteratee Event m (Maybe ())
     loop n (Chunks []) = E.continue (loop n)
     loop n chs@(Chunks (x:xs)) = case x of
-        (EventBeginElement _ _) -> E.continue (loop (n+1))
+        (EventBeginElement _ _) -> case xs of
+                                    (EventEndElement _:_) -> E.continue (loop n)
+                                    _                     -> E.continue (loop (n+1))
         (EventEndElement _)
             | n == 0    -> yield Nothing chs -- FIXME in the future, it would probably make more sense to use Bool in place of Maybe ()
             | n == 1    -> yield (Just ()) (Chunks xs) 
