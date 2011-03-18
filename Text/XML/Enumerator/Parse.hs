@@ -464,6 +464,10 @@ tag checkName attrParser f = do
             Right ([], x) -> Right x
             Right (attr, _) -> Left $ UnparsedAttributes attr
 
+-- | A simplified version of 'tag' which matches against boolean predicates.
+tagPredicate :: Monad m => (Name -> Bool) -> AttrParser a -> (a -> Iteratee Event m b) -> Iteratee Event m (Maybe b)
+tagPredicate pred attrParser = tag (\x -> if pred x then Just () else Nothing) (const attrParser)
+
 -- | A simplified version of 'tag' which matches for specific tag names instead
 -- of taking a predicate function. This is often sufficient, and when combined
 -- with OverloadedStrings and the IsString instance of 'Name', can prove to be
@@ -473,9 +477,7 @@ tagName :: Monad m
      -> AttrParser a
      -> (a -> Iteratee Event m b)
      -> Iteratee Event m (Maybe b)
-tagName name attrParser = tag
-    (\x -> if x == name then Just () else Nothing)
-    (const attrParser)
+tagName name = tagPredicate (== name)
 
 -- | A further simplified tag parser, which requires that no attributes exist.
 tagNoAttr :: Monad m => Name -> Iteratee Event m a -> Iteratee Event m (Maybe a)
