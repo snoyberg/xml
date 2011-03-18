@@ -46,6 +46,7 @@ module Text.XML.Enumerator.Parse
     , decodeEntities
       -- * Event parsing
     , tag
+    , tagPredicate
     , tagName
     , tagNoAttr
     , content
@@ -466,7 +467,7 @@ tag checkName attrParser f = do
 
 -- | A simplified version of 'tag' which matches against boolean predicates.
 tagPredicate :: Monad m => (Name -> Bool) -> AttrParser a -> (a -> Iteratee Event m b) -> Iteratee Event m (Maybe b)
-tagPredicate pred attrParser = tag (\x -> if pred x then Just () else Nothing) (const attrParser)
+tagPredicate p attrParser = tag (\x -> if p x then Just () else Nothing) (const attrParser)
 
 -- | A simplified version of 'tag' which matches for specific tag names instead
 -- of taking a predicate function. This is often sufficient, and when combined
