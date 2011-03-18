@@ -62,7 +62,11 @@ module Text.XML.Enumerator.Parse
     , ignoreAttrs
     , skipAttrs
       -- * Combinators
+    , orE
     , choose
+    , chooseSplit
+    , permute
+    , permuteFallback
     , many
     , force
     , skipTill
@@ -486,6 +490,15 @@ tagNoAttr name f = tagName name (return ()) $ const f
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
+orE :: Monad m => Iteratee Event m (Maybe a) -> Iteratee Event m (Maybe a) -> Iteratee Event m (Maybe a)
+orE a b = do
+  x <- a
+  case x of
+    Nothing -> b
+    _ -> return x
+
+-- | Get the value of the first parser which returns 'Just'. If no parsers
+-- succeed (i.e., return 'Just'), this function returns 'Nothing'.
 choose :: Monad m
        => [Iteratee Event m (Maybe a)]
        -> Iteratee Event m (Maybe a)
@@ -495,6 +508,45 @@ choose (i:is) = do
     case x of
         Nothing -> choose is
         Just a -> return $ Just a
+
+-- | Like 'choose', but also returns the list of elements that were /not/ chosen.
+chooseSplit :: (Monad m) 
+            => (a -> Iteratee Event m (Maybe b))  -- ^ Element-specific parsers
+            -> [a] -- ^ Elements to choose from
+            -> Iteratee Event m (Maybe (b, [a]))
+chooseSplit f xs = go xs []
+    where
+      go [] _ = return Nothing
+      go (i:is) is' = do
+        x <- f i
+        case x of
+          Nothing -> go is (i : is')
+          Just a -> return $ Just (a, is ++ is')
+
+-- | Permute all parsers until none return 'Just'.
+permute :: Monad m => (a -> Iteratee Event m (Maybe b)) -> [a] -> Iteratee Event m (Maybe [b])
+permute _ [] = return (Just [])
+permute f is = do
+    x <- chooseSplit f is
+    case x of
+      Nothing -> return Nothing
+      Just (a, is') -> fmap (a:) `fmap` permute f is'
+
+-- | Permute all parsers until none return 'Just', but always test some fallback parsers.
+permuteFallback  :: (Monad m)
+                 => Iteratee Event m (Maybe [b])
+                 -> (a -> Iteratee Event m (Maybe b))
+                 -> [a]
+                 -> Iteratee Event m (Maybe [b])
+permuteFallback fb _ [] = return (Just [])
+permuteFallback fb f is = do
+    x <- chooseSplit f is
+    case x of
+      Nothing -> do y <- fb
+                    case y of
+                      Nothing -> return Nothing
+                      Just as -> fmap (as ++) `fmap` permuteFallback fb f is
+      Just (a, is') -> fmap (a:) `fmap` permuteFallback fb f is'
 
 -- | Force an optional parser into a required parser. All of the 'tag'
 -- functions, 'choose' and 'many' deal with 'Maybe' parsers. Use this when you
