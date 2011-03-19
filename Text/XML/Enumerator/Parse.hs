@@ -49,6 +49,8 @@ module Text.XML.Enumerator.Parse
     , tagPredicate
     , tagName
     , tagNoAttr
+    , tags
+    , tagsPermute
     , content
     , contentMaybe
     , ignoreElem
@@ -85,6 +87,7 @@ import Data.XML.Types
     , Instruction (..), ExternalID (..)
     )
 import Control.Applicative ((<|>), (<$>))
+import Control.Arrow (second)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Text.XML.Enumerator.Token
@@ -92,6 +95,7 @@ import Prelude hiding (takeWhile)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import Data.Enumerator
     ( Iteratee, Enumeratee, (>>==), Stream (..), run_, Enumerator, Step (..)
     , checkDone, yield, ($$), joinI, run, throwError, returnI
@@ -100,7 +104,7 @@ import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import qualified Data.Enumerator.Text as ET
 import qualified Data.Enumerator.Binary as EB
-import Control.Monad (unless, ap, liftM)
+import Control.Monad (unless, ap, liftM, guard)
 import qualified Data.Text as TS
 import Data.List (foldl')
 import Control.Applicative (Applicative (..))
@@ -487,6 +491,58 @@ tagName name = tagPredicate (== name)
 -- | A further simplified tag parser, which requires that no attributes exist.
 tagNoAttr :: Monad m => Name -> Iteratee Event m a -> Iteratee Event m (Maybe a)
 tagNoAttr name f = tagName name (return ()) $ const f
+
+-- | Statefully and efficiently parse a list of tags.
+-- 
+-- The first parameter is a function that, given state and an element name, returns
+-- either 'Nothing', to indicate that the element is invalid, or a pair of attribute
+-- and element content parsers in 'Just'. 
+-- 
+-- The second parameter is a function that, given the current state, returns a
+-- "fallback" parser to be executed when no valid element has been found.
+-- 
+-- The third parameter is the initial state.
+-- 
+-- This function updates the state as it goes along, but it also accumulates a list of
+-- elements as they occur.
+tags :: (Monad m) 
+     => (a -> Name -> Maybe (AttrParser b, b -> Iteratee Event m (a, Maybe c)))
+     -> (a -> Iteratee Event m (Maybe (a, Maybe c)))
+     -> a 
+     -> Iteratee Event m (a, [c])
+tags f fb s' = go s'
+    where go s = do
+            t <- tag (f s) (\(attr, sub) -> sub <$> attr) id `orE` fb s
+            case t of
+              Nothing -> return (s, [])
+              Just (s2, Nothing) -> go s2
+              Just (s2, Just a) -> second (a:) `fmap` go s2
+
+-- | Parse a permutation of tags.
+-- 
+-- The first parameter is a function to preprocess Names for equality testing, because
+-- sometimes XML documents contain inconsistent naming. This allows the user to deal
+-- with it.
+-- 
+-- The second parameter is a map of tags to attribute and element content parsers.
+-- 
+-- The third parameter is a fallback parser.
+-- 
+-- This function accumulates a list of elements for each step that produces one.
+tagsPermute :: (Monad m, Ord a) 
+            => (Name -> a) 
+            -> Map.Map a (AttrParser b, b -> Iteratee Event m (Maybe c))
+            -> Iteratee Event m (Maybe c)
+            -> Iteratee Event m (Maybe [c])
+tagsPermute f m fb = do
+      (rest, result) <- tags go (\s -> fmap (\a -> (s, Just a)) <$> fb) m
+      return (guard (Map.null rest) >> Just result)
+    where go s name = case Map.lookup k s of
+                        Nothing          -> Nothing
+                        Just (attr, sub) -> Just (attr, fmap adaptSub . sub)
+              where k = f name
+                    adaptSub Nothing = (s, Nothing)
+                    adaptSub a = (Map.delete k s, a)
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
