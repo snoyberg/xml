@@ -21,6 +21,7 @@ main = hspec $ describe "XML parsing and rendering"
     , it "has working choose function" testChoose
     , it "has working many function" testMany
     , it "has working orE" testOrE
+    , it "has working chooseSplit" testChooseSplit
     ]
 
 documentParseRender =
@@ -134,5 +135,18 @@ testOrE = P.parseLBS_ input decodeEntities $ do
         , "<!DOCTYPE foo []>\n"
         , "<hello>"
         , "<success/>"
+        , "</hello>"
+        ]
+
+testChooseSplit = P.parseLBS_ input decodeEntities $ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.chooseSplit (\t-> P.tagNoAttr t (return t)) ["a", "b", "c"]
+        liftIO $ x @?= Just ("b",["a","c"])
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>\n"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<b/>"
         , "</hello>"
         ]
