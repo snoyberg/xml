@@ -6,6 +6,7 @@ import           Control.Monad                (guard)
 import           Control.Monad.IO.Class       (liftIO)
 import           Data.Char                    (chr,ord)
 import           Data.String                  (fromString)
+import           Data.Text                    (toLower)
 import           Data.XML.Types
 import           Test.HUnit                   hiding (Test)
 import           Test.Hspec
@@ -29,6 +30,7 @@ main = hspec $ describe "XML parsing and rendering"
     , it "has working permute" testPermute
     , it "has working permuteFallback" testPermuteFallback
     , it "has working tags" testTags
+    , it "has working tagsPermute" testTagsPermute
     ]
 
 documentParseRender =
@@ -287,5 +289,27 @@ testTags = P.parseLBS_ input decodeEntities $ do
         , "<c/>"
         , "<d/>"
         , "<e/>"
+        , "</hello>"
+        ]
+
+
+testTagsPermute = P.parseLBS_ input decodeEntities $ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        let p c = (return (), \_ -> return (Just c))
+        x <- P.tagsPermute (toLower . nameLocalName) 
+                           (Map.fromList $ map (\c -> (c, p c)) 
+                                   ["a", "b", "c", "d", "e"])
+                           (return Nothing)
+        liftIO $ x @?= Just ["d", "b", "e", "a", "c"]
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>\n"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<d/>"
+        , "<b/>"
+        , "<E/>"
+        , "<a/>"
+        , "<C/>"
         , "</hello>"
         ]
