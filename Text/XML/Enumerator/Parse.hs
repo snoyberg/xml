@@ -577,7 +577,7 @@ chooseSplit f xs = go xs []
         x <- f i
         case x of
           Nothing -> go is (i : is')
-          Just a -> return $ Just (a, is ++ is')
+          Just a -> return $ Just (a, is' ++ is)
 
 -- | Permute all parsers until none return 'Just'.
 permute :: Monad m => (a -> Iteratee Event m (Maybe b)) -> [a] -> Iteratee Event m (Maybe [b])
