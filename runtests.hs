@@ -24,6 +24,7 @@ main = hspec $ describe "XML parsing and rendering"
     , it "has working orE" testOrE
     , it "has working chooseSplit" testChooseSplit
     , it "has working permute" testPermute
+    , it "has working permuteFallback" testPermuteFallback
     ]
 
 documentParseRender =
@@ -186,6 +187,63 @@ testPermute
         [ "<?xml version='1.0'?>\n"
         , "<!DOCTYPE foo []>\n"
         , "<hello>"
+        , "<b/>"
+        , "<a/>"
+        , "</hello>"
+        ]
+    input3 = L.concat
+        [ "<?xml version='1.0'?>\n"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<a/>"
+        , "</hello>"
+        ]
+    input4 = L.concat
+        [ "<?xml version='1.0'?>\n"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<a/>"
+        , "<c/>"
+        , "</hello>"
+        ]
+
+testPermuteFallback
+    = do
+        let frame input = P.parseLBS_ input decodeEntities $ do
+                            P.force "need hello" $ P.tagNoAttr "hello" $ 
+                             P.permuteFallback (fmap return `fmap` P.contentMaybe) 
+                                               (\t -> P.tagNoAttr t (return $ nameLocalName t)) 
+                                               ["a", "b"]
+        frame input1 >>= \result1 -> result1 @?= Just ["a", "t", "b"]
+        frame input2 >>= \result2 -> result2 @?= Just ["t", "b", "a"]
+        frame input3 >>= \result3 -> result3 @?= Nothing
+        C.try (frame input4) >>= \result4 -> case result4 of
+                                               Left (P.XmlException { 
+                                                            P.xmlBadInput = Just (EventBeginElement 
+                                                                                    Name { 
+                                                                                      nameLocalName = "c"
+                                                                                    , nameNamespace = Nothing
+                                                                                    , namePrefix = Nothing 
+                                                                                    }
+                                                                                    _) 
+                                                            }) -> return () -- right type of error
+                                               Left  _ -> assertFailure "wrong error"
+                                               Right _ -> assertFailure "erroneous document requires an error"
+  where
+    input1 = L.concat
+        [ "<?xml version='1.0'?>\n"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<a/>"
+        , "t"
+        , "<b/>"
+        , "</hello>"
+        ]
+    input2 = L.concat
+        [ "<?xml version='1.0'?>\n"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "t"
         , "<b/>"
         , "<a/>"
         , "</hello>"
