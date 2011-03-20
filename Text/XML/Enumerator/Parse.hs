@@ -104,6 +104,7 @@ import Control.Exception (Exception, throwIO, SomeException)
 import Data.Enumerator.Binary (enumFile)
 import Control.Monad.IO.Class (liftIO)
 import Data.Char (isSpace)
+import Data.Monoid(mempty, mappend, mconcat)
 
 tokenToEvent :: [NSLevel] -> Token -> ([NSLevel], [Event])
 tokenToEvent n (TokenBeginDocument _) = (n, [])
@@ -653,6 +654,14 @@ processSiblings k = E.continue (loop [""] k)
 ignoreSiblings :: Monad m => Iteratee Event m ()
 ignoreSiblings = processSiblings $ E.returnI $ E.Yield () EOF
 
+-- | Making Iteratee from Enumeratee if result is Monoid
+joinEI :: (Monoid ai, Monad m) => Enumeratee ao ai m ai -> Iteratee ao m ai
+joinEI e = joinI $ e (E.Continue $ sf mempty)
+    where
+        sf :: (Monad m, Monoid ai) => ai -> Stream ai -> Iteratee ai m ai
+        sf x (Chunks xs) = E.continue $ sf $ x `mappend` mconcat xs
+        sf x EOF = E.yield x mempty
+        
 -- | Iteratee to skip the next element. Skips all events before the next
 -- element as well. Returns 'Nothing' if a element end event is encountered
 -- before any element begin events.
