@@ -20,6 +20,7 @@ main = hspec $ describe "XML parsing and rendering"
     , it "has working ignoreSiblings function" testIgnoreSiblings
     , it "has working choose function" testChoose
     , it "has working many function" testMany
+    , it "has working orE" testOrE
     ]
 
 documentParseRender =
@@ -118,6 +119,20 @@ testMany = P.parseLBS_ input decodeEntities $ do
         , "<success/>"
         , "<success/>"
         , "<success/>"
+        , "<success/>"
+        , "</hello>"
+        ]
+
+testOrE = P.parseLBS_ input decodeEntities $ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.tagNoAttr "failure" (return 1) `P.orE`
+             P.tagNoAttr "success" (return 2)
+        liftIO $ x @?= Just 2
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>\n"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
         , "<success/>"
         , "</hello>"
         ]
