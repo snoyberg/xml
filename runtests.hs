@@ -18,6 +18,8 @@ main = hspec $ describe "XML parsing and rendering"
     [ it "is idempotent to parse and render a document" documentParseRender
     , it "has valid parser combinators" combinators
     , it "has working ignoreSiblings function" testIgnoreSiblings
+    , it "has working choose function" testChoose
+    , it "has working many function" testMany
     ]
 
 documentParseRender =
@@ -84,5 +86,38 @@ testIgnoreSiblings = P.parseLBS_ input decodeEntities $ do
         , "<fail/>"
         , "</nested>"
         , "</ignore>\n"
+        , "</hello>"
+        ]
+
+testChoose = P.parseLBS_ input decodeEntities $ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.choose
+            [ P.tagNoAttr "failure" $ return 1
+            , P.tagNoAttr "success" $ return 2
+            ]
+        liftIO $ x @?= Just 2
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>\n"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<success/>"
+        , "</hello>"
+        ]
+
+testMany = P.parseLBS_ input decodeEntities $ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.many $ P.tagNoAttr "success" $ return ()
+        liftIO $ length x @?= 5
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>\n"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<success/>"
+        , "<success/>"
+        , "<success/>"
+        , "<success/>"
+        , "<success/>"
         , "</hello>"
         ]
