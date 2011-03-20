@@ -622,38 +622,36 @@ many i =
             Nothing -> return $ front []
             Just y -> go $ front . (:) y
 
-{-
--- There is some possible realisations using higher interface
--- ignoreSiblings' is about 30 percent slowly than ignoreSiblings
--- if ignoreSiblings' uses ignoreElem (instead of ignoreElem') it is about 5 percent slowly than ignoreSiblings 
-
--- | Ignore  content if exists
-ignoreContent :: Monad m => Iteratee SEvent m (Maybe ())
-ignoreContent = fmap (fmap $ const ()) content
--- | Iteratee to skip the next element. 
-ignoreElem' :: Monad m => Iteratee Event m (Maybe ())
-ignoreElem' = tag (const $ Just ()) (const ignoreAttrs) (const $ ignoreSiblings' >> return ())
-
--- | Iteratee to skip the siblings element. 
-ignoreSiblings' :: Monad m => Iteratee Event m [()]
-ignoreSiblings' = many (choose [ignoreElem', ignoreContent])
--}
+-- | Iteratee to process sibling elements in separate iteratee.
+processSiblings :: (Monad m) => Iteratee Event m b -> Iteratee Event m b
+processSiblings k = E.continue (loop [""] k)
+  where
+    loop :: (Monad m) => [Name] -> Iteratee Event m b -> Stream Event -> Iteratee Event m b
+    loop ns k (Chunks xs) = 
+        case go ns xs [] of
+            ([], xs', ts) -> do
+                t <- Iteratee $ liftM (flip E.Yield (Chunks [])) $ E.run_ $ E.enumList 1 ts $$ k
+                E.yield t (Chunks xs')
+            (ns', [], ts) -> E.continue (loop ns' $ E.enumList 1 ts $$ k)
+            ([n1,n2], _, _) -> throwError $ XmlException ("Unbalanced xml-tree. Name '" ++ show n1 ++ "' is not corresponding to '"  
+                                                ++ show n2 ++ "'. (Error in skipSiblings)") (Just $ EventEndElement n2)
+            _ -> throwError $ XmlException "Unknown error. (Error in skipSiblings)" Nothing
+        where
+            go :: [Name] -> [Event] -> [Event] -> ([Name], [Event], [Event])
+            go ns [] ts = (ns,[],ts)
+            go ns xxs@(x:xs) ts = 
+                case x of
+                    (EventBeginElement n _) -> go (n:ns) xs (ts ++ [x])
+                    (EventEndElement n)
+                        | null $ tail ns -> ([], xxs, ts)
+                        | n == head ns -> go (tail ns) xs (ts ++ [x])
+                        | otherwise -> ([head ns, n], xxs, ts)
+                    _ -> go ns xs (ts ++ [x])
+    loop _ _ EOF = throwError $ XmlException "Unbalanced xml-tree. (Error in skipSiblings - EOF)" Nothing
 
 -- | Iteratee to skip sibling elements.
 ignoreSiblings :: Monad m => Iteratee Event m ()
-ignoreSiblings = E.continue (loop 0) 
-  where
-    loop :: Monad m => Int -> Stream Event -> Iteratee Event m ()
-    loop n (Chunks []) = E.continue (loop n)
-    loop n chs@(Chunks (x:xs)) = case x of
-        (EventBeginElement _ _) -> case xs of
-                                    (EventEndElement _:_) -> E.continue (loop n)
-                                    _                     -> E.continue (loop (n+1))
-        (EventEndElement _)
-            | n == 0    -> yield () chs 
-            | otherwise -> E.continue (loop (n-1))
-        _ -> E.continue (loop n)
-    loop _ EOF = throwError $ XmlException "Unbalanced xml-tree. (Error in skipSiblings)" Nothing
+ignoreSiblings = processSiblings $ E.returnI $ E.Yield () EOF
 
 -- | Iteratee to skip the next element. Skips all events before the next
 -- element as well. Returns 'Nothing' if a element end event is encountered
