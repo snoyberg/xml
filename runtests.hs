@@ -1,18 +1,21 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
-import Test.Hspec
-import Test.Hspec.HUnit
-import Test.HUnit hiding (Test)
 
-import Data.XML.Types
+import           Control.Monad                (guard)
+import           Control.Monad.IO.Class       (liftIO)
+import           Data.Char                    (chr,ord)
+import           Data.String                  (fromString)
+import           Data.XML.Types
+import           Test.HUnit                   hiding (Test)
+import           Test.Hspec
+import           Test.Hspec.HUnit
+import           Text.XML.Enumerator.Parse    (decodeEntities)
+import qualified Control.Exception            as C
+import qualified Data.ByteString.Lazy.Char8   as L
+import qualified Data.Map                     as Map
 import qualified Text.XML.Enumerator.Document as D
-import Text.XML.Enumerator.Parse (decodeEntities)
-import qualified Text.XML.Enumerator.Parse as P
-import qualified Data.Map as Map
-import qualified Data.ByteString.Lazy.Char8 as L
-import Control.Monad.IO.Class (liftIO)
-import qualified Control.Exception as C
+import qualified Text.XML.Enumerator.Parse    as P
 
 main :: IO ()
 main = hspec $ describe "XML parsing and rendering"
@@ -25,6 +28,7 @@ main = hspec $ describe "XML parsing and rendering"
     , it "has working chooseSplit" testChooseSplit
     , it "has working permute" testPermute
     , it "has working permuteFallback" testPermuteFallback
+    , it "has working tags" testTags
     ]
 
 documentParseRender =
@@ -261,5 +265,27 @@ testPermuteFallback
         , "<hello>"
         , "<a/>"
         , "<c/>"
+        , "</hello>"
+        ]
+
+testTags = P.parseLBS_ input decodeEntities $ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.tags (\state name -> do 
+                       let n = nameLocalName name
+                       guard (n == fromString [chr $ ord 'a' + state]) 
+                       Just (return (), \_ -> return (state + 1, Just n)))
+                    (const $ return Nothing)
+                    0
+        liftIO $ x @?= (5, ["a", "b", "c", "d", "e"])
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>\n"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<a/>"
+        , "<b/>"
+        , "<c/>"
+        , "<d/>"
+        , "<e/>"
         , "</hello>"
         ]
