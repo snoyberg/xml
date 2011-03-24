@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE RankNTypes #-}
 -- | This module provides both a native Haskell solution for parsing XML
 -- documents into a stream of events, and a set of parser combinators for
 -- dealing with a stream of events.
@@ -53,6 +54,8 @@ module Text.XML.Enumerator.Parse
     , tagsPermute
     , content
     , contentMaybe
+    , processElem
+    , processSiblings
     , ignoreElem
     , ignoreSiblings
       -- * Attribute parsing
@@ -63,6 +66,9 @@ module Text.XML.Enumerator.Parse
     , optionalAttrRaw
     , ignoreAttrs
     , skipAttrs
+    , parseAttrsT
+    , parseAttrsS
+    , parseAttrsST
       -- * Combinators
     , orE
     , choose
@@ -112,7 +118,10 @@ import Data.Typeable (Typeable)
 import Control.Exception (Exception, throwIO, SomeException)
 import Data.Enumerator.Binary (enumFile)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad(liftM2)
+import Control.Arrow((***))
 import Data.Char (isSpace)
+import Data.Maybe(fromJust)
 
 tokenToEvent :: [NSLevel] -> Token -> ([NSLevel], [Event])
 tokenToEvent n (TokenBeginDocument _) = (n, [])
@@ -733,65 +742,76 @@ many i =
             Nothing -> return $ front []
             Just y -> go $ front . (:) y
 
-{-
--- There is some possible realisations using higher interface
--- ignoreSiblings' is about 30 percent slowly than ignoreSiblings
--- if ignoreSiblings' uses ignoreElem (instead of ignoreElem') it is about 5 percent slowly than ignoreSiblings 
+-- Internal Iteratee used in processSiblings and processElem
+processNested :: (Monad m) => Bool -> Iteratee Event m b -> Iteratee Event m (Maybe b)
+processNested isElem k0 = E.continue (loop (Just []) k0)
+    where
+        loop :: (Monad m) => Maybe [Name] -> Iteratee Event m b -> Stream Event -> Iteratee Event m (Maybe b)
+        loop ns k (Chunks xs) = 
+            case (isElem, skipNames ns [] xs) of
+                (_, (Nothing, _, _)) -> E.yield Nothing (Chunks xs)
+                (True, (Just [], ts, xs')) -> yield ts xs'
+                (False, (ns', ts, [])) -> continue ns' ts
+                (False, (Just [], ts, xs')) -> yield ts xs'
+                (True, (ns', ts, [])) -> continue ns' ts
+                (_, (Just [n1,n2], _, _)) -> throwError $ XmlException ("Unbalanced xml-tree. Name '" ++ show n1 ++ "' is not corresponding to '"  
+                                                    ++ show n2 ++ "'. (Error in skipSiblings)") (Just $ EventEndElement n2)
+                _ -> throwError $ XmlException "Unknown error. (Error in skipSiblings)" Nothing
+            where
+                continue ns' ts = E.continue (loop ns' $ E.enumList 1 ts $$ k)
+                yield ts xs' = do
+                    t <- E.Iteratee $ liftM (flip E.Yield (Chunks [])) $ E.run $ E.enumList 1 ts $$ k
+                    case t of
+                        Left err -> throwError err
+                        Right t' -> E.yield (Just t') (Chunks xs')
 
--- | Ignore  content if exists
-ignoreContent :: Monad m => Iteratee SEvent m (Maybe ())
-ignoreContent = fmap (fmap $ const ()) content
--- | Iteratee to skip the next element. 
-ignoreElem' :: Monad m => Iteratee Event m (Maybe ())
-ignoreElem' = tag (const $ Just ()) (const ignoreAttrs) (const $ ignoreSiblings' >> return ())
+                skipNames :: Maybe [Name] -> [Event] -> [Event] -> (Maybe [Name], [Event], [Event])
+                skipNames ns0 ts0 es0 = go ns0 ts0 es0
+                    where
+                        go ns ts [] = (ns,ts,[])
+                        go Nothing _ _ = (ns0,ts0,es0)
+                        go (Just ns) ts xxs@(x:xs) = 
+                            case x of
+                                (EventBeginElement n _) -> go (Just $ n:ns) (ts ++ [x]) xs
+                                (EventEndElement n)
+                                    | isElem && null (tail ns) -> (Just [], ts ++ [x], xs)
+                                    | isElem && null ns -> (Nothing, ts, xxs)
+                                    | not isElem && null ns -> (Just [], ts, xxs)
+                                    -- | null (if isElem then tail ns else ns) -> (Just [], if isElem then ts ++ [x] else ts, (f xxs))
+                                    | n == head ns -> go (Just $ tail ns) (ts ++ [x]) xs
+                                    | otherwise -> (Just [head ns, n], ts, xxs)
+                                _ -> go (Just ns) (ts ++ [x]) xs
+        loop _ _ EOF = throwError $ XmlException "Unbalanced xml-tree. (Error in skipSiblings - EOF)" Nothing
+        
+                    
+-- | Iteratee to process sibling elements in separate iteratee.
+processSiblings :: (Monad m) => Iteratee Event m b -> Iteratee Event m b
+processSiblings = liftM fromJust . processNested False
 
--- | Iteratee to skip the siblings element. 
-ignoreSiblings' :: Monad m => Iteratee Event m [()]
-ignoreSiblings' = many (choose [ignoreElem', ignoreContent])
--}
+-- | Iteratee to process sibling elements in separate iteratee.
+processElem :: (Monad m) => Iteratee Event m b -> Iteratee Event m (Maybe b)
+processElem = processNested True
+    
+iterIgnore :: (Monad m) => Iteratee a m ()
+iterIgnore = E.returnI $ E.Yield () EOF
 
 -- | Iteratee to skip sibling elements.
 ignoreSiblings :: Monad m => Iteratee Event m ()
-ignoreSiblings = E.continue (loop 0) 
-  where
-    loop :: Monad m => Int -> Stream Event -> Iteratee Event m ()
-    loop n (Chunks []) = E.continue (loop n)
-    loop n chs@(Chunks (x:xs)) = case x of
-        (EventBeginElement _ _) -> case xs of
-                                    (EventEndElement _:_) -> E.continue (loop n)
-                                    _                     -> E.continue (loop (n+1))
-        (EventEndElement _)
-            | n == 0    -> yield () chs 
-            | otherwise -> E.continue (loop (n-1))
-        _ -> E.continue (loop n)
-    loop _ EOF = throwError $ XmlException "Unbalanced xml-tree. (Error in skipSiblings)" Nothing
-
+ignoreSiblings = processSiblings iterIgnore
+   
 -- | Iteratee to skip the next element. Skips all events before the next
--- element as well. Returns 'Nothing' if a element end event is encountered
--- before any element begin events.
-ignoreElem :: Monad m => Iteratee Event m (Maybe ())
-ignoreElem = E.continue (loop 0) 
-  where
-    loop :: Monad m => Int -> Stream Event -> Iteratee Event m (Maybe ())
-    loop n (Chunks []) = E.continue (loop n)
-    loop n chs@(Chunks (x:xs)) = case x of
-        (EventBeginElement _ _) -> case xs of
-                                    (EventEndElement _:_) -> E.continue (loop n)
-                                    _                     -> E.continue (loop (n+1))
-        (EventEndElement _)
-            | n == 0    -> yield Nothing chs -- FIXME in the future, it would probably make more sense to use Bool in place of Maybe ()
-            | n == 1    -> yield (Just ()) (Chunks xs) 
-            | otherwise -> E.continue (loop (n-1))
-        _ -> E.continue (loop n)
-    loop _ EOF = throwError $ XmlException "Unbalanced xml-tree. (Error in skipSiblings)" Nothing
-    
+-- element as well. Returns False if an element's end event is encountered
+-- before any element's begin events.
+ignoreElem :: Monad m => Iteratee Event m Bool
+ignoreElem = liftM (maybe False $ const True) $ processElem iterIgnore
+
 -- | Skip the sibling elements until iteratee returns 'Just'.
 skipTill :: Monad m => Iteratee Event m (Maybe a) -> Iteratee Event m (Maybe a)
 skipTill i = go
-  where
-    go = i >>= \x -> case x of
-        Nothing -> ignoreElem >>= (\y -> if y == Nothing then return Nothing else go)
-        r -> return r
+    where
+        go = i >>= \x -> case x of
+            Nothing -> ignoreElem >>= (\b -> if b then go else return Nothing)
+            _ -> return x
 
 -- | Combinator to skip the siblings element. 
 skipSiblings :: Monad m => Iteratee Event m a -> Iteratee Event m a
@@ -800,6 +820,19 @@ skipSiblings i = i >>= \r -> ignoreSiblings >> return r
 -- | Combinator to skip the attributes.
 skipAttrs :: AttrParser a -> AttrParser a
 skipAttrs i = i >>= \r -> ignoreAttrs >> return r
+
+-- | Simple AttrParser utilities
+-- | Parse list of required and list of optional attributes into lists of Text
+parseAttrsT :: [Name] -> [Name] -> AttrParser ([Text], [Maybe Text])
+parseAttrsT reqs opts = liftM2 (,) (mapM requireAttr reqs) (mapM optionalAttr opts)
+
+-- | Parse list of required and list of optional attributes into lists of String
+parseAttrsS :: [Name] -> [Name] -> AttrParser ([String], [Maybe String])
+parseAttrsS reqs opts = fmap (map T.unpack *** map (fmap T.unpack)) (parseAttrsT reqs opts)
+
+-- | Parse part of atrributes into [String] and other part into [Text]
+parseAttrsST :: [Name] -> [Name] -> [Name] -> [Name] -> AttrParser (([String], [Maybe String]), ([Text], [Maybe Text]))
+parseAttrsST reqs opts reqst optst = liftM2 (,) (parseAttrsS reqs opts) (parseAttrsT reqst optst)
 
 type DecodeEntities = Text -> Content
 
