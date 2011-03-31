@@ -568,21 +568,38 @@ data Repetition
       , repetitionConsume :: Repetition
       }
 
+-- | Element may never occur.
 repeatNever :: Repetition
 repeatNever = Repeat False False repeatNever
 
+-- | Element may occur exactly once.
 repeatOnce :: Repetition
 repeatOnce = Repeat True True repeatNever
 
+-- | Element may occur up to once.
 repeatOptional :: Repetition
 repeatOptional = Repeat False True repeatNever
 
+-- | Element may occur any number of times.
 repeatMany :: Repetition
 repeatMany = Repeat False True repeatMany
 
+-- | Element may occur at least once.
 repeatSome :: Repetition
 repeatSome = Repeat True True repeatMany
 
+-- | Parse a permutation of tags, with some repeating elements.
+-- 
+-- The first parameter is a function to preprocess Names for equality testing, because
+-- sometimes XML documents contain inconsistent naming. This allows the user to deal
+-- with it.
+-- 
+-- The second parameter is a map of tags to attribute and element content parsers.
+-- It also specifies how often elements may repeat.
+-- 
+-- The third parameter is a fallback parser.
+-- 
+-- This function accumulates a list of elements for each step that produces one.
 tagsPermuteRepetition :: (Monad m, Ord a)
                       => (Name -> a)
                       -> Map.Map a (Repetition, AttrParser b, b -> Iteratee Event m (Maybe c))
