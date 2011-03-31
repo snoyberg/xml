@@ -275,7 +275,7 @@ testTags = P.parseLBS_ input decodeEntities $ do
         x <- P.tags (\state name -> do 
                        let n = nameLocalName name
                        guard (n == fromString [chr $ ord 'a' + state]) 
-                       Just (return (), \_ -> return (state + 1, Just n)))
+                       Just (return (), \_ -> return $ Just (state + 1, Just n)))
                     (const $ return Nothing)
                     0
         liftIO $ x @?= (5, ["a", "b", "c", "d", "e"])
@@ -291,7 +291,6 @@ testTags = P.parseLBS_ input decodeEntities $ do
         , "<e/>"
         , "</hello>"
         ]
-
 
 testTagsPermute = P.parseLBS_ input decodeEntities $ do
     P.force "need hello" $ P.tagNoAttr "hello" $ do

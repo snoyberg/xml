@@ -104,7 +104,7 @@ import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import qualified Data.Enumerator.Text as ET
 import qualified Data.Enumerator.Binary as EB
-import Control.Monad (unless, ap, liftM, guard)
+import Control.Monad (unless, ap, liftM, guard, join)
 import qualified Data.Text as TS
 import Data.List (foldl')
 import Control.Applicative (Applicative (..))
@@ -506,13 +506,13 @@ tagNoAttr name f = tagName name (return ()) $ const f
 -- This function updates the state as it goes along, but it also accumulates a list of
 -- elements as they occur.
 tags :: (Monad m) 
-     => (a -> Name -> Maybe (AttrParser b, b -> Iteratee Event m (a, Maybe c)))
+     => (a -> Name -> Maybe (AttrParser b, b -> Iteratee Event m (Maybe (a, Maybe c))))
      -> (a -> Iteratee Event m (Maybe (a, Maybe c)))
      -> a 
      -> Iteratee Event m (a, [c])
 tags f fb s' = go s'
     where go s = do
-            t <- tag (f s) (\(attr, sub) -> sub <$> attr) id `orE` fb s
+            t <- fmap join (tag (f s) (\(attr, sub) -> sub <$> attr) id) `orE` fb s
             case t of
               Nothing -> return (s, [])
               Just (s2, Nothing) -> go s2
