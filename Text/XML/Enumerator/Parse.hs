@@ -51,6 +51,13 @@ module Text.XML.Enumerator.Parse
     , tagNoAttr
     , tags
     , tagsPermute
+    , Repetition(..)
+    , repeatNever
+    , repeatOnce
+    , repeatOptional
+    , repeatMany
+    , repeatSome
+    , tagsPermuteRepetition
     , content
     , contentMaybe
     , ignoreElem
@@ -541,8 +548,52 @@ tagsPermute f m fb = do
                         Nothing          -> Nothing
                         Just (attr, sub) -> Just (attr, fmap adaptSub . sub)
               where k = f name
-                    adaptSub Nothing = (s, Nothing)
-                    adaptSub a = (Map.delete k s, a)
+                    adaptSub Nothing = Nothing
+                    adaptSub a       = Just (Map.delete k s, a)
+
+-- | Specifies how often an element may repeat.
+data Repetition
+    = Repeat { 
+        repetitionNeedsMore :: Bool
+      , repetitionAllowsMore :: Bool
+      , repetitionConsume :: Repetition
+      }
+
+repeatNever :: Repetition
+repeatNever = Repeat False False repeatNever
+
+repeatOnce :: Repetition
+repeatOnce = Repeat True True repeatNever
+
+repeatOptional :: Repetition
+repeatOptional = Repeat False True repeatNever
+
+repeatMany :: Repetition
+repeatMany = Repeat False True repeatMany
+
+repeatSome :: Repetition
+repeatSome = Repeat True True repeatMany
+
+tagsPermuteRepetition :: (Monad m, Ord a)
+                      => (Name -> a)
+                      -> Map.Map a (Repetition, AttrParser b, b -> Iteratee Event m (Maybe c))
+                      -> Iteratee Event m (Maybe (a, c))
+                      -> Iteratee Event m (Maybe [(a,c)])
+tagsPermuteRepetition f m' fb = do
+      let m = Map.filter (\(r, _, _) -> repetitionAllowsMore r) m'
+      (rest, result) <- tags go (\s -> fmap (\a -> (s, Just a)) <$> fb) m
+      return (guard (finished rest) >> Just result)
+    where
+      finished = Map.null . Map.filter (\(r, _, _) -> repetitionNeedsMore r)
+      go s name = do
+                    let k = f name
+                    (rep, attr, sub) <- Map.lookup k s
+                    let adaptSub Nothing  = Nothing
+                        adaptSub (Just v) = let s' = case repetitionConsume rep of
+                                                       rep' | repetitionAllowsMore rep' -> Map.insert k (rep', attr, sub) s
+                                                            | otherwise                 -> Map.delete k s
+                                            in Just (s', Just (k, v))
+                    Just (attr, fmap adaptSub . sub)
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.

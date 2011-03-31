@@ -31,6 +31,7 @@ main = hspec $ describe "XML parsing and rendering"
     , it "has working permuteFallback" testPermuteFallback
     , it "has working tags" testTags
     , it "has working tagsPermute" testTagsPermute
+    , it "has working tagsPermuteRepetition" testTagsPermuteRepetition
     ]
 
 documentParseRender =
@@ -308,6 +309,29 @@ testTagsPermute = P.parseLBS_ input decodeEntities $ do
         , "<d/>"
         , "<b/>"
         , "<E/>"
+        , "<a/>"
+        , "<C/>"
+        , "</hello>"
+        ]
+
+testTagsPermuteRepetition = P.parseLBS_ input decodeEntities $ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        let p r c = (r, return (), \_ -> return (Just ()))
+        x <- P.tagsPermuteRepetition (toLower . nameLocalName) 
+                                     (Map.fromList $ map (\c -> (c, p P.repeatOnce c)) ["a", "b", "c", "d", "e"] ++
+                                                     map (\c -> (c, p P.repeatMany c)) ["r"])
+                                     (return Nothing)
+        liftIO $ fmap (map fst) x @?= Just ["d", "r", "b", "e", "r", "a", "c"]
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>\n"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<d/>"
+        , "<r/>"
+        , "<b/>"
+        , "<E/>"
+        , "<r/>"
         , "<a/>"
         , "<C/>"
         , "</hello>"
