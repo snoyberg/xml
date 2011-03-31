@@ -1,5 +1,5 @@
 name:            xml-enumerator
-version:         0.2.1
+version:         0.2.1.1
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michaels@suite-sol.com>
@@ -26,7 +26,7 @@ library
                    , attoparsec-text-enumerator >= 0.2     && < 0.3
                    , attoparsec-text           >= 0.8.2    && < 0.9
                    , blaze-builder             >= 0.3      && < 0.4
-                   , blaze-builder-enumerator  >= 0.2      && < 0.3
+                   , blaze-builder-enumerator  >= 0.2.0.2  && < 0.3
                    , transformers              >= 0.2      && < 0.3
     exposed-modules: Text.XML.Enumerator.Parse
                      Text.XML.Enumerator.Render
