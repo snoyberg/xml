@@ -844,8 +844,8 @@ processNested isElem k0 = E.continue (loop (Just []) k0)
                             case x of
                                 (EventBeginElement n _) -> go (Just $ n:ns) (ts ++ [x]) xs
                                 (EventEndElement n)
-                                    | isElem && null (tail ns) -> (Just [], ts ++ [x], xs)
                                     | isElem && null ns -> (Nothing, ts, xxs)
+                                    | isElem && null (tail ns) -> (Just [], ts ++ [x], xs)
                                     | not isElem && null ns -> (Just [], ts, xxs)
                                     -- | null (if isElem then tail ns else ns) -> (Just [], if isElem then ts ++ [x] else ts, (f xxs))
                                     | n == head ns -> go (Just $ tail ns) (ts ++ [x]) xs
