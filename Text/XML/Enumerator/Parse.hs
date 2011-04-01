@@ -542,16 +542,17 @@ tags f fb s' = go s'
 -- 
 -- The second parameter is a map of tags to attribute and element content parsers.
 -- 
--- The third parameter is a fallback parser.
+-- The third parameter is a fallback parser. The outer Maybe indicates whether it succeeds,
+-- and the inner Maybe whether an element should be added to the output list.
 -- 
 -- This function accumulates a list of elements for each step that produces one.
 tagsPermute :: (Monad m, Ord a) 
             => (Name -> a) 
             -> Map.Map a (AttrParser b, b -> Iteratee Event m (Maybe c))
-            -> Iteratee Event m (Maybe c)
+            -> Iteratee Event m (Maybe (Maybe c))
             -> Iteratee Event m (Maybe [c])
 tagsPermute f m fb = do
-      (rest, result) <- tags go (\s -> fmap (\a -> (s, Just a)) <$> fb) m
+      (rest, result) <- tags go (\s -> fmap (\a -> (s, a)) <$> fb) m
       return (guard (Map.null rest) >> Just result)
     where go s name = case Map.lookup k s of
                         Nothing          -> Nothing
@@ -568,29 +569,47 @@ data Repetition
       , repetitionConsume :: Repetition
       }
 
+-- | Element may never occur.
 repeatNever :: Repetition
 repeatNever = Repeat False False repeatNever
 
+-- | Element may occur exactly once.
 repeatOnce :: Repetition
 repeatOnce = Repeat True True repeatNever
 
+-- | Element may occur up to once.
 repeatOptional :: Repetition
 repeatOptional = Repeat False True repeatNever
 
+-- | Element may occur any number of times.
 repeatMany :: Repetition
 repeatMany = Repeat False True repeatMany
 
+-- | Element may occur at least once.
 repeatSome :: Repetition
 repeatSome = Repeat True True repeatMany
 
+-- | Parse a permutation of tags, with some repeating elements.
+-- 
+-- The first parameter is a function to preprocess Names for equality testing, because
+-- sometimes XML documents contain inconsistent naming. This allows the user to deal
+-- with it.
+-- 
+-- The second parameter is a map of tags to attribute and element content parsers.
+-- It also specifies how often elements may repeat.
+-- 
+-- The third parameter is a fallback parser. The outer Maybe indicates whether it succeeds,
+-- and the inner Maybe whether an element should be added to the output list.
+-- 
+-- This function accumulates a list of elements for each step that produces one.
 tagsPermuteRepetition :: (Monad m, Ord a)
                       => (Name -> a)
                       -> Map.Map a (Repetition, AttrParser b, b -> Iteratee Event m (Maybe c))
-                      -> Iteratee Event m (Maybe (a, c))
+                      -> Iteratee Event m (Maybe (Maybe (a, c)))
                       -> Iteratee Event m (Maybe [(a,c)])
 tagsPermuteRepetition f m' fb = do
       let m = Map.filter (\(r, _, _) -> repetitionAllowsMore r) m'
-      (rest, result) <- tags go (\s -> fmap (\a -> (s, Just a)) <$> fb) m
+      (rest, result) <- tags go (\s -> fmap (\a -> (s, a)) <$> fb) m
       return (guard (finished rest) >> Just result)
     where
       finished = Map.null . Map.filter (\(r, _, _) -> repetitionNeedsMore r)
@@ -825,8 +844,8 @@ processNested isElem k0 = E.continue (loop (Just []) k0)
                             case x of
                                 (EventBeginElement n _) -> go (Just $ n:ns) (ts ++ [x]) xs
                                 (EventEndElement n)
-                                    | isElem && null (tail ns) -> (Just [], ts ++ [x], xs)
                                     | isElem && null ns -> (Nothing, ts, xxs)
+                                    | isElem && null (tail ns) -> (Just [], ts ++ [x], xs)
                                     | not isElem && null ns -> (Just [], ts, xxs)
                                     -- | null (if isElem then tail ns else ns) -> (Just [], if isElem then ts ++ [x] else ts, (f xxs))
                                     | n == head ns -> go (Just $ tail ns) (ts ++ [x]) xs
