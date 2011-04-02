@@ -108,7 +108,6 @@ import Prelude hiding (takeWhile)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 import Data.Enumerator
     ( Iteratee, Enumeratee, (>>==), Stream (..), run_, Enumerator, Step (..)
     , checkDone, yield, ($$), joinI, run, throwError, returnI
@@ -654,7 +653,7 @@ permuteFallback  :: (Monad m)
                  -> (a -> Iteratee Event m (Maybe b))
                  -> [a]
                  -> Iteratee Event m (Maybe [b])
-permuteFallback fb _ [] = return (Just [])
+permuteFallback _ _ [] = return (Just [])
 permuteFallback fb f is = do
     x <- chooseSplit f is
     case x of
@@ -798,19 +797,19 @@ processNested :: (Monad m) => Bool -> Iteratee Event m b -> Iteratee Event m (Ma
 processNested isElem k0 = E.continue (loop (Just []) k0)
     where
         loop :: (Monad m) => Maybe [Name] -> Iteratee Event m b -> Stream Event -> Iteratee Event m (Maybe b)
-        loop ns k (Chunks xs) = 
-            case (isElem, skipNames ns [] xs) of
+        loop mns k (Chunks xs) = 
+            case (isElem, skipNames mns [] xs) of
                 (_, (Nothing, _, _)) -> E.yield Nothing (Chunks xs)
-                (True, (Just [], ts, xs')) -> yield ts xs'
+                (True, (Just [], ts, xs')) -> yield' ts xs'
                 (False, (ns', ts, [])) -> continue ns' ts
-                (False, (Just [], ts, xs')) -> yield ts xs'
+                (False, (Just [], ts, xs')) -> yield' ts xs'
                 (True, (ns', ts, [])) -> continue ns' ts
                 (_, (Just [n1,n2], _, _)) -> throwError $ XmlException ("Unbalanced xml-tree. Name '" ++ show n1 ++ "' is not corresponding to '"  
                                                     ++ show n2 ++ "'. (Error in skipSiblings)") (Just $ EventEndElement n2)
                 _ -> throwError $ XmlException "Unknown error. (Error in skipSiblings)" Nothing
             where
                 continue ns' ts = E.continue (loop ns' $ E.enumList 1 ts $$ k)
-                yield ts xs' = do
+                yield' ts xs' = do
                     t <- E.Iteratee $ liftM (flip E.Yield (Chunks [])) $ E.run $ E.enumList 1 ts $$ k
                     case t of
                         Left err -> throwError err
