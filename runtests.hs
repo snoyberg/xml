@@ -74,7 +74,7 @@ t1 = fmap concat $ sequence [
                                 resI (P.processSiblings renderTextI) (drop 1 testData) 1
         testProcElem = join $ fmap (@?=(Just "<E0><E1><E11/><E12/></E1><E3/></E0>", dropWhile (/=EventBeginElement "E2" mempty) testData)) $ 
                                 resI (P.processElem renderTextI) (drop 1 testData) 1
-        renderTextI = E.joinI $ R.renderText $$ E.foldl' mappend mempty
+        renderTextI = E.joinI $ R.renderText $$ EL.fold mappend mempty
         
         testData = [
                   EventBeginElement "root" mempty
