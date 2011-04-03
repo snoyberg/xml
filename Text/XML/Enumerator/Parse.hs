@@ -61,6 +61,8 @@ module Text.XML.Enumerator.Parse
     , tagsPermuteRepetition
     , content
     , contentMaybe
+    , processElem'
+    , processSiblings'
     , processElem
     , processSiblings
     , ignoreElem
@@ -108,7 +110,6 @@ import Prelude hiding (takeWhile)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 import Data.Enumerator
     ( Iteratee, Enumeratee, (>>==), Stream (..), run_, Enumerator, Step (..)
     , checkDone, yield, ($$), joinI, run, throwError, returnI
@@ -673,7 +674,7 @@ permuteFallback  :: (Monad m)
                  -> (a -> Iteratee Event m (Maybe b))
                  -> [a]
                  -> Iteratee Event m (Maybe [b])
-permuteFallback fb _ [] = return (Just [])
+permuteFallback _ _ [] = return (Just [])
 permuteFallback fb f is = do
     x <- chooseSplit f is
     case x of
@@ -813,24 +814,23 @@ many i =
             Just y -> go $ front . (:) y
 
 -- Internal Iteratee used in processSiblings and processElem
-processNested :: (Monad m) => Bool -> Iteratee Event m b -> Iteratee Event m (Maybe b)
-processNested isElem k0 = E.continue (loop (Just []) k0)
+processNested :: (Monad m, Monad m') => Bool -> (forall c. m' c -> m c) -> Iteratee Event m' b -> Iteratee Event m (Maybe b)
+processNested isElem f k0 = E.continue (loop (Just []) k0)
     where
-        loop :: (Monad m) => Maybe [Name] -> Iteratee Event m b -> Stream Event -> Iteratee Event m (Maybe b)
-        loop ns k (Chunks xs) = 
-            case (isElem, skipNames ns [] xs) of
+--        loop :: (Monad m, Monad m') => Maybe [Name] -> Iteratee Event m' b -> Stream Event -> Iteratee Event m (Maybe b)
+        loop mns k (Chunks xs) = 
+            case (isElem, skipNames mns [] xs) of
                 (_, (Nothing, _, _)) -> E.yield Nothing (Chunks xs)
-                (True, (Just [], ts, xs')) -> yield ts xs'
                 (False, (ns', ts, [])) -> continue ns' ts
-                (False, (Just [], ts, xs')) -> yield ts xs'
+                (_, (Just [], ts, xs')) -> yield' ts xs'
                 (True, (ns', ts, [])) -> continue ns' ts
                 (_, (Just [n1,n2], _, _)) -> throwError $ XmlException ("Unbalanced xml-tree. Name '" ++ show n1 ++ "' is not corresponding to '"  
-                                                    ++ show n2 ++ "'. (Error in skipSiblings)") (Just $ EventEndElement n2)
-                _ -> throwError $ XmlException "Unknown error. (Error in skipSiblings)" Nothing
+                                                    ++ show n2 ++ "'. (Error in processNested)") (Just $ EventEndElement n2)
+                _ -> throwError $ XmlException "Unknown error. (Error in processNested)" Nothing
             where
                 continue ns' ts = E.continue (loop ns' $ E.enumList 1 ts $$ k)
-                yield ts xs' = do
-                    t <- E.Iteratee $ liftM (flip E.Yield (Chunks [])) $ E.run $ E.enumList 1 ts $$ k
+                yield' ts xs' = do
+                    t <- E.Iteratee $ liftM (flip E.Yield (Chunks [])) $ f $ E.run $ E.enumList 1 ts $$ k
                     case t of
                         Left err -> throwError err
                         Right t' -> E.yield (Just t') (Chunks xs')
@@ -840,28 +840,39 @@ processNested isElem k0 = E.continue (loop (Just []) k0)
                     where
                         go ns ts [] = (ns,ts,[])
                         go Nothing _ _ = (ns0,ts0,es0)
-                        go (Just ns) ts xxs@(x:xs) = 
+                        go (Just ns) ts xxs@(x:xss) = 
                             case x of
-                                (EventBeginElement n _) -> go (Just $ n:ns) (ts ++ [x]) xs
+                                (EventBeginElement n _) -> go (Just $ n:ns) (ts ++ [x]) xss
                                 (EventEndElement n)
                                     | isElem && null ns -> (Nothing, ts, xxs)
-                                    | isElem && null (tail ns) -> (Just [], ts ++ [x], xs)
+                                    | isElem && null (tail ns) -> (Just [], ts ++ [x], xss)
                                     | not isElem && null ns -> (Just [], ts, xxs)
-                                    -- | null (if isElem then tail ns else ns) -> (Just [], if isElem then ts ++ [x] else ts, (f xxs))
-                                    | n == head ns -> go (Just $ tail ns) (ts ++ [x]) xs
+                                    | n == head ns -> go (Just $ tail ns) (ts ++ [x]) xss
                                     | otherwise -> (Just [head ns, n], ts, xxs)
-                                _ -> go (Just ns) (ts ++ [x]) xs
-        loop _ _ EOF = throwError $ XmlException "Unbalanced xml-tree. (Error in skipSiblings - EOF)" Nothing
+                                _ -> go (Just ns) (ts ++ [x]) xss
+        loop _ _ EOF = throwError $ XmlException "Unbalanced xml-tree. (Error in processNested - EOF)" Nothing
         
                     
--- | Iteratee to process sibling elements in separate iteratee.
-processSiblings :: (Monad m) => Iteratee Event m b -> Iteratee Event m b
-processSiblings = liftM fromJust . processNested False
+-- | Iteratee to process sibling elements in separate iteratee in separate monad.
+processSiblings' :: (Monad m, Monad m') => (forall c. m' c -> m c) -> Iteratee Event m' b -> Iteratee Event m b
+processSiblings' f = liftM fromJust . processNested False f
 
 -- | Iteratee to process sibling elements in separate iteratee.
-processElem :: (Monad m) => Iteratee Event m b -> Iteratee Event m (Maybe b)
-processElem = processNested True
+processSiblings :: (Monad m) => Iteratee Event m b -> Iteratee Event m b
+processSiblings = processSiblings' id
+
+-- | Iteratee to process next element in separate iteratee in separate monad.
+processElem' :: (Monad m, Monad m') => (forall c. m' c -> m c) -> Iteratee Event m' b -> Iteratee Event m (Maybe b)
+processElem' f i = EL.dropWhile (\e->case e of
+        EventBeginElement _ _ -> False
+        EventEndElement _ -> False
+        _ -> True
+    ) >> processNested True f i
     
+-- | Iteratee to process next element in separate iteratee.
+processElem :: (Monad m) => Iteratee Event m b -> Iteratee Event m (Maybe b)
+processElem = processElem' id
+        
 iterIgnore :: (Monad m) => Iteratee a m ()
 iterIgnore = E.returnI $ E.Yield () EOF
 
