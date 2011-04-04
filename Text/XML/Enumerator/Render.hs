@@ -6,6 +6,7 @@ module Text.XML.Enumerator.Render
     ( renderBuilder
     , renderBytes
     , renderText
+    , prettyBuilder
     ) where
 
 import Data.XML.Types (Event (..), Content (..), Name (..))
@@ -23,6 +24,28 @@ import Data.Map (Map)
 import Data.Maybe (fromMaybe)
 import Data.ByteString (ByteString)
 import Control.Monad.IO.Class (MonadIO)
+
+-- | Pretty prints a stream of 'Event's into a stream of 'Builder's. This
+-- changes the meaning of some documents, by inserting/modifying whitespace.
+prettyBuilder :: Monad m => E.Enumeratee Event Builder m b
+prettyBuilder =
+    loop []
+  where
+    loop stack = E.checkDone $ step stack
+    step stack k = do
+        x <- EL.head
+        case x of
+            Nothing -> E.yield (E.Continue k) E.EOF
+            Just (EventBeginElement name as) -> do
+                x' <- E.peek
+                if x' == Just (EventEndElement name)
+                    then do
+                        EL.drop 1
+                        go $ mkBeginToken True True stack name as
+                    else go $ mkBeginToken True False stack name as
+            Just e -> go $ eventToToken stack e
+      where
+        go (ts, stack') = k (E.Chunks $ map tokenToBuilder $ ts []) >>== loop stack'
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder' and 'builderToByteString', so it produces
@@ -55,8 +78,8 @@ renderBuilder =
                 if x' == Just (EventEndElement name)
                     then do
                         EL.drop 1
-                        go $ mkBeginToken True stack name as
-                    else go $ mkBeginToken False stack name as
+                        go $ mkBeginToken False True stack name as
+                    else go $ mkBeginToken False False stack name as
             Just e -> go $ eventToToken stack e
       where
         go (ts, stack') = k (E.Chunks $ map tokenToBuilder $ ts []) >>== loop stack'
@@ -73,13 +96,13 @@ eventToToken s (EventInstruction i) = ((:) (TokenInstruction i), s)
 eventToToken s (EventBeginDoctype n meid) = ((:) (TokenDoctype n meid), s)
 eventToToken s EventEndDoctype = (id, s)
 eventToToken s (EventCDATA t) = ((:) (TokenCDATA t), s)
-eventToToken s (EventBeginElement name attrs) = mkBeginToken False s name attrs
 eventToToken s (EventEndElement name) =
     ((:) (TokenEndElement $ nameToTName sl name), s')
   where
     (sl:s') = s
 eventToToken s (EventContent c) = ((:) (TokenContent c), s)
 eventToToken s (EventComment t) = ((:) (TokenComment t), s)
+eventToToken _ EventBeginElement{} = error "eventToToken on EventBeginElement" -- mkBeginToken False s name attrs
 
 type Stack = [NSLevel]
 
@@ -94,12 +117,14 @@ nameToTName (NSLevel def sl) (Name name (Just ns) _)
             Nothing -> error "nameToTName"
             Just pref -> TName (Just pref) name
 
-mkBeginToken :: Bool -> Stack -> Name -> [(Name, [Content])]
+mkBeginToken :: Bool -- ^ pretty print attributes?
+             -> Bool -> Stack -> Name -> [(Name, [Content])]
              -> ([Token] -> [Token], Stack)
-mkBeginToken isClosed s name attrs =
-    ((:) (TokenBeginElement tname tattrs2 isClosed),
+mkBeginToken isPretty isClosed s name attrs =
+    ((:) (TokenBeginElement tname tattrs2 isClosed indent),
      if isClosed then s else sl2 : s)
   where
+    indent = if isPretty then 2 + 4 * length s else 0
     prevsl = case s of
                 [] -> NSLevel Nothing Map.empty
                 sl':_ -> sl'

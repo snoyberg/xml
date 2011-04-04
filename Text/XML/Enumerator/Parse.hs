@@ -111,7 +111,7 @@ import Data.Char (isSpace)
 tokenToEvent :: [NSLevel] -> Token -> ([NSLevel], [Event])
 tokenToEvent n (TokenBeginDocument _) = (n, [])
 tokenToEvent n (TokenInstruction i) = (n, [EventInstruction i])
-tokenToEvent n (TokenBeginElement name as isClosed) =
+tokenToEvent n (TokenBeginElement name as isClosed _) =
     (n', if isClosed then [begin, end] else [begin])
   where
     l0 = case n of
@@ -288,7 +288,7 @@ parseToken de = do
         skipSpace
         isClose <- (char '/' >> skipSpace >> return True) <|> return False
         char' '>'
-        return $ TokenBeginElement n as isClose
+        return $ TokenBeginElement n as isClose 0
 
 parseAttribute :: DecodeEntities -> Parser TAttribute
 parseAttribute de = do
