@@ -7,6 +7,8 @@ module Text.XML.Enumerator.Render
     , renderBytes
     , renderText
     , prettyBuilder
+    , prettyBytes
+    , prettyText
     ) where
 
 import Data.XML.Types (Event (..), Content (..), Name (..))
@@ -14,7 +16,7 @@ import Text.XML.Enumerator.Token
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import qualified Data.Enumerator.Text as ET
-import Data.Enumerator ((>>==), ($$))
+import Data.Enumerator ((>>==), ($$), Iteratee, Step (..))
 import qualified Data.Text as T
 import Data.Text (Text)
 import Blaze.ByteString.Builder
@@ -24,12 +26,13 @@ import Data.Map (Map)
 import Data.Maybe (fromMaybe)
 import Data.ByteString (ByteString)
 import Control.Monad.IO.Class (MonadIO)
+import Data.Char (isSpace)
 
 -- | Pretty prints a stream of 'Event's into a stream of 'Builder's. This
 -- changes the meaning of some documents, by inserting/modifying whitespace.
 prettyBuilder :: Monad m => E.Enumeratee Event Builder m b
-prettyBuilder =
-    loop []
+prettyBuilder step0 =
+    E.joinI $ prettify 0 [] $$ loop [] step0
   where
     loop stack = E.checkDone $ step stack
     step stack k = do
@@ -46,6 +49,14 @@ prettyBuilder =
             Just e -> go $ eventToToken stack e
       where
         go (ts, stack') = k (E.Chunks $ map tokenToBuilder $ ts []) >>== loop stack'
+
+-- | Same as 'prettyBuilder', but produces a stream of 'ByteString's.
+prettyBytes :: MonadIO m => E.Enumeratee Event ByteString m b
+prettyBytes s = E.joinI $ prettyBuilder $$ builderToByteString s
+
+-- | Same as 'prettyBuilder', but produces a stream of 'Text's.
+prettyText :: MonadIO m => E.Enumeratee Event Text m b
+prettyText s = E.joinI $ prettyBytes $$ ET.decode ET.utf8 s
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder' and 'builderToByteString', so it produces
@@ -177,3 +188,81 @@ getPrefix ppref nsmap ns =
     findUnused x xs
         | x `elem` xs = findUnused (x `T.snoc` '_') xs
         | otherwise = x
+
+prettify :: Monad m => Int -> [Name] -> E.Enumeratee Event Event m a
+prettify level names (Continue k) = do
+    mx <- eventHead
+    case mx of
+        Nothing -> return $ Continue k
+        Just x -> do
+            y <- E.peek
+            (chunks, level', names') <-
+                case (x, y) of
+                    (Left contents, _) -> do
+                        let es = map EventContent $ cleanWhite contents
+                        let es' = if null es
+                                    then []
+                                    else before level : es ++ [after]
+                        return (es', level, names)
+                    (Right (EventBeginElement name attrs), Just (EventEndElement _)) -> do
+                        EL.drop 1
+                        return ([before level, EventBeginElement name attrs, EventEndElement name, after], level, names)
+                    (Right (EventBeginElement name attrs), _) -> do
+                        return ([before level, EventBeginElement name attrs, after], level + 1, name : names)
+                    (Right (EventEndElement _), _) -> do
+                        let newLevel = level - 1
+                        return ([before newLevel, EventEndElement $ head names, after], newLevel, tail names)
+                    (Right EventBeginDocument, _) -> do
+                        _ <- takeContents id
+                        return ([EventBeginDocument], level, names)
+                    (Right EventEndDocument, _) -> do
+                        _ <- takeContents id
+                        return ([EventEndDocument, after], level, names)
+                    (Right (EventComment t), _) -> do
+                        _ <- takeContents id
+                        return ([before level, EventComment $ T.map normalSpace t, after], level, names)
+                    (Right e, _) -> do
+                        _ <- takeContents id
+                        return ([before level, e, after], level, names)
+            k (E.Chunks chunks) >>== prettify level' names'
+  where
+    before l = EventContent $ ContentText $ T.replicate l "    "
+    after = EventContent $ ContentText "\n"
+prettify _ _ step = return step
+
+eventHead :: Monad m => Iteratee Event m (Maybe (Either [Content] Event))
+eventHead = do
+    x <- EL.head
+    case x of
+        Just (EventContent e) -> do
+            es <- takeContents id
+            return $ Just $ Left $ e : es
+        Nothing -> return Nothing
+        Just e -> return $ Just $ Right e
+
+takeContents :: Monad m => ([Content] -> [Content]) -> Iteratee Event m [Content]
+takeContents front = do
+    x <- E.peek
+    case x of
+        Just (EventContent e) -> do
+            EL.drop 1
+            takeContents $ front . (:) e
+        _ -> return $ front []
+
+normalSpace :: Char -> Char
+normalSpace c
+    | isSpace c = ' '
+    | otherwise = c
+
+cleanWhite :: [Content] -> [Content]
+cleanWhite x =
+    go True [] $ go True [] x
+  where
+    go _ end (ContentEntity e:rest) = go False (ContentEntity e : end) rest
+    go isFront end (ContentText t:rest) =
+        if T.null t'
+            then go isFront end rest
+            else go False (ContentText t' : end) rest
+      where
+        t' = (if isFront then T.dropWhile isSpace else id) $ T.map normalSpace t
+    go _ end [] = end
