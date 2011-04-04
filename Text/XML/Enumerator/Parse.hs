@@ -33,6 +33,11 @@
 -- will produce:
 --
 -- > [Person {age = 25, name = "Michael"},Person {age = 2, name = "Eliezer"}]
+--
+-- Previous versions of this module contained a number of more sophisticated
+-- functions written by Aristid Breitkreuz and Dmitry Olshansky. To keep this
+-- package simpler, those functions are being moved to a separate package. This
+-- note will be updated with the name of the package(s) when available.
 module Text.XML.Enumerator.Parse
     ( -- * Parsing XML files
       parseBytes
@@ -50,23 +55,8 @@ module Text.XML.Enumerator.Parse
     , tagPredicate
     , tagName
     , tagNoAttr
-    , tags
-    , tagsPermute
-    , Repetition(..)
-    , repeatNever
-    , repeatOnce
-    , repeatOptional
-    , repeatMany
-    , repeatSome
-    , tagsPermuteRepetition
     , content
     , contentMaybe
-    , processElem'
-    , processSiblings'
-    , processElem
-    , processSiblings
-    , ignoreElem
-    , ignoreSiblings
       -- * Attribute parsing
     , AttrParser
     , requireAttr
@@ -74,20 +64,11 @@ module Text.XML.Enumerator.Parse
     , requireAttrRaw
     , optionalAttrRaw
     , ignoreAttrs
-    , skipAttrs
-    , parseAttrsT
-    , parseAttrsS
-    , parseAttrsST
       -- * Combinators
     , orE
     , choose
-    , chooseSplit
-    , permute
-    , permuteFallback
     , many
     , force
-    , skipTill
-    , skipSiblings
       -- * Exceptions
     , XmlException (..)
     ) where
@@ -102,7 +83,6 @@ import Data.XML.Types
     , Instruction (..), ExternalID (..)
     )
 import Control.Applicative ((<|>), (<$>))
-import Control.Arrow (second)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Text.XML.Enumerator.Token
@@ -118,7 +98,7 @@ import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import qualified Data.Enumerator.Text as ET
 import qualified Data.Enumerator.Binary as EB
-import Control.Monad (unless, ap, liftM, guard, join)
+import Control.Monad (unless, ap, liftM)
 import qualified Data.Text as TS
 import Data.List (foldl')
 import Control.Applicative (Applicative (..))
@@ -126,10 +106,7 @@ import Data.Typeable (Typeable)
 import Control.Exception (Exception, throwIO, SomeException)
 import Data.Enumerator.Binary (enumFile)
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad(liftM2)
-import Control.Arrow((***))
 import Data.Char (isSpace)
-import Data.Maybe(fromJust)
 
 tokenToEvent :: [NSLevel] -> Token -> ([NSLevel], [Event])
 tokenToEvent n (TokenBeginDocument _) = (n, [])
@@ -506,123 +483,10 @@ tagName name = tagPredicate (== name)
 tagNoAttr :: Monad m => Name -> Iteratee Event m a -> Iteratee Event m (Maybe a)
 tagNoAttr name f = tagName name (return ()) $ const f
 
--- | Statefully and efficiently parse a list of tags.
--- 
--- The first parameter is a function that, given state and an element name, returns
--- either 'Nothing', to indicate that the element is invalid, or a pair of attribute
--- and element content parsers in 'Just'. 
--- 
--- The second parameter is a function that, given the current state, returns a
--- "fallback" parser to be executed when no valid element has been found.
--- 
--- The third parameter is the initial state.
--- 
--- This function updates the state as it goes along, but it also accumulates a list of
--- elements as they occur.
-tags :: (Monad m) 
-     => (a -> Name -> Maybe (AttrParser b, b -> Iteratee Event m (Maybe (a, Maybe c))))
-     -> (a -> Iteratee Event m (Maybe (a, Maybe c)))
-     -> a 
-     -> Iteratee Event m (a, [c])
-tags f fb s' = go s'
-    where go s = do
-            t <- fmap join (tag (f s) (\(attr, sub) -> sub <$> attr) id) `orE` fb s
-            case t of
-              Nothing -> return (s, [])
-              Just (s2, Nothing) -> go s2
-              Just (s2, Just a) -> second (a:) `fmap` go s2
-
--- | Parse a permutation of tags.
--- 
--- The first parameter is a function to preprocess Names for equality testing, because
--- sometimes XML documents contain inconsistent naming. This allows the user to deal
--- with it.
--- 
--- The second parameter is a map of tags to attribute and element content parsers.
--- 
--- The third parameter is a fallback parser. The outer Maybe indicates whether it succeeds,
--- and the inner Maybe whether an element should be added to the output list.
--- 
--- This function accumulates a list of elements for each step that produces one.
-tagsPermute :: (Monad m, Ord a) 
-            => (Name -> a) 
-            -> Map.Map a (AttrParser b, b -> Iteratee Event m (Maybe c))
-            -> Iteratee Event m (Maybe (Maybe c))
-            -> Iteratee Event m (Maybe [c])
-tagsPermute f m fb = do
-      (rest, result) <- tags go (\s -> fmap (\a -> (s, a)) <$> fb) m
-      return (guard (Map.null rest) >> Just result)
-    where go s name = case Map.lookup k s of
-                        Nothing          -> Nothing
-                        Just (attr, sub) -> Just (attr, fmap adaptSub . sub)
-              where k = f name
-                    adaptSub Nothing = Nothing
-                    adaptSub a       = Just (Map.delete k s, a)
-
--- | Specifies how often an element may repeat.
-data Repetition
-    = Repeat { 
-        repetitionNeedsMore :: Bool
-      , repetitionAllowsMore :: Bool
-      , repetitionConsume :: Repetition
-      }
-
--- | Element may never occur.
-repeatNever :: Repetition
-repeatNever = Repeat False False repeatNever
-
--- | Element may occur exactly once.
-repeatOnce :: Repetition
-repeatOnce = Repeat True True repeatNever
-
--- | Element may occur up to once.
-repeatOptional :: Repetition
-repeatOptional = Repeat False True repeatNever
-
--- | Element may occur any number of times.
-repeatMany :: Repetition
-repeatMany = Repeat False True repeatMany
-
--- | Element may occur at least once.
-repeatSome :: Repetition
-repeatSome = Repeat True True repeatMany
-
--- | Parse a permutation of tags, with some repeating elements.
--- 
--- The first parameter is a function to preprocess Names for equality testing, because
--- sometimes XML documents contain inconsistent naming. This allows the user to deal
--- with it.
--- 
--- The second parameter is a map of tags to attribute and element content parsers.
--- It also specifies how often elements may repeat.
--- 
--- The third parameter is a fallback parser. The outer Maybe indicates whether it succeeds,
--- and the inner Maybe whether an element should be added to the output list.
--- 
--- This function accumulates a list of elements for each step that produces one.
-tagsPermuteRepetition :: (Monad m, Ord a)
-                      => (Name -> a)
-                      -> Map.Map a (Repetition, AttrParser b, b -> Iteratee Event m (Maybe c))
-                      -> Iteratee Event m (Maybe (Maybe (a, c)))
-                      -> Iteratee Event m (Maybe [(a,c)])
-tagsPermuteRepetition f m' fb = do
-      let m = Map.filter (\(r, _, _) -> repetitionAllowsMore r) m'
-      (rest, result) <- tags go (\s -> fmap (\a -> (s, a)) <$> fb) m
-      return (guard (finished rest) >> Just result)
-    where
-      finished = Map.null . Map.filter (\(r, _, _) -> repetitionNeedsMore r)
-      go s name = do
-                    let k = f name
-                    (rep, attr, sub) <- Map.lookup k s
-                    let adaptSub Nothing  = Nothing
-                        adaptSub (Just v) = let s' = case repetitionConsume rep of
-                                                       rep' | repetitionAllowsMore rep' -> Map.insert k (rep', attr, sub) s
-                                                            | otherwise                 -> Map.delete k s
-                                            in Just (s', Just (k, v))
-                    Just (attr, fmap adaptSub . sub)
-
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
+--
+-- > orE a b = choose [a, b]
 orE :: Monad m => Iteratee Event m (Maybe a) -> Iteratee Event m (Maybe a) -> Iteratee Event m (Maybe a)
 orE a b = do
   x <- a
@@ -641,45 +505,6 @@ choose (i:is) = do
     case x of
         Nothing -> choose is
         Just a -> return $ Just a
-
--- | Like 'choose', but also returns the list of elements that were /not/ chosen.
-chooseSplit :: (Monad m) 
-            => (a -> Iteratee Event m (Maybe b))  -- ^ Element-specific parsers
-            -> [a] -- ^ Elements to choose from
-            -> Iteratee Event m (Maybe (b, [a]))
-chooseSplit f xs = go xs []
-    where
-      go [] _ = return Nothing
-      go (i:is) is' = do
-        x <- f i
-        case x of
-          Nothing -> go is (i : is')
-          Just a -> return $ Just (a, is' ++ is)
-
--- | Permute all parsers until none return 'Just'.
-permute :: Monad m => (a -> Iteratee Event m (Maybe b)) -> [a] -> Iteratee Event m (Maybe [b])
-permute _ [] = return (Just [])
-permute f is = do
-    x <- chooseSplit f is
-    case x of
-      Nothing -> return Nothing
-      Just (a, is') -> fmap (a:) `fmap` permute f is'
-
--- | Permute all parsers until none return 'Just', but always test some fallback parsers.
-permuteFallback  :: (Monad m)
-                 => Iteratee Event m (Maybe [b])
-                 -> (a -> Iteratee Event m (Maybe b))
-                 -> [a]
-                 -> Iteratee Event m (Maybe [b])
-permuteFallback _ _ [] = return (Just [])
-permuteFallback fb f is = do
-    x <- chooseSplit f is
-    case x of
-      Nothing -> do y <- fb
-                    case y of
-                      Nothing -> return Nothing
-                      Just as -> fmap (as ++) `fmap` permuteFallback fb f is
-      Just (a, is') -> fmap (a:) `fmap` permuteFallback fb f is'
 
 -- | Force an optional parser into a required parser. All of the 'tag'
 -- functions, 'choose' and 'many' deal with 'Maybe' parsers. Use this when you
@@ -809,108 +634,6 @@ many i =
         case x of
             Nothing -> return $ front []
             Just y -> go $ front . (:) y
-
--- Internal Iteratee used in processSiblings and processElem
-processNested :: (Monad m, Monad m') => Bool -> (forall c. m' c -> m c) -> Iteratee Event m' b -> Iteratee Event m (Maybe b)
-processNested isElem f k0 = E.continue (loop (Just []) k0)
-    where
---        loop :: (Monad m, Monad m') => Maybe [Name] -> Iteratee Event m' b -> Stream Event -> Iteratee Event m (Maybe b)
-        loop mns k (Chunks xs) = 
-            case (isElem, skipNames mns [] xs) of
-                (_, (Nothing, _, _)) -> E.yield Nothing (Chunks xs)
-                (False, (ns', ts, [])) -> continue ns' ts
-                (_, (Just [], ts, xs')) -> yield' ts xs'
-                (True, (ns', ts, [])) -> continue ns' ts
-                (_, (Just [n1,n2], _, _)) -> throwError $ XmlException ("Unbalanced xml-tree. Name '" ++ show n1 ++ "' is not corresponding to '"  
-                                                    ++ show n2 ++ "'. (Error in processNested)") (Just $ EventEndElement n2)
-                _ -> throwError $ XmlException "Unknown error. (Error in processNested)" Nothing
-            where
-                continue ns' ts = E.continue (loop ns' $ E.enumList 1 ts $$ k)
-                yield' ts xs' = do
-                    t <- E.Iteratee $ liftM (flip E.Yield (Chunks [])) $ f $ E.run $ E.enumList 1 ts $$ k
-                    case t of
-                        Left err -> throwError err
-                        Right t' -> E.yield (Just t') (Chunks xs')
-
-                skipNames :: Maybe [Name] -> [Event] -> [Event] -> (Maybe [Name], [Event], [Event])
-                skipNames ns0 ts0 es0 = go ns0 ts0 es0
-                    where
-                        go ns ts [] = (ns,ts,[])
-                        go Nothing _ _ = (ns0,ts0,es0)
-                        go (Just ns) ts xxs@(x:xss) = 
-                            case x of
-                                (EventBeginElement n _) -> go (Just $ n:ns) (ts ++ [x]) xss
-                                (EventEndElement n)
-                                    | isElem && null ns -> (Nothing, ts, xxs)
-                                    | isElem && null (tail ns) -> (Just [], ts ++ [x], xss)
-                                    | not isElem && null ns -> (Just [], ts, xxs)
-                                    | n == head ns -> go (Just $ tail ns) (ts ++ [x]) xss
-                                    | otherwise -> (Just [head ns, n], ts, xxs)
-                                _ -> go (Just ns) (ts ++ [x]) xss
-        loop _ _ EOF = throwError $ XmlException "Unbalanced xml-tree. (Error in processNested - EOF)" Nothing
-        
-                    
--- | Iteratee to process sibling elements in separate iteratee in separate monad.
-processSiblings' :: (Monad m, Monad m') => (forall c. m' c -> m c) -> Iteratee Event m' b -> Iteratee Event m b
-processSiblings' f = liftM fromJust . processNested False f
-
--- | Iteratee to process sibling elements in separate iteratee.
-processSiblings :: (Monad m) => Iteratee Event m b -> Iteratee Event m b
-processSiblings = processSiblings' id
-
--- | Iteratee to process next element in separate iteratee in separate monad.
-processElem' :: (Monad m, Monad m') => (forall c. m' c -> m c) -> Iteratee Event m' b -> Iteratee Event m (Maybe b)
-processElem' f i = EL.dropWhile (\e->case e of
-        EventBeginElement _ _ -> False
-        EventEndElement _ -> False
-        _ -> True
-    ) >> processNested True f i
-    
--- | Iteratee to process next element in separate iteratee.
-processElem :: (Monad m) => Iteratee Event m b -> Iteratee Event m (Maybe b)
-processElem = processElem' id
-        
-iterIgnore :: (Monad m) => Iteratee a m ()
-iterIgnore = E.returnI $ E.Yield () EOF
-
--- | Iteratee to skip sibling elements.
-ignoreSiblings :: Monad m => Iteratee Event m ()
-ignoreSiblings = processSiblings iterIgnore
-   
--- | Iteratee to skip the next element. Skips all events before the next
--- element as well. Returns False if an element's end event is encountered
--- before any element's begin events.
-ignoreElem :: Monad m => Iteratee Event m Bool
-ignoreElem = liftM (maybe False $ const True) $ processElem iterIgnore
-
--- | Skip the sibling elements until iteratee returns 'Just'.
-skipTill :: Monad m => Iteratee Event m (Maybe a) -> Iteratee Event m (Maybe a)
-skipTill i = go
-    where
-        go = i >>= \x -> case x of
-            Nothing -> ignoreElem >>= (\b -> if b then go else return Nothing)
-            _ -> return x
-
--- | Combinator to skip the siblings element. 
-skipSiblings :: Monad m => Iteratee Event m a -> Iteratee Event m a
-skipSiblings i = i >>= \r -> ignoreSiblings >> return r
-
--- | Combinator to skip the attributes.
-skipAttrs :: AttrParser a -> AttrParser a
-skipAttrs i = i >>= \r -> ignoreAttrs >> return r
-
--- | Simple AttrParser utilities
--- | Parse list of required and list of optional attributes into lists of Text
-parseAttrsT :: [Name] -> [Name] -> AttrParser ([Text], [Maybe Text])
-parseAttrsT reqs opts = liftM2 (,) (mapM requireAttr reqs) (mapM optionalAttr opts)
-
--- | Parse list of required and list of optional attributes into lists of String
-parseAttrsS :: [Name] -> [Name] -> AttrParser ([String], [Maybe String])
-parseAttrsS reqs opts = fmap (map T.unpack *** map (fmap T.unpack)) (parseAttrsT reqs opts)
-
--- | Parse part of atrributes into [String] and other part into [Text]
-parseAttrsST :: [Name] -> [Name] -> [Name] -> [Name] -> AttrParser (([String], [Maybe String]), ([Text], [Maybe Text]))
-parseAttrsST reqs opts reqst optst = liftM2 (,) (parseAttrsS reqs opts) (parseAttrsT reqst optst)
 
 type DecodeEntities = Text -> Content
 
