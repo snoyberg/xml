@@ -18,10 +18,14 @@ import Blaze.ByteString.Builder.Char.Utf8 (writeChar, fromText)
 import Data.Monoid (mconcat, mempty, mappend)
 import Data.ByteString.Char8 ()
 import Data.Map (Map)
+import qualified Blaze.ByteString.Builder.Char8 as BC8
+
+oneSpace :: Builder
+oneSpace = copyByteString " "
 
 data Token = TokenBeginDocument [TAttribute]
            | TokenInstruction Instruction
-           | TokenBeginElement TName [TAttribute] Bool
+           | TokenBeginElement TName [TAttribute] Bool Int -- ^ indent
            | TokenEndElement TName
            | TokenContent Content
            | TokenComment Text
@@ -30,7 +34,8 @@ data Token = TokenBeginDocument [TAttribute]
     deriving Show
 tokenToBuilder :: Token -> Builder
 tokenToBuilder (TokenBeginDocument attrs) =
-    mconcat $ fromByteString "<?xml" : foldAttrs attrs [fromByteString "?>\n"]
+    mconcat $ fromByteString "<?xml"
+        : foldAttrs oneSpace attrs [fromByteString "?>\n"]
 tokenToBuilder (TokenInstruction (Instruction target data_)) = mconcat
     [ fromByteString "<?"
     , fromText target
@@ -38,12 +43,21 @@ tokenToBuilder (TokenInstruction (Instruction target data_)) = mconcat
     , fromText data_
     , fromByteString "?>"
     ]
-tokenToBuilder (TokenBeginElement name attrs isEmpty) = mconcat
+tokenToBuilder (TokenBeginElement name attrs isEmpty indent) = mconcat
     $ fromByteString "<"
     : tnameToText name
-    : foldAttrs attrs
+    : foldAttrs
+        (if indent == 0 || lessThan3 attrs
+            then oneSpace
+            else BC8.fromString ('\n' : replicate indent ' '))
+        attrs
     [ if isEmpty then fromByteString "/>" else fromByteString ">"
     ]
+  where
+    lessThan3 [] = True
+    lessThan3 [_] = True
+    lessThan3 [_, _] = True
+    lessThan3 _ = False
 tokenToBuilder (TokenEndElement name) = mconcat
     [ fromByteString "</"
     , tnameToText name
@@ -100,12 +114,13 @@ contentToText (ContentEntity e) = mconcat
 
 type TAttribute = (TName, [Content])
 
-foldAttrs :: [TAttribute] -> [Builder] -> [Builder]
-foldAttrs attrs rest' =
+foldAttrs :: Builder -- ^ before
+          -> [TAttribute] -> [Builder] -> [Builder]
+foldAttrs before attrs rest' =
     foldr go rest' attrs
   where
     go (key, val) rest =
-        fromByteString " "
+        before
       : tnameToText key
       : fromByteString "=\""
       : foldr go' (fromByteString "\"" : rest) val
