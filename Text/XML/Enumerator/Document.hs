@@ -158,12 +158,16 @@ fromEvents = do
             Just (EventBeginDoctype name meid) -> do
                 EL.drop 1
                 dropTillDoctype
-                return (Just $ Doctype name meid [])
+                return (Just $ Doctype name meid)
             _ -> return Nothing
     dropTillDoctype = do
         x <- EL.head
         case x of
-            Just (EventDeclaration _) -> dropTillDoctype
+            -- Leaving the following line commented so that the intention of
+            -- this function stays clear. I figure in the future xml-types will
+            -- be expanded again to support some form of EventDeclaration
+            --
+            -- Just (EventDeclaration _) -> dropTillDoctype
             Just EventEndDoctype -> return ()
             _ -> throwError $ InvalidEventStream $ "Invalid event during doctype, got: " ++ show x
     goE = do
@@ -200,7 +204,7 @@ toEvents (Document prol root epi) =
     goM (x:xs) = (goM' x :) . goM xs
     goM' (MiscInstruction i) = EventInstruction i
     goM' (MiscComment t) = EventComment t
-    goD (Doctype name meid _) =
+    goD (Doctype name meid) =
         (:) (EventBeginDoctype name meid)
       . (:) EventEndDoctype
     goE (Element name as ns) =

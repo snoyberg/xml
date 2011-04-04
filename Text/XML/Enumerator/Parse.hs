@@ -153,7 +153,6 @@ tokenToEvent n (TokenBeginElement name as isClosed) =
     n' = if isClosed then n else l' : n
     fixAttName level (name', val) = (tnameToName True level name', val)
     begin = EventBeginElement (tnameToName False l' name)
-          $ Map.fromList
           $ map (fixAttName l')
           $ as' []
     end = EventEndElement $ tnameToName False l' name
@@ -410,7 +409,6 @@ contentMaybe = do
     pc EventBeginDocument{} = Ignore
     pc EventEndDocument = Ignore
     pc EventBeginDoctype{} = Ignore
-    pc EventDeclaration{} = Ignore
     pc EventEndDoctype = Ignore
     pc EventInstruction{} = Ignore
     pc EventComment{} = Ignore
@@ -451,7 +449,7 @@ tag checkName attrParser f = do
         Just (EventBeginElement name as) ->
             case checkName name of
                 Just y ->
-                    case runAttrParser' (attrParser y) $ Map.toList as of
+                    case runAttrParser' (attrParser y) as of
                         Left e -> throwError e
                         Right z -> do
                             EL.drop 1
@@ -471,7 +469,6 @@ tag checkName attrParser f = do
                     Just EventBeginDocument -> True
                     Just EventEndDocument -> True
                     Just EventBeginDoctype{} -> True
-                    Just EventDeclaration{} -> True
                     Just EventEndDoctype -> True
                     Just EventInstruction{} -> True
                     Just EventBeginElement{} -> False

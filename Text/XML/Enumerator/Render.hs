@@ -72,7 +72,6 @@ eventToToken s EventEndDocument = (id, s)
 eventToToken s (EventInstruction i) = ((:) (TokenInstruction i), s)
 eventToToken s (EventBeginDoctype n meid) = ((:) (TokenDoctype n meid), s)
 eventToToken s EventEndDoctype = (id, s)
-eventToToken s (EventDeclaration _) = (id, s)
 eventToToken s (EventCDATA t) = ((:) (TokenCDATA t), s)
 eventToToken s (EventBeginElement name attrs) = mkBeginToken False s name attrs
 eventToToken s (EventEndElement name) =
@@ -95,7 +94,7 @@ nameToTName (NSLevel def sl) (Name name (Just ns) _)
             Nothing -> error "nameToTName"
             Just pref -> TName (Just pref) name
 
-mkBeginToken :: Bool -> Stack -> Name -> Map Name [Content]
+mkBeginToken :: Bool -> Stack -> Name -> [(Name, [Content])]
              -> ([Token] -> [Token], Stack)
 mkBeginToken isClosed s name attrs =
     ((:) (TokenBeginElement tname tattrs2 isClosed),
@@ -105,7 +104,7 @@ mkBeginToken isClosed s name attrs =
                 [] -> NSLevel Nothing Map.empty
                 sl':_ -> sl'
     (sl1, tname, tattrs1) = newElemStack prevsl name
-    (sl2, tattrs2) = foldr newAttrStack (sl1, tattrs1) $ Map.toList attrs
+    (sl2, tattrs2) = foldr newAttrStack (sl1, tattrs1) attrs
 
 newElemStack :: NSLevel -> Name -> (NSLevel, TName, [TAttribute])
 newElemStack nsl@(NSLevel def _) (Name local ns _)

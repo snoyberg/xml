@@ -104,7 +104,7 @@ documentParseRender =
     go x = x @=? D.parseLBS_ (D.renderLBS x) decodeEntities
     docs =
         [ Document (Prologue [] Nothing [])
-                   (Element "foo" Map.empty [])
+                   (Element "foo" [] [])
                    []
         , D.parseLBS_
             "<?xml version=\"1.0\"?>\n<!DOCTYPE foo>\n<foo/>"
