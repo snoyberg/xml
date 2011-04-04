@@ -34,8 +34,8 @@ data Token = TokenBeginDocument [TAttribute]
     deriving Show
 tokenToBuilder :: Token -> Builder
 tokenToBuilder (TokenBeginDocument attrs) =
-    mconcat $ fromByteString "<?xml"
-        : foldAttrs oneSpace attrs [fromByteString "?>\n"]
+    fromByteString "<?xml"
+    `mappend` foldAttrs oneSpace attrs (fromByteString "?>\n")
 tokenToBuilder (TokenInstruction (Instruction target data_)) = mconcat
     [ fromByteString "<?"
     , fromText target
@@ -43,16 +43,15 @@ tokenToBuilder (TokenInstruction (Instruction target data_)) = mconcat
     , fromText data_
     , fromByteString "?>"
     ]
-tokenToBuilder (TokenBeginElement name attrs isEmpty indent) = mconcat
-    $ fromByteString "<"
-    : tnameToText name
-    : foldAttrs
+tokenToBuilder (TokenBeginElement name attrs isEmpty indent) =
+      copyByteString "<"
+    `mappend` tnameToText name
+    `mappend` foldAttrs
         (if indent == 0 || lessThan3 attrs
             then oneSpace
             else BC8.fromString ('\n' : replicate indent ' '))
         attrs
-    [ if isEmpty then fromByteString "/>" else fromByteString ">"
-    ]
+        (if isEmpty then fromByteString "/>" else fromByteString ">")
   where
     lessThan3 [] = True
     lessThan3 [_] = True
@@ -115,17 +114,19 @@ contentToText (ContentEntity e) = mconcat
 type TAttribute = (TName, [Content])
 
 foldAttrs :: Builder -- ^ before
-          -> [TAttribute] -> [Builder] -> [Builder]
+          -> [TAttribute]
+          -> Builder
+          -> Builder
 foldAttrs before attrs rest' =
     foldr go rest' attrs
   where
     go (key, val) rest =
-        before
-      : tnameToText key
-      : fromByteString "=\""
-      : foldr go' (fromByteString "\"" : rest) val
+      before
+      `mappend` tnameToText key
+      `mappend` copyByteString "=\""
+      `mappend` foldr go' (fromByteString "\"" `mappend` rest) val
     go' (ContentText t) rest =
-        fromWriteList h (T.unpack t) : rest
+        fromWriteList h (T.unpack t) `mappend` rest
       where
         h '<' = writeByteString "&lt;"
         h '>' = writeByteString "&gt;"
@@ -135,7 +136,10 @@ foldAttrs before attrs rest' =
         -- quoted
         h c   = writeChar c
     go' (ContentEntity t) rest =
-        fromByteString "&" : fromText t : fromByteString ";" : rest
+        fromByteString "&"
+        `mappend` fromText t
+        `mappend` fromByteString ";"
+        `mappend` rest
 
 instance IsString TName where
     fromString = TName Nothing . T.pack
