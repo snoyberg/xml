@@ -2,10 +2,12 @@
 module Text.XML.Enumerator.Document
     ( -- * Non-streaming functions
       writeFile
+    , writePrettyFile
     , readFile
     , readFile_
       -- * Lazy bytestrings
     , renderLBS
+    , prettyLBS
     , parseLBS
     , parseLBS_
       -- * Streaming functions
@@ -14,6 +16,10 @@ module Text.XML.Enumerator.Document
     , renderBuilder
     , renderBytes
     , renderText
+      -- ** Pretty versions
+    , prettyBuilder
+    , prettyBytes
+    , prettyText
       -- * Exceptions
     , InvalidEventStream (InvalidEventStream)
     ) where
@@ -56,9 +62,19 @@ writeFile :: FilePath -> Document -> IO ()
 writeFile fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->
     run_ $ renderBytes doc $$ iterHandle h
 
+-- | Pretty prints via 'prettyBytes'.
+writePrettyFile :: FilePath -> Document -> IO ()
+writePrettyFile fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->
+    run_ $ prettyBytes doc $$ iterHandle h
+
 renderLBS :: Document -> L.ByteString
 renderLBS doc =
     L.fromChunks $ unsafePerformIO $ lazyConsume $ renderBytes doc
+
+-- | Pretty prints via 'prettyBytes'.
+prettyLBS :: Document -> L.ByteString
+prettyLBS doc =
+    L.fromChunks $ unsafePerformIO $ lazyConsume $ prettyBytes doc
 
 parseLBS :: L.ByteString -> P.DecodeEntities -> Either SomeException Document
 parseLBS lbs de = runIdentity
@@ -103,6 +119,15 @@ lazyConsume enum = do
 data InvalidEventStream = InvalidEventStream String
     deriving (Show, Typeable)
 instance Exception InvalidEventStream
+
+prettyBuilder :: MonadIO m => Document -> Enumerator Builder m a
+prettyBuilder doc = enumList 8 (toEvents doc) `joinE` R.prettyBuilder
+
+prettyBytes :: MonadIO m => Document -> Enumerator ByteString m a
+prettyBytes doc = enumList 8 (toEvents doc) `joinE` R.prettyBytes
+
+prettyText :: MonadIO m => Document -> Enumerator Text m a
+prettyText doc = enumList 8 (toEvents doc) `joinE` R.prettyText
 
 renderBuilder :: MonadIO m => Document -> Enumerator Builder m a
 renderBuilder doc = enumList 8 (toEvents doc) `joinE` R.renderBuilder
