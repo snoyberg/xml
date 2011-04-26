@@ -1,5 +1,5 @@
 name:            xml-enumerator
-version:         0.3.0
+version:         0.3.1
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michaels@suite-sol.com>
@@ -31,6 +31,7 @@ library
     exposed-modules: Text.XML.Enumerator.Parse
                      Text.XML.Enumerator.Render
                      Text.XML.Enumerator.Document
+                     Text.XML.Enumerator.Cursor
     other-modules:   Text.XML.Enumerator.Token
     ghc-options:     -Wall
 
