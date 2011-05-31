@@ -39,7 +39,7 @@ parent c = case parent' c of
              Just p -> [p]
 
 precedingSibling :: Axis
-precedingSibling = reverse . ($ []) . precedingSibling'
+precedingSibling = ($ []) . precedingSibling'
 
 followingSibling :: Axis
 followingSibling = ($ []) . followingSibling'
@@ -67,11 +67,8 @@ toCursor' par pre fol n =
         me' = toCursor' (Just me) pre' fol' n'
         fol' = go (pre' . (:) me') ns'
 
-preceding' :: Axis
-preceding' c = precedingSibling' c $ parent c >>= preceding'
-
 preceding :: Axis
-preceding = reverse . preceding'
+preceding c = precedingSibling' c $ parent c >>= preceding
 
 following :: Axis
 following c = followingSibling' c $ parent c >>= following
