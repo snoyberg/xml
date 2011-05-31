@@ -78,14 +78,3 @@ ancestor c =
 
 descendant :: Cursor -> [Cursor]
 descendant = concatMap (\c -> c : descendant c) . children
-
-{-
-descendant :: Cursor -> [Cursor]
-descendant =
-    go' . map go . children
-  where
-    go :: Cursor -> DiffCursor
-    go c = (c :) . go' . map go (children c)
-    go' :: [DiffCursor] -> DiffCursor
-    go' = undefined
--}
