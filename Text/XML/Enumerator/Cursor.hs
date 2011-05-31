@@ -58,14 +58,10 @@ toCursor' par pre fol n =
         me' = toCursor' (Just me) pre' fol' n'
         fol' = go (pre' . (:) me') ns'
 
-{- FIXME
-preceding :: Cursor -> [Cursor]
-preceding c =
-    precedingSibling' c
-        $ case parent c of
-            Nothing -> []
-            Just p -> p : preceding p
--}
+preceding' :: Cursor -> [Cursor]
+preceding' c = precedingSibling' c $ case parent c of Nothing -> []; Just p -> preceding p
+
+preceding = reverse . preceding'
 
 following :: Cursor -> [Cursor]
 following c = followingSibling' c $ case parent c of Nothing -> []; Just p -> following p
