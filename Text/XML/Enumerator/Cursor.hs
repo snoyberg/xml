@@ -76,6 +76,9 @@ ancestor c =
         Nothing -> []
         Just p -> p : ancestor p
 
+descendant :: Cursor -> [Cursor]
+descendant = concatMap (\c -> c : descendant c) . children
+
 {-
 descendant :: Cursor -> [Cursor]
 descendant =
