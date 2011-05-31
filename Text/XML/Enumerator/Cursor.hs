@@ -65,10 +65,10 @@ preceding c =
         $ case parent c of
             Nothing -> []
             Just p -> p : preceding p
+-}
 
 following :: Cursor -> [Cursor]
-following
--}
+following c = followingSibling' c $ case parent c of Nothing -> []; Just p -> following p
 
 ancestor :: Cursor -> [Cursor]
 ancestor c =
