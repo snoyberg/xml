@@ -5,33 +5,43 @@ module Text.XML.Enumerator.Cursor
     , parent
     , precedingSibling
     , followingSibling
-    , children
+    , child
     , node
     , preceding
     , following
     , ancestor
     , descendant
+    , (>=>)
+    , orSelf
     ) where
 
 import Data.XML.Types
+import Control.Monad
+
+type Axis = Cursor -> [Cursor]
 
 type DiffCursor = [Cursor] -> [Cursor]
 
 data Cursor = Cursor
-    { parent :: Maybe Cursor
+    { parent' :: Maybe Cursor
     , precedingSibling' :: DiffCursor
     , followingSibling' :: DiffCursor
-    , children :: [Cursor]
+    , child :: [Cursor]
     , node :: Node
     }
 
 instance Show Cursor where
     show Cursor { node = n } = "Cursor @ " ++ show n
 
-precedingSibling :: Cursor -> [Cursor]
+parent :: Axis
+parent c = case parent' c of
+             Nothing -> []
+             Just p -> [p]
+
+precedingSibling :: Axis
 precedingSibling = reverse . ($ []) . precedingSibling'
 
-followingSibling :: Cursor -> [Cursor]
+followingSibling :: Axis
 followingSibling = ($ []) . followingSibling'
 
 fromDocument :: Document -> Cursor
@@ -57,20 +67,20 @@ toCursor' par pre fol n =
         me' = toCursor' (Just me) pre' fol' n'
         fol' = go (pre' . (:) me') ns'
 
-preceding' :: Cursor -> [Cursor]
-preceding' c = precedingSibling' c $ case parent c of Nothing -> []; Just p -> preceding p
+preceding' :: Axis
+preceding' c = precedingSibling' c $ parent c >>= preceding'
 
-preceding :: Cursor -> [Cursor]
+preceding :: Axis
 preceding = reverse . preceding'
 
-following :: Cursor -> [Cursor]
-following c = followingSibling' c $ case parent c of Nothing -> []; Just p -> following p
+following :: Axis
+following c = followingSibling' c $ parent c >>= following
 
-ancestor :: Cursor -> [Cursor]
-ancestor c =
-    case parent c of
-        Nothing -> []
-        Just p -> p : ancestor p
+ancestor :: Axis
+ancestor = parent >=> (\p -> p : ancestor p)
 
-descendant :: Cursor -> [Cursor]
-descendant = concatMap (\c -> c : descendant c) . children
+descendant :: Axis
+descendant = child >=> (\c -> c : descendant c)
+
+orSelf :: Axis -> Axis
+orSelf ax c = c : ax c
