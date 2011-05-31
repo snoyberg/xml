@@ -18,6 +18,7 @@ module Text.XML.Enumerator.Cursor
 import Data.XML.Types
 import Control.Monad
 
+-- TODO: Consider [Cursor] -> [Cursor]?
 type Axis = Cursor -> [Cursor]
 
 type DiffCursor = [Cursor] -> [Cursor]
@@ -67,9 +68,13 @@ toCursor' par pre fol n =
         me' = toCursor' (Just me) pre' fol' n'
         fol' = go (pre' . (:) me') ns'
 
+-- TODO: This currently does not include the children of preceding elements.
+-- XPath's "preceding" does. It's probably good to have both.
 preceding :: Axis
 preceding c = precedingSibling' c $ parent c >>= preceding
 
+-- TODO: This currently does not include the children of following elements.
+-- XPath's "following" does. It's probably good to have both.
 following :: Axis
 following c = followingSibling' c $ parent c >>= following
 
