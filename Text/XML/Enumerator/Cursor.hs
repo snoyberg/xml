@@ -2,6 +2,7 @@ module Text.XML.Enumerator.Cursor
     ( Cursor
     , fromDocument
     , toCursor
+    , cut
     , parent
     , precedingSibling
     , followingSibling
@@ -33,6 +34,10 @@ data Cursor = Cursor
 
 instance Show Cursor where
     show Cursor { node = n } = "Cursor @ " ++ show n
+
+-- Idea: allow restricting the scope
+cut :: Cursor -> Cursor
+cut c = c { parent' = Nothing }
 
 parent :: Axis
 parent c = case parent' c of
