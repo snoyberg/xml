@@ -35,6 +35,9 @@ precedingSibling = ($ []) . precedingSibling'
 followingSibling :: Cursor -> [Cursor]
 followingSibling = ($ []) . followingSibling'
 
+fromDocument :: Document -> Cursor
+fromDocument = toCursor . NodeElement . documentRoot
+
 toCursor :: Node -> Cursor
 toCursor = toCursor' Nothing id id
 
