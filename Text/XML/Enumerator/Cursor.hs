@@ -26,6 +26,9 @@ data Cursor = Cursor
     , node :: Node
     }
 
+instance Show Cursor where
+    show Cursor { node = n } = "Cursor @ " ++ show n
+
 precedingSibling :: Cursor -> [Cursor]
 precedingSibling = ($ []) . precedingSibling'
 
