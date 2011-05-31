@@ -1,17 +1,16 @@
 module Text.XML.Enumerator.Cursor
     ( Cursor
+    , fromDocument
     , toCursor
     , parent
     , precedingSibling
     , followingSibling
     , children
     , node
-    {-
     , preceding
     , following
-    -}
     , ancestor
---    , descendant
+    , descendant
     ) where
 
 import Data.XML.Types
