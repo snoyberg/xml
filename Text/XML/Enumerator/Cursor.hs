@@ -61,6 +61,7 @@ toCursor' par pre fol n =
 preceding' :: Cursor -> [Cursor]
 preceding' c = precedingSibling' c $ case parent c of Nothing -> []; Just p -> preceding p
 
+preceding :: Cursor -> [Cursor]
 preceding = reverse . preceding'
 
 following :: Cursor -> [Cursor]
