@@ -30,7 +30,7 @@ instance Show Cursor where
     show Cursor { node = n } = "Cursor @ " ++ show n
 
 precedingSibling :: Cursor -> [Cursor]
-precedingSibling = ($ []) . precedingSibling'
+precedingSibling = reverse . ($ []) . precedingSibling'
 
 followingSibling :: Cursor -> [Cursor]
 followingSibling = ($ []) . followingSibling'
@@ -56,7 +56,7 @@ toCursor' par pre fol n =
         (:) me' . fol'
       where
         me' = toCursor' (Just me) pre' fol' n'
-        fol' = go ((:) me' . pre') ns'
+        fol' = go (pre' . (:) me') ns'
 
 {- FIXME
 preceding :: Cursor -> [Cursor]
