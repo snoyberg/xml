@@ -60,6 +60,7 @@ main = hspec $ descriptions $
         , it "has correct checkName" cursorCheckName
         , it "has correct anyElement" cursorAnyElement
         , it "has correct element" cursorElement
+        , it "has correct content" cursorContent
         ]
     ]
 
@@ -215,3 +216,4 @@ cursorCheckName = map nameLocalName (name $ Cu.descendant cursor >>= Cu.checkNam
     where f n = "bar" `T.isPrefixOf` nameLocalName n
 cursorAnyElement = map nameLocalName (name $ Cu.descendant cursor >>= Cu.anyElement) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3"
 cursorElement = map nameLocalName (name $ Cu.descendant cursor >>= Cu.element "baz2") @?= ["baz2"]
+cursorContent = Cu.content cursor @?= []

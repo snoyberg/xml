@@ -20,6 +20,7 @@ module Text.XML.Enumerator.Cursor
     , checkName
     , anyElement
     , element
+    , content
     , (>=>)
     ) where
 
@@ -145,3 +146,8 @@ anyElement = checkElement (const True)
 
 element :: Name -> Axis
 element n = checkName (== n)
+
+content :: Cursor -> [Content]
+content = orSelf descendant >=> f . node
+    where f (NodeContent c) = [c]
+          f _               = []
