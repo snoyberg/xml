@@ -22,7 +22,7 @@ import Text.XML.Enumerator.Parse (decodeEntities)
 import qualified Text.XML.Enumerator.Parse as P
 import qualified Text.XML.Enumerator.Render as R
 import qualified Text.XML.Enumerator.Cursor as Cu
-import Text.XML.Enumerator.Cursor ((./), (.//))
+import Text.XML.Enumerator.Cursor ((./), (.//), (..//))
 import qualified Data.Map as Map
 import qualified Data.ByteString.Lazy.Char8 as L
 import Control.Monad.IO.Class (liftIO)
@@ -63,7 +63,7 @@ main = hspec $ descriptions $
         , it "has correct element" cursorElement
         , it "has correct content" cursorContent
         , it "has correct attribute" cursorAttribute
-        , it "has correct ./ and .//" cursorDeep
+        , it "has correct ./ and .// and ..//" cursorDeep
         ]
     ]
 
@@ -224,4 +224,6 @@ cursorContent = do
   Cu.content cursor @?= []
   (Cu.orSelf Cu.descendant cursor >>= Cu.content) @?= [ContentText "a",ContentText "b"]
 cursorAttribute = Cu.attribute "attr" cursor @?= [[ContentText "x"]]
-cursorDeep = (Cu.element "foo" ./ Cu.element "bar2" .// Cu.attribute "attr") cursor @?= [[ContentText "y"]]
+cursorDeep = do
+  (Cu.element "foo" ./ Cu.element "bar2" .// Cu.attribute "attr") cursor @?= [[ContentText "y"]]
+  (return ..// Cu.attribute "attr") cursor @?= [[ContentText "x"], [ContentText "y"]]

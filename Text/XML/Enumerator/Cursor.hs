@@ -17,6 +17,7 @@ module Text.XML.Enumerator.Cursor
     , orSelf
     , (./)
     , (.//)
+    , (..//)
     , check
     , checkNode
     , checkElement
@@ -143,6 +144,9 @@ f ./ g = f >=> child >=> g
 
 (.//) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
 f .// g = f >=> descendant >=> g
+
+(..//) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
+f ..// g = f >=> orSelf descendant >=> g
 
 check :: Boolean b => (Cursor -> b) -> Axis
 check f c = case bool $ f c of
