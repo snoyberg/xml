@@ -54,6 +54,7 @@ main = hspec $ descriptions $
         , it "has correct followingSibling" cursorFollowingSib
         , it "has correct descendant" cursorDescendant
         , it "has correct check" cursorCheck
+        , it "has correct checkNode" cursorCheckNode
         , it "has correct checkElement" cursorCheckElement
         ]
     ]
@@ -199,7 +200,8 @@ cursorFollowing = do
 cursorPrecedingSib = map nameLocalName (name (Cu.precedingSibling baz2)) @?= ["baz1"]
 cursorFollowingSib = map nameLocalName (name (Cu.followingSibling baz2)) @?= ["baz3"]
 cursorDescendant = map nameLocalName (name $ Cu.descendant cursor) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3"
-cursorCheck = map nameLocalName (name $ Cu.descendant cursor >>= Cu.check f) @?= T.words "bar1 bar2 bar3"
+cursorCheck = null (Cu.descendant cursor >>= Cu.check (const False)) @?= True
+cursorCheckNode = map nameLocalName (name $ Cu.descendant cursor >>= Cu.checkNode f) @?= T.words "bar1 bar2 bar3"
     where f (NodeElement e) = "bar" `T.isPrefixOf` nameLocalName (elementName e)
           f _               = False
 cursorCheckElement = map nameLocalName (name $ Cu.descendant cursor >>= Cu.checkElement f) @?= T.words "bar1 bar2 bar3"

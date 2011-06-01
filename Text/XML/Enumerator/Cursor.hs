@@ -14,6 +14,7 @@ module Text.XML.Enumerator.Cursor
     , descendant
     , orSelf
     , check
+    , checkNode
     , checkElement
     , (>=>)
     ) where
@@ -114,10 +115,13 @@ descendant = child >=> (\c -> c : descendant c)
 orSelf :: Axis -> Axis
 orSelf ax c = c : ax c
 
-check :: (Node -> Bool) -> Axis
-check f c = case f (node c) of
+check :: (Cursor -> Bool) -> Axis
+check f c = case f c of
               False -> []
               True -> [c]
+
+checkNode :: (Node -> Bool) -> Axis
+checkNode f c = check (f . node) c
 
 checkElement :: (Element -> Bool) -> Axis
 checkElement f c = case node c of
