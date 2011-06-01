@@ -153,10 +153,11 @@ testOrE = P.parseLBS_ input decodeEntities $ do
         ]
 
 
-name :: [Cursor] -> [Name]
+name :: [Cu.Cursor] -> [Name]
 name [] = []
-name (Cursor { node = NodeElement (Element n _ _) }:cs) = n : name cs
-name (_:cs) = name cs
+name (c:cs) = ($ name cs) $ case Cu.node c of
+                              NodeElement e -> (elementName e :)
+                              _ -> id
 
 cursor =
     Cu.toCursor $ NodeElement e
