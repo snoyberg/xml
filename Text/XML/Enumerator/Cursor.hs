@@ -20,6 +20,7 @@ module Text.XML.Enumerator.Cursor
 
 import Data.XML.Types
 import Control.Monad
+import Data.List (foldl')
 
 -- TODO: Consider [Cursor] -> [Cursor]?
 type Axis = Cursor -> [Cursor]
@@ -75,21 +76,15 @@ toCursor' par pre fol n =
         me' = toCursor' (Just me) pre' fol' n'
         fol' = go (pre' . (:) me') ns'
 
--- TODO: This currently does not include the children of preceding elements.
--- XPath's "preceding" does. It's probably good to have both.
 preceding :: Axis
 preceding c =
-    go (precedingSibling' c) ++ (parent c >>= preceding')
+    go (precedingSibling' c []) (parent c >>= preceding')
   where
     preceding' x = x : preceding x
-    go x =
-        concatMap go' y -- FIXME very inefficient
-      where
-        y = x []
-    go' x = reverse (x : descendant x)
+    go x y = foldl' (\b a -> go' a b) y x
+    go' :: Cursor -> DiffCursor
+    go' x rest = foldl' (\b a -> go' a b) (x : rest) (child x)
 
--- TODO: This currently does not include the children of following elements.
--- XPath's "following" does. It's probably good to have both.
 following :: Axis
 following c =
     go (followingSibling' c) (parent c >>= following)

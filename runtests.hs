@@ -175,10 +175,15 @@ cursor =
 bar2 = Cu.child cursor !! 1
 baz2 = Cu.child bar2 !! 1
 
+bar3 = Cu.child cursor !! 2
+bin2 = Cu.child bar3 !! 1
+
 cursorParent = Cu.name (Cu.parent bar2) @?= ["foo"]
 cursorAncestor = Cu.name (Cu.ancestor baz2) @?= ["bar2", "foo"]
 cursorOrSelf = Cu.name (Cu.orSelf Cu.ancestor baz2) @?= ["baz2", "bar2", "foo"]
-cursorPreceding = map nameLocalName (Cu.name (Cu.preceding baz2)) @?= ["baz1", "bar2", "bar1", "foo"]
+cursorPreceding = do
+    map nameLocalName (Cu.name (Cu.preceding baz2)) @?= ["baz1", "bar2", "bar1", "foo"]
+    map nameLocalName (Cu.name (Cu.preceding bin2)) @?= T.words "bin1 bar3 baz3 baz2 baz1 bar2 bar1 foo"
 cursorFollowing = map nameLocalName (Cu.name (Cu.following baz2)) @?= ["baz3", "bar3", "bin1", "bin2", "bin3"]
 cursorPrecedingSib = map nameLocalName (Cu.name (Cu.precedingSibling baz2)) @?= ["baz1"]
 cursorFollowingSib = map nameLocalName (Cu.name (Cu.followingSibling baz2)) @?= ["baz3"]
