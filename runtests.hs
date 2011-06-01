@@ -177,10 +177,11 @@ cursor =
         ,    "<bar2>"
         ,       "<baz1/>"
         ,       "<baz2/>"
-        ,       "<baz3/>"
+        ,       "<baz3>a</baz3>"
         ,    "</bar2>"
         ,    "<bar3>"
         ,       "<bin1/>"
+        ,       "b"
         ,       "<bin2/>"
         ,       "<bin3/>"
         ,    "</bar3>"
@@ -206,7 +207,7 @@ cursorPrecedingSib = map nameLocalName (name (Cu.precedingSibling baz2)) @?= ["b
 cursorFollowingSib = map nameLocalName (name (Cu.followingSibling baz2)) @?= ["baz3"]
 cursorDescendant = map nameLocalName (name $ Cu.descendant cursor) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3"
 cursorCheck = null (Cu.descendant cursor >>= Cu.check (const False)) @?= True
-cursorPredicate = map nameLocalName (name $ Cu.orSelf Cu.descendant cursor >>= Cu.predicate Cu.descendant) @?= T.words "foo bar2 bar3"
+cursorPredicate = map nameLocalName (name $ Cu.orSelf Cu.descendant cursor >>= Cu.predicate Cu.descendant) @?= T.words "foo bar2 baz3 bar3"
 cursorCheckNode = map nameLocalName (name $ Cu.descendant cursor >>= Cu.checkNode f) @?= T.words "bar1 bar2 bar3"
     where f (NodeElement e) = "bar" `T.isPrefixOf` nameLocalName (elementName e)
           f _               = False
@@ -216,4 +217,4 @@ cursorCheckName = map nameLocalName (name $ Cu.descendant cursor >>= Cu.checkNam
     where f n = "bar" `T.isPrefixOf` nameLocalName n
 cursorAnyElement = map nameLocalName (name $ Cu.descendant cursor >>= Cu.anyElement) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3"
 cursorElement = map nameLocalName (name $ Cu.descendant cursor >>= Cu.element "baz2") @?= ["baz2"]
-cursorContent = Cu.content cursor @?= []
+cursorContent = Cu.content cursor @?= [ContentText "a",ContentText "b"]
