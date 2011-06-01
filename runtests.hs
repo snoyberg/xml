@@ -152,6 +152,12 @@ testOrE = P.parseLBS_ input decodeEntities $ do
         , "</hello>"
         ]
 
+
+name :: [Cursor] -> [Name]
+name [] = []
+name (Cursor { node = NodeElement (Element n _ _) }:cs) = n : name cs
+name (_:cs) = name cs
+
 cursor =
     Cu.toCursor $ NodeElement e
   where
@@ -178,15 +184,15 @@ baz2 = Cu.child bar2 !! 1
 bar3 = Cu.child cursor !! 2
 bin2 = Cu.child bar3 !! 1
 
-cursorParent = Cu.name (Cu.parent bar2) @?= ["foo"]
-cursorAncestor = Cu.name (Cu.ancestor baz2) @?= ["bar2", "foo"]
-cursorOrSelf = Cu.name (Cu.orSelf Cu.ancestor baz2) @?= ["baz2", "bar2", "foo"]
+cursorParent = name (Cu.parent bar2) @?= ["foo"]
+cursorAncestor = name (Cu.ancestor baz2) @?= ["bar2", "foo"]
+cursorOrSelf = name (Cu.orSelf Cu.ancestor baz2) @?= ["baz2", "bar2", "foo"]
 cursorPreceding = do
-    map nameLocalName (Cu.name (Cu.preceding baz2)) @?= ["baz1", "bar1"]
-    map nameLocalName (Cu.name (Cu.preceding bin2)) @?= ["bin1", "baz3", "baz2", "baz1", "bar2", "bar1"]
+    map nameLocalName (name (Cu.preceding baz2)) @?= ["baz1", "bar1"]
+    map nameLocalName (name (Cu.preceding bin2)) @?= ["bin1", "baz3", "baz2", "baz1", "bar2", "bar1"]
 cursorFollowing = do
-    map nameLocalName (Cu.name (Cu.following baz2)) @?= ["baz3", "bar3", "bin1", "bin2", "bin3"]
-    map nameLocalName (Cu.name (Cu.following bar2)) @?= ["bar3", "bin1", "bin2", "bin3"]
-cursorPrecedingSib = map nameLocalName (Cu.name (Cu.precedingSibling baz2)) @?= ["baz1"]
-cursorFollowingSib = map nameLocalName (Cu.name (Cu.followingSibling baz2)) @?= ["baz3"]
-cursorDescendant = map nameLocalName (Cu.name $ Cu.descendant cursor) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3"
+    map nameLocalName (name (Cu.following baz2)) @?= ["baz3", "bar3", "bin1", "bin2", "bin3"]
+    map nameLocalName (name (Cu.following bar2)) @?= ["bar3", "bin1", "bin2", "bin3"]
+cursorPrecedingSib = map nameLocalName (name (Cu.precedingSibling baz2)) @?= ["baz1"]
+cursorFollowingSib = map nameLocalName (name (Cu.followingSibling baz2)) @?= ["baz3"]
+cursorDescendant = map nameLocalName (name $ Cu.descendant cursor) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3"

@@ -14,8 +14,6 @@ module Text.XML.Enumerator.Cursor
     , descendant
     , (>=>)
     , orSelf
-      -- not sure if we should keep these, at least good for testing
-    , name
     ) where
 
 import Data.XML.Types
@@ -113,8 +111,3 @@ descendant = child >=> (\c -> c : descendant c)
 
 orSelf :: Axis -> Axis
 orSelf ax c = c : ax c
-
-name :: [Cursor] -> [Name]
-name [] = []
-name (Cursor { node = NodeElement (Element n _ _) }:cs) = n : name cs
-name (_:cs) = name cs
