@@ -162,17 +162,21 @@ checkElement f c = case node c of
 checkName :: Boolean b => (Name -> b) -> Axis
 checkName f c = checkElement (f . elementName) c
 
+-- A node test * is true for any node of the principal node type. For example, child::* will select all element children of the context node [...]
 anyElement :: Axis
 anyElement = checkElement (const True)
 
+-- A node test that is a QName is true if and only if the type of the node (see [5 Data Model]) is the principal node type and has an expanded-name equal to the expanded-name specified by the QName.
 element :: Name -> Axis
 element n = checkName (== n)
 
+-- The node test text() is true for any text node.
 content :: Cursor -> [Content]
 content c = case node c of
               (NodeContent v) -> [v]
               _               -> []
 
+-- the attribute axis contains the attributes of the context node; the axis will be empty unless the context node is an element
 attribute :: Name -> Cursor -> [[Content]]
 attribute n Cursor{node=NodeElement e} = do (n', v) <- elementAttributes e
                                             guard $ n == n'
