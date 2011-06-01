@@ -16,6 +16,7 @@ module Text.XML.Enumerator.Cursor
     , check
     , checkNode
     , checkElement
+    , checkName
     , (>=>)
     ) where
 
@@ -129,3 +130,6 @@ checkElement f c = case node c of
                                         True -> [c]
                                         False -> []
                      _ -> []
+
+checkName :: (Name -> Bool) -> Axis
+checkName f c = checkElement (f . elementName) c

@@ -56,6 +56,7 @@ main = hspec $ descriptions $
         , it "has correct check" cursorCheck
         , it "has correct checkNode" cursorCheckNode
         , it "has correct checkElement" cursorCheckElement
+        , it "has correct checkName" cursorCheckName
         ]
     ]
 
@@ -206,3 +207,5 @@ cursorCheckNode = map nameLocalName (name $ Cu.descendant cursor >>= Cu.checkNod
           f _               = False
 cursorCheckElement = map nameLocalName (name $ Cu.descendant cursor >>= Cu.checkElement f) @?= T.words "bar1 bar2 bar3"
     where f e = "bar" `T.isPrefixOf` nameLocalName (elementName e)
+cursorCheckName = map nameLocalName (name $ Cu.descendant cursor >>= Cu.checkName f) @?= T.words "bar1 bar2 bar3"
+    where f n = "bar" `T.isPrefixOf` nameLocalName n
