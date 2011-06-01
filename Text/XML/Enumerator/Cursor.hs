@@ -25,13 +25,16 @@ import Data.List (foldl')
 -- TODO: Consider [Cursor] -> [Cursor]?
 type Axis = Cursor -> [Cursor]
 
+-- XPath axes as in http://www.w3.org/TR/xpath/#axes
+
 type DiffCursor = [Cursor] -> [Cursor]
+
 
 data Cursor = Cursor
     { parent' :: Maybe Cursor
     , precedingSibling' :: DiffCursor
     , followingSibling' :: DiffCursor
-    , child :: [Cursor]
+    , child :: [Cursor] -- the child axis contains the children of the context node
     , node :: Node
     }
 
@@ -42,14 +45,17 @@ instance Show Cursor where
 cut :: Cursor -> Cursor
 cut c = c { parent' = Nothing }
 
+-- the parent axis contains the parent of the context node, if there is one
 parent :: Axis
 parent c = case parent' c of
              Nothing -> []
              Just p -> [p]
 
+-- the preceding-sibling axis contains all the preceding siblings of the context node; if the context node is an attribute node or namespace node, the preceding-sibling axis is empty
 precedingSibling :: Axis
 precedingSibling = ($ []) . precedingSibling'
 
+-- the following-sibling axis contains all the following siblings of the context node; if the context node is an attribute node or namespace node, the following-sibling axis is empty
 followingSibling :: Axis
 followingSibling = ($ []) . followingSibling'
 
@@ -76,6 +82,7 @@ toCursor' par pre fol n =
         me' = toCursor' (Just me) pre' fol' n'
         fol' = go (pre' . (:) me') ns'
 
+-- the preceding axis contains all nodes in the same document as the context node that are before the context node in document order, excluding any ancestors and excluding attribute nodes and namespace nodes
 preceding :: Axis
 preceding c =
     go (precedingSibling' c []) (parent c >>= preceding')
@@ -85,6 +92,7 @@ preceding c =
     go' :: Cursor -> DiffCursor
     go' x rest = foldl' (\b a -> go' a b) (x : rest) (child x)
 
+-- the following axis contains all nodes in the same document as the context node that are after the context node in document order, excluding any descendants and excluding attribute nodes and namespace nodes
 following :: Axis
 following c =
     go (followingSibling' c) (parent c >>= following)
@@ -96,9 +104,11 @@ following c =
     go' :: Cursor -> DiffCursor
     go' x rest = x : foldr (\a b -> go' a b) rest (child x)
 
+-- the ancestor axis contains the ancestors of the context node; the ancestors of the context node consist of the parent of context node and the parent's parent and so on; thus, the ancestor axis will always include the root node, unless the context node is the root node
 ancestor :: Axis
 ancestor = parent >=> (\p -> p : ancestor p)
 
+-- the descendant axis contains the descendants of the context node; a descendant is a child or a child of a child and so on; thus the descendant axis never contains attribute or namespace nodes
 descendant :: Axis
 descendant = child >=> (\c -> c : descendant c)
 
