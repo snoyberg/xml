@@ -12,8 +12,10 @@ module Text.XML.Enumerator.Cursor
     , following
     , ancestor
     , descendant
-    , (>=>)
     , orSelf
+    , check
+    , checkElement
+    , (>=>)
     ) where
 
 import Data.XML.Types
@@ -111,3 +113,15 @@ descendant = child >=> (\c -> c : descendant c)
 
 orSelf :: Axis -> Axis
 orSelf ax c = c : ax c
+
+check :: (Node -> Bool) -> Axis
+check f c = case f (node c) of
+              False -> []
+              True -> [c]
+
+checkElement :: (Element -> Bool) -> Axis
+checkElement f c = case node c of
+                     NodeElement e -> case f e of
+                                        True -> [c]
+                                        False -> []
+                     _ -> []
