@@ -78,12 +78,27 @@ toCursor' par pre fol n =
 -- TODO: This currently does not include the children of preceding elements.
 -- XPath's "preceding" does. It's probably good to have both.
 preceding :: Axis
-preceding c = precedingSibling' c $ parent c >>= preceding
+preceding c =
+    go (precedingSibling' c) ++ (parent c >>= preceding')
+  where
+    preceding' x = x : preceding x
+    go x =
+        concatMap go' y -- FIXME very inefficient
+      where
+        y = x []
+    go' x = reverse (x : descendant x)
 
 -- TODO: This currently does not include the children of following elements.
 -- XPath's "following" does. It's probably good to have both.
 following :: Axis
-following c = followingSibling' c $ parent c >>= following
+following c =
+    go (followingSibling' c) ++ (parent c >>= following)
+  where
+    go x =
+        concatMap go' y -- FIXME very inefficient
+      where
+        y = x []
+    go' x = x : descendant x
 
 ancestor :: Axis
 ancestor = parent >=> (\p -> p : ancestor p)
