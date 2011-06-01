@@ -1,5 +1,7 @@
 module Text.XML.Enumerator.Cursor
-    ( Cursor
+    (
+      Boolean(..)
+    , Cursor
     , fromDocument
     , toCursor
     , cut
@@ -14,7 +16,6 @@ module Text.XML.Enumerator.Cursor
     , descendant
     , orSelf
     , check
-    , predicate
     , checkNode
     , checkElement
     , checkName
@@ -36,6 +37,20 @@ type Axis = Cursor -> [Cursor]
 
 type DiffCursor = [Cursor] -> [Cursor]
 
+-- TODO: Decide whether to use an existing package for this
+class Boolean a where
+    bool :: a -> Bool
+
+instance Boolean Bool where 
+    bool = id
+instance Boolean [a] where 
+    bool = not . null
+instance Boolean (Maybe a) where 
+    bool (Just _) = True
+    bool _        = False
+instance Boolean (Either a b) where
+    bool (Left _)  = False
+    bool (Right _) = True
 
 data Cursor = Cursor
     { parent' :: Maybe Cursor
@@ -121,25 +136,22 @@ descendant = child >=> (\c -> c : descendant c)
 orSelf :: Axis -> Axis
 orSelf ax c = c : ax c
 
-check :: (Cursor -> Bool) -> Axis
-check f c = case f c of
+check :: Boolean b => (Cursor -> b) -> Axis
+check f c = case bool $ f c of
               False -> []
               True -> [c]
 
-predicate :: (Cursor -> [a]) -> Axis
-predicate f = check (not . null . f)
-
-checkNode :: (Node -> Bool) -> Axis
+checkNode :: Boolean b => (Node -> b) -> Axis
 checkNode f c = check (f . node) c
 
-checkElement :: (Element -> Bool) -> Axis
+checkElement :: Boolean b => (Element -> b) -> Axis
 checkElement f c = case node c of
-                     NodeElement e -> case f e of
+                     NodeElement e -> case bool $ f e of
                                         True -> [c]
                                         False -> []
                      _ -> []
 
-checkName :: (Name -> Bool) -> Axis
+checkName :: Boolean b => (Name -> b) -> Axis
 checkName f c = checkElement (f . elementName) c
 
 anyElement :: Axis
