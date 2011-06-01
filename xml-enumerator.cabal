@@ -2,7 +2,7 @@ name:            xml-enumerator
 version:         0.3.1
 license:         BSD3
 license-file:    LICENSE
-author:          Michael Snoyman <michaels@suite-sol.com>
+author:          Michael Snoyman <michaels@suite-sol.com>, Aristid Breitkreuz <aristidb@googlemail.com>
 maintainer:      Michael Snoyman <michaels@suite-sol.com>
 synopsis:        Pure-Haskell utilities for dealing with XML with the enumerator package.
 description:
