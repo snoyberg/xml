@@ -21,6 +21,7 @@ import qualified Text.XML.Enumerator.Parse    as P
 import Text.XML.Enumerator.Parse (decodeEntities)
 import qualified Text.XML.Enumerator.Parse as P
 import qualified Text.XML.Enumerator.Render as R
+import qualified Text.XML.Enumerator.Cursor as Cu
 import qualified Data.Map as Map
 import qualified Data.ByteString.Lazy.Char8 as L
 import Control.Monad.IO.Class (liftIO)
@@ -32,14 +33,27 @@ import Data.Text(Text)
 import Control.Monad.IO.Class(MonadIO)
 import Control.Monad
 import Control.Applicative((<$>), (<*>))
+import qualified Data.Text as T
 
 main :: IO ()
-main = hspec $ describe "XML parsing and rendering"
-    [ it "is idempotent to parse and render a document" documentParseRender
-    , it "has valid parser combinators" combinators
-    , it "has working choose function" testChoose
-    , it "has working many function" testMany
-    , it "has working orE" testOrE
+main = hspec $ descriptions $
+    [ describe "XML parsing and rendering"
+        [ it "is idempotent to parse and render a document" documentParseRender
+        , it "has valid parser combinators" combinators
+        , it "has working choose function" testChoose
+        , it "has working many function" testMany
+        , it "has working orE" testOrE
+        ]
+    , describe "XML Cursors"
+        [ it "has correct parent" cursorParent
+        , it "has correct ancestor" cursorAncestor
+        , it "has correct orSelf" cursorOrSelf
+        , it "has correct preceding" cursorPreceding
+        , it "has correct following" cursorFollowing
+        , it "has correct precedingSibling" cursorPrecedingSib
+        , it "has correct followingSibling" cursorFollowingSib
+        , it "has correct descendant" cursorDescendant
+        ]
     ]
 
 documentParseRender =
@@ -137,3 +151,35 @@ testOrE = P.parseLBS_ input decodeEntities $ do
         , "<success/>"
         , "</hello>"
         ]
+
+cursor =
+    Cu.toCursor $ NodeElement e
+  where
+    Document _ e _ = D.parseLBS_ input decodeEntities
+    input = L.concat
+        [ "<foo>"
+        , "<bar1/>"
+        , "<bar2>"
+        , "<baz1/>"
+        , "<baz2/>"
+        , "<baz3/>"
+        , "</bar2>"
+        , "<bar3>"
+        , "<bin1/>"
+        , "<bin2/>"
+        , "<bin3/>"
+        , "</bar3>"
+        , "</foo>"
+        ]
+
+bar2 = Cu.child cursor !! 1
+baz2 = Cu.child bar2 !! 1
+
+cursorParent = Cu.name (Cu.parent bar2) @?= ["foo"]
+cursorAncestor = Cu.name (Cu.ancestor baz2) @?= ["bar2", "foo"]
+cursorOrSelf = Cu.name (Cu.orSelf Cu.ancestor baz2) @?= ["baz2", "bar2", "foo"]
+cursorPreceding = map nameLocalName (Cu.name (Cu.preceding baz2)) @?= ["baz1", "bar2", "bar1", "foo"]
+cursorFollowing = map nameLocalName (Cu.name (Cu.following baz2)) @?= ["baz3", "bar3", "bin1", "bin2", "bin3"]
+cursorPrecedingSib = map nameLocalName (Cu.name (Cu.precedingSibling baz2)) @?= ["baz1"]
+cursorFollowingSib = map nameLocalName (Cu.name (Cu.followingSibling baz2)) @?= ["baz3"]
+cursorDescendant = map nameLocalName (Cu.name $ Cu.descendant cursor) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3"
