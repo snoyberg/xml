@@ -220,6 +220,8 @@ cursorCheckName = map nameLocalName (name $ Cu.descendant cursor >>= Cu.checkNam
     where f n = "bar" `T.isPrefixOf` nameLocalName n
 cursorAnyElement = map nameLocalName (name $ Cu.descendant cursor >>= Cu.anyElement) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3"
 cursorElement = map nameLocalName (name $ Cu.descendant cursor >>= Cu.element "baz2") @?= ["baz2"]
-cursorContent = Cu.content cursor @?= [ContentText "a",ContentText "b"]
+cursorContent = do
+  Cu.content cursor @?= []
+  (Cu.orSelf Cu.descendant cursor >>= Cu.content) @?= [ContentText "a",ContentText "b"]
 cursorAttribute = Cu.attribute "attr" cursor @?= [[ContentText "x"]]
 cursorDeep = (Cu.element "foo" ./ Cu.element "bar2" .// Cu.attribute "attr") cursor @?= [[ContentText "y"]]

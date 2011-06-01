@@ -169,9 +169,9 @@ element :: Name -> Axis
 element n = checkName (== n)
 
 content :: Cursor -> [Content]
-content = orSelf descendant >=> f . node
-    where f (NodeContent c) = [c]
-          f _               = []
+content c = case node c of
+              (NodeContent v) -> [v]
+              _               -> []
 
 attribute :: Name -> Cursor -> [[Content]]
 attribute n Cursor{node=NodeElement e} = do (n', v) <- elementAttributes e
