@@ -85,9 +85,8 @@ toCursor' par pre fol n =
 -- the preceding axis contains all nodes in the same document as the context node that are before the context node in document order, excluding any ancestors and excluding attribute nodes and namespace nodes
 preceding :: Axis
 preceding c =
-    go (precedingSibling' c []) (parent c >>= preceding')
+    go (precedingSibling' c []) (parent c >>= preceding)
   where
-    preceding' x = x : preceding x
     go x y = foldl' (\b a -> go' a b) y x
     go' :: Cursor -> DiffCursor
     go' x rest = foldl' (\b a -> go' a b) (x : rest) (child x)
