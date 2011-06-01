@@ -14,6 +14,7 @@ module Text.XML.Enumerator.Cursor
     , descendant
     , orSelf
     , check
+    , predicate
     , checkNode
     , checkElement
     , checkName
@@ -120,6 +121,9 @@ check :: (Cursor -> Bool) -> Axis
 check f c = case f c of
               False -> []
               True -> [c]
+
+predicate :: (Cursor -> [a]) -> Axis
+predicate f = check (not . null . f)
 
 checkNode :: (Node -> Bool) -> Axis
 checkNode f c = check (f . node) c
