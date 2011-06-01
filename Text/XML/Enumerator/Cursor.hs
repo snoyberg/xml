@@ -92,13 +92,14 @@ preceding c =
 -- XPath's "following" does. It's probably good to have both.
 following :: Axis
 following c =
-    go (followingSibling' c) ++ (parent c >>= following)
+    go (followingSibling' c) (parent c >>= following)
   where
-    go x =
-        concatMap go' y -- FIXME very inefficient
+    go x z =
+        foldr (\a b -> go' a b) z y
       where
         y = x []
-    go' x = x : descendant x
+    go' :: Cursor -> DiffCursor
+    go' x rest = x : foldr (\a b -> go' a b) rest (child x)
 
 ancestor :: Axis
 ancestor = parent >=> (\p -> p : ancestor p)
