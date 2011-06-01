@@ -22,7 +22,7 @@ import Text.XML.Enumerator.Parse (decodeEntities)
 import qualified Text.XML.Enumerator.Parse as P
 import qualified Text.XML.Enumerator.Render as R
 import qualified Text.XML.Enumerator.Cursor as Cu
-import Text.XML.Enumerator.Cursor ((./), (.//), (..//))
+import Text.XML.Enumerator.Cursor ((./), (.//), (..//), ($|), ($/), ($//), ($.//))
 import qualified Data.Map as Map
 import qualified Data.ByteString.Lazy.Char8 as L
 import Control.Monad.IO.Class (liftIO)
@@ -63,7 +63,7 @@ main = hspec $ descriptions $
         , it "has correct element" cursorElement
         , it "has correct content" cursorContent
         , it "has correct attribute" cursorAttribute
-        , it "has correct ./ and .// and ..//" cursorDeep
+        , it "has correct .* and $* operators" cursorDeep
         ]
     ]
 
@@ -209,21 +209,25 @@ cursorFollowing = do
 cursorPrecedingSib = map nameLocalName (name (Cu.precedingSibling baz2)) @?= ["baz1"]
 cursorFollowingSib = map nameLocalName (name (Cu.followingSibling baz2)) @?= ["baz3"]
 cursorDescendant = map nameLocalName (name $ Cu.descendant cursor) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3"
-cursorCheck = null (Cu.descendant cursor >>= Cu.check (const False)) @?= True
-cursorPredicate = map nameLocalName (name $ Cu.orSelf Cu.descendant cursor >>= Cu.check Cu.descendant) @?= T.words "foo bar2 baz3 bar3"
-cursorCheckNode = map nameLocalName (name $ Cu.descendant cursor >>= Cu.checkNode f) @?= T.words "bar1 bar2 bar3"
+cursorCheck = null (cursor $.// Cu.check (const False)) @?= True
+cursorPredicate = map nameLocalName (name $ cursor $.// Cu.check Cu.descendant) @?= T.words "foo bar2 baz3 bar3"
+cursorCheckNode = map nameLocalName (name $ cursor $// Cu.checkNode f) @?= T.words "bar1 bar2 bar3"
     where f (NodeElement e) = "bar" `T.isPrefixOf` nameLocalName (elementName e)
           f _               = False
-cursorCheckElement = map nameLocalName (name $ Cu.descendant cursor >>= Cu.checkElement f) @?= T.words "bar1 bar2 bar3"
+cursorCheckElement = map nameLocalName (name $ cursor $// Cu.checkElement f) @?= T.words "bar1 bar2 bar3"
     where f e = "bar" `T.isPrefixOf` nameLocalName (elementName e)
-cursorCheckName = map nameLocalName (name $ Cu.descendant cursor >>= Cu.checkName f) @?= T.words "bar1 bar2 bar3"
+cursorCheckName = map nameLocalName (name $ cursor $// Cu.checkName f) @?= T.words "bar1 bar2 bar3"
     where f n = "bar" `T.isPrefixOf` nameLocalName n
-cursorAnyElement = map nameLocalName (name $ Cu.descendant cursor >>= Cu.anyElement) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3"
-cursorElement = map nameLocalName (name $ Cu.descendant cursor >>= Cu.element "baz2") @?= ["baz2"]
+cursorAnyElement = map nameLocalName (name $ cursor $// Cu.anyElement) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3"
+cursorElement = map nameLocalName (name $ cursor $// Cu.element "baz2") @?= ["baz2"]
 cursorContent = do
   Cu.content cursor @?= []
-  (Cu.orSelf Cu.descendant cursor >>= Cu.content) @?= [ContentText "a",ContentText "b"]
+  (cursor $.// Cu.content) @?= [ContentText "a",ContentText "b"]
 cursorAttribute = Cu.attribute "attr" cursor @?= [[ContentText "x"]]
 cursorDeep = do
   (Cu.element "foo" ./ Cu.element "bar2" .// Cu.attribute "attr") cursor @?= [[ContentText "y"]]
   (return ..// Cu.attribute "attr") cursor @?= [[ContentText "x"], [ContentText "y"]]
+  (cursor $.// Cu.attribute "attr") @?= [[ContentText "x"], [ContentText "y"]]
+  (cursor $/ Cu.element "bar2" .// Cu.attribute "attr") @?= [[ContentText "y"]]
+  (cursor $/ Cu.element "bar2" ./ Cu.element "baz2" >=> Cu.attribute "attr") @?= [[ContentText "y"]]
+  null (cursor $| Cu.element "foo") @?= False

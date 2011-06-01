@@ -18,6 +18,10 @@ module Text.XML.Enumerator.Cursor
     , (./)
     , (.//)
     , (..//)
+    , ($|)
+    , ($/)
+    , ($//)
+    , ($.//)
     , check
     , checkNode
     , checkElement
@@ -139,6 +143,14 @@ descendant = child >=> (\c -> c : descendant c)
 orSelf :: Axis -> Axis
 orSelf ax c = c : ax c
 
+infixr 1 ./ 
+infixr 1 .// 
+infixr 1 ..// 
+infixr 1 $|
+infixr 1 $/
+infixr 1 $//
+infixr 1 $.//
+
 (./) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
 f ./ g = f >=> child >=> g
 
@@ -147,6 +159,18 @@ f .// g = f >=> descendant >=> g
 
 (..//) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
 f ..// g = f >=> orSelf descendant >=> g
+
+($|) :: Cursor -> (Cursor -> [a]) -> [a]
+v $| f = f v
+
+($/) :: Cursor -> (Cursor -> [a]) -> [a]
+v $/ f = child v >>= f
+
+($//) :: Cursor -> (Cursor -> [a]) -> [a]
+v $// f = descendant v >>= f
+
+($.//) :: Cursor -> (Cursor -> [a]) -> [a]
+v $.// f = orSelf descendant v >>= f
 
 check :: Boolean b => (Cursor -> b) -> Axis
 check f c = case bool $ f c of
