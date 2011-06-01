@@ -21,6 +21,7 @@ module Text.XML.Enumerator.Cursor
     , anyElement
     , element
     , content
+    , attribute
     , (>=>)
     ) where
 
@@ -151,3 +152,9 @@ content :: Cursor -> [Content]
 content = orSelf descendant >=> f . node
     where f (NodeContent c) = [c]
           f _               = []
+
+attribute :: Name -> Cursor -> [[Content]]
+attribute n Cursor{node=NodeElement e} = do (n', v) <- elementAttributes e
+                                            guard $ n == n'
+                                            return v
+attribute _ _ = []

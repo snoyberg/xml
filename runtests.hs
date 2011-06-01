@@ -61,6 +61,7 @@ main = hspec $ descriptions $
         , it "has correct anyElement" cursorAnyElement
         , it "has correct element" cursorElement
         , it "has correct content" cursorContent
+        , it "has working attribute" cursorAttribute
         ]
     ]
 
@@ -172,7 +173,7 @@ cursor =
   where
     Document _ e _ = D.parseLBS_ input decodeEntities
     input = L.concat
-        [ "<foo>"
+        [ "<foo attr=\"x\">"
         ,    "<bar1/>"
         ,    "<bar2>"
         ,       "<baz1/>"
@@ -218,3 +219,4 @@ cursorCheckName = map nameLocalName (name $ Cu.descendant cursor >>= Cu.checkNam
 cursorAnyElement = map nameLocalName (name $ Cu.descendant cursor >>= Cu.anyElement) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3"
 cursorElement = map nameLocalName (name $ Cu.descendant cursor >>= Cu.element "baz2") @?= ["baz2"]
 cursorContent = Cu.content cursor @?= [ContentText "a",ContentText "b"]
+cursorAttribute = Cu.attribute "attr" cursor @?= [[ContentText "x"]]
