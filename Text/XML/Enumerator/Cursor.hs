@@ -96,7 +96,7 @@ instance Show Cursor where
 
 -- | Cut a cursor off from its parent. The idea is to allow restricting the scope of queries on it.
 cut :: Cursor -> Cursor
-cut c = c { parent' = Nothing }
+cut = toCursor' Nothing id id . node
 
 -- | The parent axis. As described in XPath:
 -- /the parent axis contains the parent of the context node, if there is one/.
