@@ -16,9 +16,9 @@ module Text.XML.Enumerator.Cursor
     , ancestor
     , descendant
     , orSelf
-    , (./)
-    , (.//)
-    , (..//)
+    , (&/)
+    , (&//)
+    , (&.//)
     , ($|)
     , ($/)
     , ($//)
@@ -47,7 +47,7 @@ import Data.List (foldl')
 -- Because Axis is just a type synonym for @Cursor -> [Cursor]@, it is possible to use
 -- other standard functions like '>>=' or 'concatMap' similarly.
 -- 
--- The operators './', './/' and '..//' can be used to combine axes so that the second
+-- The operators '&/', '&//' and '&.//' can be used to combine axes so that the second
 -- axis works on the children, descendants, respectively the context node as well as its
 -- descendants of the results of the first axis.
 -- 
@@ -177,9 +177,9 @@ descendant = child >=> (\c -> c : descendant c)
 orSelf :: Axis -> Axis
 orSelf ax c = c : ax c
 
-infixr 1 ./ 
-infixr 1 .// 
-infixr 1 ..// 
+infixr 1 &/ 
+infixr 1 &// 
+infixr 1 &.// 
 infixr 1 $|
 infixr 1 $/
 infixr 1 $//
@@ -187,18 +187,18 @@ infixr 1 $.//
 
 -- | Combine two axes so that the second works on the children of the results
 -- of the first.
-(./) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
-f ./ g = f >=> child >=> g
+(&/) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
+f &/ g = f >=> child >=> g
 
 -- | Combine two axes so that the second works on the descendants of the results
 -- of the first.
-(.//) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
-f .// g = f >=> descendant >=> g
+(&//) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
+f &// g = f >=> descendant >=> g
 
 -- | Combine two axes so that the second works on both the result nodes, and their
 -- descendants.
-(..//) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
-f ..// g = f >=> orSelf descendant >=> g
+(&.//) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
+f &.// g = f >=> orSelf descendant >=> g
 
 -- | Apply an axis to a 'Cursor'.
 ($|) :: Cursor -> (Cursor -> [a]) -> [a]
