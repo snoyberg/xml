@@ -36,7 +36,7 @@ import Control.Monad
 import Control.Applicative((<$>), (<*>))
 import qualified Data.Text as T
 
-main :: IO ()
+--main :: IO [Spec]
 main = hspec $ descriptions $
     [ describe "XML parsing and rendering"
         [ it "is idempotent to parse and render a document" documentParseRender
@@ -171,7 +171,7 @@ name (c:cs) = ($ name cs) $ case Cu.node c of
                               _ -> id
 
 cursor =
-    Cu.toCursor $ NodeElement e
+    Cu.fromNode $ NodeElement e
   where
     Document _ e _ = D.parseLBS_ input decodeEntities
     input = L.concat

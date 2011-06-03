@@ -4,7 +4,7 @@ module Text.XML.Enumerator.Cursor
     , Axis
     , Cursor
     , fromDocument
-    , toCursor
+    , fromNode
     , cut
     , parent
     , precedingSibling
@@ -117,11 +117,11 @@ followingSibling = ($ []) . followingSibling'
 
 -- | Convert a 'Document' to a 'Cursor'. It will point to the document root.
 fromDocument :: Document -> Cursor
-fromDocument = toCursor . NodeElement . documentRoot
+fromDocument = fromNode . NodeElement . documentRoot
 
 -- | Convert a 'Node' to a 'Cursor' (without parents).
-toCursor :: Node -> Cursor
-toCursor = toCursor' Nothing id id
+fromNode :: Node -> Cursor
+fromNode = toCursor' Nothing id id
 
 toCursor' :: Maybe Cursor -> DiffCursor -> DiffCursor -> Node -> Cursor
 toCursor' par pre fol n =
