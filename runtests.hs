@@ -222,12 +222,12 @@ cursorAnyElement = (name $ cursor $// Cu.anyElement) @?= T.words "bar1 bar2 baz1
 cursorElement = (name $ cursor $// Cu.element "baz2") @?= ["baz2"]
 cursorContent = do
   Cu.content cursor @?= []
-  (cursor $.// Cu.content) @?= [ContentText "a",ContentText "b"]
-cursorAttribute = Cu.attribute "attr" cursor @?= [[ContentText "x"]]
+  (cursor $.// Cu.content) @?= ["a", "b"]
+cursorAttribute = Cu.attribute "attr" cursor @?= ["x"]
 cursorDeep = do
-  (Cu.element "foo" ./ Cu.element "bar2" .// Cu.attribute "attr") cursor @?= [[ContentText "y"]]
-  (return ..// Cu.attribute "attr") cursor @?= [[ContentText "x"], [ContentText "y"]]
-  (cursor $.// Cu.attribute "attr") @?= [[ContentText "x"], [ContentText "y"]]
-  (cursor $/ Cu.element "bar2" .// Cu.attribute "attr") @?= [[ContentText "y"]]
-  (cursor $/ Cu.element "bar2" ./ Cu.element "baz2" >=> Cu.attribute "attr") @?= [[ContentText "y"]]
+  (Cu.element "foo" ./ Cu.element "bar2" .// Cu.attribute "attr") cursor @?= ["y"]
+  (return ..// Cu.attribute "attr") cursor @?= ["x", "y"]
+  (cursor $.// Cu.attribute "attr") @?= ["x", "y"]
+  (cursor $/ Cu.element "bar2" .// Cu.attribute "attr") @?= ["y"]
+  (cursor $/ Cu.element "bar2" ./ Cu.element "baz2" >=> Cu.attribute "attr") @?= ["y"]
   null (cursor $| Cu.element "foo") @?= False
