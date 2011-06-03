@@ -16,9 +16,9 @@ module Text.XML.Enumerator.Cursor
     , ancestor
     , descendant
     , orSelf
-    , (./)
-    , (.//)
-    , (..//)
+    , (&/)
+    , (&//)
+    , (&.//)
     , ($|)
     , ($/)
     , ($//)
@@ -34,10 +34,10 @@ module Text.XML.Enumerator.Cursor
     , (>=>)
     ) where
 
-import Data.XML.Types
-import Control.Monad
-import Data.List (foldl')
-import qualified Data.Text as T
+import           Control.Monad
+import           Data.List      (foldl')
+import           Data.XML.Types
+import qualified Data.Text      as T
 
 -- TODO: Consider [Cursor] -> [Cursor]?
 -- | The type of an Axis that returns a list of Cursors.
@@ -48,7 +48,7 @@ import qualified Data.Text as T
 -- Because Axis is just a type synonym for @Cursor -> [Cursor]@, it is possible to use
 -- other standard functions like '>>=' or 'concatMap' similarly.
 -- 
--- The operators './', './/' and '..//' can be used to combine axes so that the second
+-- The operators '&/', '&//' and '&.//' can be used to combine axes so that the second
 -- axis works on the children, descendants, respectively the context node as well as its
 -- descendants of the results of the first axis.
 -- 
@@ -97,7 +97,7 @@ instance Show Cursor where
 
 -- | Cut a cursor off from its parent. The idea is to allow restricting the scope of queries on it.
 cut :: Cursor -> Cursor
-cut = toCursor' Nothing id id . node
+cut = fromNode . node
 
 -- | The parent axis. As described in XPath:
 -- /the parent axis contains the parent of the context node, if there is one/.
@@ -178,9 +178,9 @@ descendant = child >=> (\c -> c : descendant c)
 orSelf :: Axis -> Axis
 orSelf ax c = c : ax c
 
-infixr 1 ./ 
-infixr 1 .// 
-infixr 1 ..// 
+infixr 1 &/ 
+infixr 1 &// 
+infixr 1 &.// 
 infixr 1 $|
 infixr 1 $/
 infixr 1 $//
@@ -188,18 +188,18 @@ infixr 1 $.//
 
 -- | Combine two axes so that the second works on the children of the results
 -- of the first.
-(./) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
-f ./ g = f >=> child >=> g
+(&/) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
+f &/ g = f >=> child >=> g
 
 -- | Combine two axes so that the second works on the descendants of the results
 -- of the first.
-(.//) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
-f .// g = f >=> descendant >=> g
+(&//) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
+f &// g = f >=> descendant >=> g
 
 -- | Combine two axes so that the second works on both the result nodes, and their
 -- descendants.
-(..//) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
-f ..// g = f >=> orSelf descendant >=> g
+(&.//) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
+f &.// g = f >=> orSelf descendant >=> g
 
 -- | Apply an axis to a 'Cursor'.
 ($|) :: Cursor -> (Cursor -> [a]) -> [a]
