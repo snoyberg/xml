@@ -171,7 +171,7 @@ name (c:cs) = ($ name cs) $ case Cu.node c of
                               _ -> id
 
 cursor =
-    Cu.toCursor $ NodeElement e
+    Cu.fromNode $ NodeElement e
   where
     Document _ e _ = D.parseLBS_ input decodeEntities
     input = L.concat
