@@ -85,6 +85,11 @@ import Data.XML.Types
 import Control.Applicative ((<|>), (<$>))
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Text.Read (Reader, decimal, hexadecimal)
+import Data.Text.Encoding (decodeUtf32BEWith)
+import Data.Text.Encoding.Error (ignore)
+import Data.Word (Word32)
+import Blaze.ByteString.Builder (fromWord32be, toByteString)
 import Text.XML.Enumerator.Token
 import Prelude hiding (takeWhile)
 import qualified Data.ByteString as S
@@ -645,36 +650,23 @@ decodeEntities "gt" = ContentText ">"
 decodeEntities "amp" = ContentText "&"
 decodeEntities "quot" = ContentText "\""
 decodeEntities "apos" = ContentText "'"
-decodeEntities t =
-    case T.uncons t of
-        Just ('#', t') ->
-            case T.uncons t' of
-                Just ('x', t'') -> decodeHex (ContentEntity t) t''
-                _ -> decodeDec (ContentEntity t) t'
-        _ -> ContentEntity t
+decodeEntities t = let backup = ContentEntity t in
+  case T.uncons t of
+    Just ('#', t') ->
+      case T.uncons t' of
+        Just ('x', t'')
+          | T.length t'' > 6 -> backup
+          | otherwise        -> decodeChar hexadecimal backup t''
+        _
+          | T.length t'  > 7 -> backup
+          | otherwise        -> decodeChar decimal backup t'
+    _ -> backup
 
-decodeHex :: Content -> Text -> Content
-decodeHex backup val
-    | T.null val = backup
-decodeHex backup val =
-    go (T.unpack val) 0
+decodeChar :: Reader Word32 -> Content -> Text -> Content
+decodeChar readNum backup = either (const backup) toContent . readNum
   where
-    go [] i = ContentText $ T.singleton $ toEnum i
-    go (c:cs) i = maybe backup (go cs . ((i * 16) +)) $ getHex c
-    getHex c
-        | '0' <= c && c <= '9' = Just $ fromEnum c - fromEnum '0'
-        | 'A' <= c && c <= 'F' = Just $ fromEnum c - fromEnum 'A' + 10
-        | 'a' <= c && c <= 'f' = Just $ fromEnum c - fromEnum 'a' + 10
-        | otherwise = Nothing
-
-decodeDec :: Content -> Text -> Content
-decodeDec backup val
-    | T.null val = backup
-decodeDec backup val =
-    go (T.unpack val) 0
-  where
-    go [] i = ContentText $ T.singleton $ toEnum i
-    go (c:cs) i = maybe backup (go cs . ((i * 10) +)) $ getHex c
-    getHex c
-        | '0' <= c && c <= '9' = Just $ fromEnum c - fromEnum '0'
-        | otherwise = Nothing
+    toContent (num, extra) | T.null extra =
+      case decodeUtf32BEWith ignore . toByteString $ fromWord32be num of
+          char | T.length char == 1 -> ContentText char
+               | otherwise          -> backup
+    toContent _ = backup
