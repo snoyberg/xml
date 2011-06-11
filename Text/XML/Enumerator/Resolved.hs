@@ -10,7 +10,6 @@ module Text.XML.Enumerator.Resolved
     , Name (..)
     , Doctype (..)
     , ExternalID (..)
-    {-
       -- * Parsing
     , DecodeEntities
     , decodeEntities
@@ -20,7 +19,8 @@ module Text.XML.Enumerator.Resolved
     , parseLBS_
     , parseEnum
     , parseEnum_
-    -}
+    , fromEvents
+    , UnresolvedEntityException
       -- * Conversion
     , toXMLDocument
     , fromXMLDocument
@@ -43,8 +43,17 @@ import Data.Typeable (Typeable)
 import Data.Text (Text)
 import Text.XML.Enumerator.Parse (DecodeEntities, decodeEntities)
 import qualified Text.XML.Enumerator.Parse as P
+import qualified Text.XML.Enumerator.Document as D
 import qualified Data.Text as T
 import Data.Either (partitionEithers)
+import Prelude hiding (readFile, writeFile)
+import Control.Exception (SomeException, Exception)
+import Data.Enumerator.Binary (enumFile)
+import Control.Monad.IO.Class (MonadIO)
+import Data.Enumerator (Enumerator, Iteratee, throwError, ($$), run, run_, joinI, enumList)
+import Data.ByteString (ByteString)
+import qualified Data.ByteString.Lazy as L
+import Data.Functor.Identity (runIdentity)
 
 data Document = Document
     { documentPrologue :: Prologue
@@ -122,3 +131,39 @@ fromXMLNode (X.NodeContent (X.ContentText t)) = Right $ NodeContent t
 fromXMLNode (X.NodeContent (X.ContentEntity t)) = Left [t]
 fromXMLNode (X.NodeComment c) = Right $ NodeComment c
 fromXMLNode (X.NodeInstruction i) = Right $ NodeInstruction i
+
+readFile :: FilePath -> DecodeEntities -> IO (Either SomeException Document)
+readFile fn = parseEnum $ enumFile fn
+
+readFile_ :: FilePath -> DecodeEntities -> IO Document
+readFile_ fn = parseEnum_ $ enumFile fn
+
+lbsEnum :: Monad m => L.ByteString -> Enumerator ByteString m a
+lbsEnum = enumList 8 . L.toChunks
+
+parseLBS :: L.ByteString -> DecodeEntities -> Either SomeException Document
+parseLBS lbs = runIdentity . parseEnum (lbsEnum lbs)
+
+parseLBS_ :: L.ByteString -> DecodeEntities -> Document
+parseLBS_ lbs = runIdentity . parseEnum_ (lbsEnum lbs)
+
+parseEnum :: Monad m
+          => Enumerator ByteString m Document
+          -> DecodeEntities
+          -> m (Either SomeException Document)
+parseEnum enum de = run $ enum $$ joinI $ P.parseBytes de $$ fromEvents
+
+parseEnum_ :: Monad m
+           => Enumerator ByteString m Document
+           -> DecodeEntities
+           -> m Document
+parseEnum_ enum de = run_ $ enum $$ joinI $ P.parseBytes de $$ fromEvents
+
+fromEvents :: Monad m => Iteratee X.Event m Document
+fromEvents = do
+    d <- D.fromEvents
+    either (throwError . UnresolvedEntityException) return $ fromXMLDocument d
+
+data UnresolvedEntityException = UnresolvedEntityException [Text]
+    deriving (Show, Typeable)
+instance Exception UnresolvedEntityException
