@@ -32,6 +32,7 @@ library
                      Text.XML.Enumerator.Render
                      Text.XML.Enumerator.Document
                      Text.XML.Enumerator.Cursor
+                     Text.XML.Enumerator.Resolved
     other-modules:   Text.XML.Enumerator.Token
     ghc-options:     -Wall
 
