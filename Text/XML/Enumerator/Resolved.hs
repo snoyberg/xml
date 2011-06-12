@@ -20,7 +20,7 @@ module Text.XML.Enumerator.Resolved
     , parseEnum
     , parseEnum_
     , fromEvents
-    , UnresolvedEntityException
+    , UnresolvedEntityException (..)
       -- * Rendering
     , writeFile
     , writePrettyFile

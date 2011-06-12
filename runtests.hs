@@ -17,6 +17,7 @@ import qualified Data.ByteString.Lazy.Char8   as L
 import qualified Data.Map                     as Map
 import qualified Text.XML.Enumerator.Document as D
 import qualified Text.XML.Enumerator.Parse    as P
+import qualified Text.XML.Enumerator.Resolved as Res
 
 import Text.XML.Enumerator.Parse (decodeEntities)
 import qualified Text.XML.Enumerator.Parse as P
@@ -35,6 +36,8 @@ import Control.Monad.IO.Class(MonadIO)
 import Control.Monad
 import Control.Applicative((<$>), (<*>))
 import qualified Data.Text as T
+import qualified Data.Set as Set
+import Control.Exception (toException)
 
 --main :: IO [Spec]
 main = hspec $ descriptions $
@@ -64,6 +67,10 @@ main = hspec $ descriptions $
         , it "has correct content" cursorContent
         , it "has correct attribute" cursorAttribute
         , it "has correct &* and $* operators" cursorDeep
+        ]
+    , describe "resolved"
+        [ it "identifies unresolved entities" resolvedIdentifies
+        , it "works for resolvable entities" resolvedAllGood
         ]
     ]
 
@@ -231,3 +238,18 @@ cursorDeep = do
   (cursor $/ Cu.element "bar2" &// Cu.attribute "attr") @?= ["y"]
   (cursor $/ Cu.element "bar2" &/ Cu.element "baz2" >=> Cu.attribute "attr") @?= ["y"]
   null (cursor $| Cu.element "foo") @?= False
+
+showEq :: (Show a, Show b) => Either a b -> Either a b -> Assertion
+showEq x y = show x @=? show y
+
+resolvedIdentifies =
+    Left (toException $ Res.UnresolvedEntityException $ Set.fromList ["foo", "bar", "baz"]) `showEq`
+    Res.parseLBS
+    "<root attr='&bar;'>&foo; --- &baz; &foo;</root>"
+    Res.decodeEntities
+
+resolvedAllGood =
+    D.parseLBS_ xml P.decodeEntities @=?
+    Res.toXMLDocument (Res.parseLBS_ xml P.decodeEntities)
+  where
+    xml = "<foo><bar/><baz/></foo>"
