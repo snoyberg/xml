@@ -21,6 +21,13 @@ module Text.XML.Enumerator.Resolved
     , parseEnum_
     , fromEvents
     , UnresolvedEntityException
+      -- * Rendering
+    , writeFile
+    , writePrettyFile
+    , renderLBS
+    , prettyLBS
+    , renderBytes
+    , prettyBytes
       -- * Conversion
     , toXMLDocument
     , fromXMLDocument
@@ -44,16 +51,23 @@ import Data.Text (Text)
 import Text.XML.Enumerator.Parse (DecodeEntities, decodeEntities)
 import qualified Text.XML.Enumerator.Parse as P
 import qualified Text.XML.Enumerator.Document as D
+import qualified Text.XML.Enumerator.Render as R
 import qualified Data.Text as T
 import Data.Either (partitionEithers)
 import Prelude hiding (readFile, writeFile)
 import Control.Exception (SomeException, Exception)
-import Data.Enumerator.Binary (enumFile)
+import Data.Enumerator.Binary (enumFile, iterHandle)
 import Control.Monad.IO.Class (MonadIO)
-import Data.Enumerator (Enumerator, Iteratee, throwError, ($$), run, run_, joinI, enumList)
+import Data.Enumerator
+    ( Enumerator, Iteratee, throwError, ($$), run, run_, joinI, enumList
+    , joinE
+    )
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as L
 import Data.Functor.Identity (runIdentity)
+import qualified System.IO as SIO
+import System.IO.Unsafe (unsafePerformIO)
+import Text.XML.Enumerator.Document (lazyConsume)
 
 data Document = Document
     { documentPrologue :: Prologue
@@ -167,3 +181,27 @@ fromEvents = do
 data UnresolvedEntityException = UnresolvedEntityException [Text]
     deriving (Show, Typeable)
 instance Exception UnresolvedEntityException
+
+renderBytes :: MonadIO m => Document -> Enumerator ByteString m a
+renderBytes doc = enumList 8 (D.toEvents $ toXMLDocument doc) `joinE` R.renderBytes
+
+prettyBytes :: MonadIO m => Document -> Enumerator ByteString m a
+prettyBytes doc = enumList 8 (D.toEvents $ toXMLDocument doc) `joinE` R.prettyBytes
+
+writeFile :: FilePath -> Document -> IO ()
+writeFile fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->
+    run_ $ renderBytes doc $$ iterHandle h
+
+-- | Pretty prints via 'prettyBytes'.
+writePrettyFile :: FilePath -> Document -> IO ()
+writePrettyFile fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->
+    run_ $ prettyBytes doc $$ iterHandle h
+
+renderLBS :: Document -> L.ByteString
+renderLBS doc =
+    L.fromChunks $ unsafePerformIO $ lazyConsume $ renderBytes doc
+
+-- | Pretty prints via 'prettyBytes'.
+prettyLBS :: Document -> L.ByteString
+prettyLBS doc =
+    L.fromChunks $ unsafePerformIO $ lazyConsume $ prettyBytes doc
