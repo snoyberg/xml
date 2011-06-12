@@ -68,6 +68,8 @@ import Data.Functor.Identity (runIdentity)
 import qualified System.IO as SIO
 import System.IO.Unsafe (unsafePerformIO)
 import Text.XML.Enumerator.Document (lazyConsume)
+import qualified Data.Set as Set
+import Data.Set (Set)
 
 data Document = Document
     { documentPrologue :: Prologue
@@ -111,19 +113,19 @@ toXMLNode (NodeContent t) = X.NodeContent $ X.ContentText t
 toXMLNode (NodeComment c) = X.NodeComment c
 toXMLNode (NodeInstruction i) = X.NodeInstruction i
 
-fromXMLDocument :: X.Document -> Either [Text] Document
+fromXMLDocument :: X.Document -> Either (Set Text) Document
 fromXMLDocument (X.Document a b c) =
     case fromXMLElement b of
         Left es -> Left es
         Right b' -> Right $ Document a b' c
 
-fromXMLElement :: X.Element -> Either [Text] Element
+fromXMLElement :: X.Element -> Either (Set Text) Element
 fromXMLElement (X.Element name as nodes) =
     case (lnodes, las) of
         ([], []) -> Right $ Element name ras rnodes
-        (x, []) -> Left $ concat x
-        ([], y) -> Left $ concat y
-        (x, y) -> Left $ concat $ x ++ y
+        (x, []) -> Left $ Set.unions x
+        ([], y) -> Left $ Set.unions y
+        (x, y) -> Left $ Set.unions x `Set.union` Set.unions y
   where
     enodes = map fromXMLNode nodes
     (lnodes, rnodes) = partitionEithers enodes
@@ -134,15 +136,15 @@ fromXMLElement (X.Element name as nodes) =
             Left es -> Left es
             Right y' -> Right (x, y')
     go' [] front [] = Right $ T.concat $ front []
-    go' errs _ [] = Left errs
+    go' errs _ [] = Left $ Set.fromList errs
     go' errs front (X.ContentText t:ys) = go' errs (front . (:) t) ys
     go' errs front (X.ContentEntity t:ys) = go' (t : errs) front ys
 
-fromXMLNode :: X.Node -> Either [Text] Node
+fromXMLNode :: X.Node -> Either (Set Text) Node
 fromXMLNode (X.NodeElement e) =
     either Left (Right . NodeElement) $ fromXMLElement e
 fromXMLNode (X.NodeContent (X.ContentText t)) = Right $ NodeContent t
-fromXMLNode (X.NodeContent (X.ContentEntity t)) = Left [t]
+fromXMLNode (X.NodeContent (X.ContentEntity t)) = Left $ Set.singleton t
 fromXMLNode (X.NodeComment c) = Right $ NodeComment c
 fromXMLNode (X.NodeInstruction i) = Right $ NodeInstruction i
 
@@ -178,7 +180,7 @@ fromEvents = do
     d <- D.fromEvents
     either (throwError . UnresolvedEntityException) return $ fromXMLDocument d
 
-data UnresolvedEntityException = UnresolvedEntityException [Text]
+data UnresolvedEntityException = UnresolvedEntityException (Set Text)
     deriving (Show, Typeable)
 instance Exception UnresolvedEntityException
 
