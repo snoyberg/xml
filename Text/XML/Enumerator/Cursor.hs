@@ -1,11 +1,14 @@
 module Text.XML.Enumerator.Cursor
     (
+    -- * Type classes  
       Boolean(..)
+    -- * Cursor and Axis  
     , Axis
     , Cursor
     , fromDocument
     , fromNode
     , cut
+    -- * Axes
     , parent
     , precedingSibling
     , followingSibling
@@ -24,6 +27,7 @@ module Text.XML.Enumerator.Cursor
     , element
     , content
     , attribute
+    -- * Operators
     , (&|)
     , (&/)
     , (&//)
