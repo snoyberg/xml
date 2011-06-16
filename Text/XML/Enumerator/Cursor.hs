@@ -25,6 +25,7 @@ module Text.XML.Enumerator.Cursor
     , checkName
     , anyElement
     , element
+    , laxElement
     , content
     , attribute
     -- * Operators
@@ -40,9 +41,10 @@ module Text.XML.Enumerator.Cursor
     ) where
 
 import           Control.Monad
-import           Data.List      (foldl')
+import           Data.Function                (on)
+import           Data.List                    (foldl')
 import           Text.XML.Enumerator.Resolved
-import qualified Data.Text      as T
+import qualified Data.Text                    as T
 
 -- TODO: Consider [Cursor] -> [Cursor]?
 -- | The type of an Axis that returns a list of Cursors.
@@ -258,6 +260,11 @@ anyElement = checkElement (const True)
 -- /A node test that is a QName is true if and only if the type of the node (see [5 Data Model]) is the principal node type and has an expanded-name equal to the expanded-name specified by the QName./
 element :: Name -> Axis
 element n = checkName (== n)
+
+-- | Select only those elements with a loosely matching tag name. Namespace and case are ignored. XPath:
+-- /A node test that is a QName is true if and only if the type of the node (see [5 Data Model]) is the principal node type and has an expanded-name equal to the expanded-name specified by the QName./
+laxElement :: T.Text -> Axis
+laxElement n = checkName (on (==) T.toCaseFold n . nameLocalName)
 
 -- | Select only text nodes, and directly give the 'Content' values. XPath:
 -- /The node test text() is true for any text node./
