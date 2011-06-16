@@ -22,6 +22,8 @@ module Text.XML.Enumerator.Document
     , prettyText
       -- * Exceptions
     , InvalidEventStream (InvalidEventStream)
+      -- * Internal
+    , lazyConsume
     ) where
 
 import Prelude hiding (writeFile, readFile)

@@ -41,7 +41,7 @@ module Text.XML.Enumerator.Cursor
 
 import           Control.Monad
 import           Data.List      (foldl')
-import           Data.XML.Types
+import           Text.XML.Enumerator.Resolved
 import qualified Data.Text      as T
 
 -- TODO: Consider [Cursor] -> [Cursor]?
@@ -265,7 +265,7 @@ element n = checkName (== n)
 -- Note that this is not strictly an 'Axis', but will work with most combinators.
 content :: Cursor -> [T.Text]
 content c = case node c of
-              (NodeContent v) -> [toText v]
+              (NodeContent v) -> [v]
               _               -> []
 
 -- | Select attributes on the current element (or nothing if it is not an element). XPath:
@@ -278,9 +278,5 @@ content c = case node c of
 attribute :: Name -> Cursor -> [T.Text]
 attribute n Cursor{node=NodeElement e} = do (n', v) <- elementAttributes e
                                             guard $ n == n'
-                                            return $ T.concat $ map toText v
+                                            return v
 attribute _ _ = []
-
-toText :: Content -> T.Text
-toText (ContentText t) = t
-toText (ContentEntity e) = T.concat [T.singleton '&', e, T.singleton ';']

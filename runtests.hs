@@ -17,6 +17,7 @@ import qualified Data.ByteString.Lazy.Char8   as L
 import qualified Data.Map                     as Map
 import qualified Text.XML.Enumerator.Document as D
 import qualified Text.XML.Enumerator.Parse    as P
+import qualified Text.XML.Enumerator.Resolved as Res
 
 import Text.XML.Enumerator.Parse (decodeEntities)
 import qualified Text.XML.Enumerator.Parse as P
@@ -35,6 +36,8 @@ import Control.Monad.IO.Class(MonadIO)
 import Control.Monad
 import Control.Applicative((<$>), (<*>))
 import qualified Data.Text as T
+import qualified Data.Set as Set
+import Control.Exception (toException)
 
 --main :: IO [Spec]
 main = hspec $ descriptions $
@@ -64,6 +67,10 @@ main = hspec $ descriptions $
         , it "has correct content" cursorContent
         , it "has correct attribute" cursorAttribute
         , it "has correct &* and $* operators" cursorDeep
+        ]
+    , describe "resolved"
+        [ it "identifies unresolved entities" resolvedIdentifies
+        , it "works for resolvable entities" resolvedAllGood
         ]
     ]
 
@@ -167,13 +174,12 @@ testOrE = P.parseLBS_ input decodeEntities $ do
 name :: [Cu.Cursor] -> [Text]
 name [] = []
 name (c:cs) = ($ name cs) $ case Cu.node c of
-                              NodeElement e -> ((nameLocalName $ elementName e) :)
+                              Res.NodeElement e -> ((Res.nameLocalName $ Res.elementName e) :)
                               _ -> id
 
 cursor =
-    Cu.fromNode $ NodeElement e
+    Cu.fromDocument $ Res.parseLBS_ input decodeEntities
   where
-    Document _ e _ = D.parseLBS_ input decodeEntities
     input = L.concat
         [ "<foo attr=\"x\">"
         ,    "<bar1/>"
@@ -212,10 +218,10 @@ cursorDescendant = (name $ Cu.descendant cursor) @?= T.words "bar1 bar2 baz1 baz
 cursorCheck = null (cursor $.// Cu.check (const False)) @?= True
 cursorPredicate = (name $ cursor $.// Cu.check Cu.descendant) @?= T.words "foo bar2 baz3 bar3"
 cursorCheckNode = (name $ cursor $// Cu.checkNode f) @?= T.words "bar1 bar2 bar3"
-    where f (NodeElement e) = "bar" `T.isPrefixOf` nameLocalName (elementName e)
+    where f (Res.NodeElement e) = "bar" `T.isPrefixOf` Res.nameLocalName (Res.elementName e)
           f _               = False
 cursorCheckElement = (name $ cursor $// Cu.checkElement f) @?= T.words "bar1 bar2 bar3"
-    where f e = "bar" `T.isPrefixOf` nameLocalName (elementName e)
+    where f e = "bar" `T.isPrefixOf` Res.nameLocalName (Res.elementName e)
 cursorCheckName = (name $ cursor $// Cu.checkName f) @?= T.words "bar1 bar2 bar3"
     where f n = "bar" `T.isPrefixOf` nameLocalName n
 cursorAnyElement = (name $ cursor $// Cu.anyElement) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3"
@@ -231,3 +237,18 @@ cursorDeep = do
   (cursor $/ Cu.element "bar2" &// Cu.attribute "attr") @?= ["y"]
   (cursor $/ Cu.element "bar2" &/ Cu.element "baz2" >=> Cu.attribute "attr") @?= ["y"]
   null (cursor $| Cu.element "foo") @?= False
+
+showEq :: (Show a, Show b) => Either a b -> Either a b -> Assertion
+showEq x y = show x @=? show y
+
+resolvedIdentifies =
+    Left (toException $ Res.UnresolvedEntityException $ Set.fromList ["foo", "bar", "baz"]) `showEq`
+    Res.parseLBS
+    "<root attr='&bar;'>&foo; --- &baz; &foo;</root>"
+    Res.decodeEntities
+
+resolvedAllGood =
+    D.parseLBS_ xml P.decodeEntities @=?
+    Res.toXMLDocument (Res.parseLBS_ xml P.decodeEntities)
+  where
+    xml = "<foo><bar/><baz/></foo>"
