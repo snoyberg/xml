@@ -16,13 +16,6 @@ module Text.XML.Enumerator.Cursor
     , ancestor
     , descendant
     , orSelf
-    , (&/)
-    , (&//)
-    , (&.//)
-    , ($|)
-    , ($/)
-    , ($//)
-    , ($.//)
     , check
     , checkNode
     , checkElement
@@ -31,6 +24,14 @@ module Text.XML.Enumerator.Cursor
     , element
     , content
     , attribute
+    , (&|)
+    , (&/)
+    , (&//)
+    , (&.//)
+    , ($|)
+    , ($/)
+    , ($//)
+    , ($.//)
     , (>=>)
     ) where
 
@@ -48,9 +49,9 @@ import qualified Data.Text      as T
 -- Because Axis is just a type synonym for @Cursor -> [Cursor]@, it is possible to use
 -- other standard functions like '>>=' or 'concatMap' similarly.
 -- 
--- The operators '&/', '&//' and '&.//' can be used to combine axes so that the second
--- axis works on the children, descendants, respectively the context node as well as its
--- descendants of the results of the first axis.
+-- The operators '&|', '&/', '&//' and '&.//' can be used to combine axes so that the second
+-- axis works on the context nodes, children, descendants, respectively the context node as 
+-- well as its descendants of the results of the first axis.
 -- 
 -- The operators '$|', '$/', '$//' and '$.//' can be used to apply an axis (right-hand side)
 -- to a cursor so that it is applied on the cursor itself, its children, its descendants,
@@ -178,6 +179,7 @@ descendant = child >=> (\c -> c : descendant c)
 orSelf :: Axis -> Axis
 orSelf ax c = c : ax c
 
+infixr 1 &|
 infixr 1 &/ 
 infixr 1 &// 
 infixr 1 &.// 
@@ -185,6 +187,10 @@ infixr 1 $|
 infixr 1 $/
 infixr 1 $//
 infixr 1 $.//
+
+-- | Apply a function to the result of an axis.
+(&|) :: (Cursor -> [a]) -> (a -> b) -> (Cursor -> [b])
+f &| g = map g . f
 
 -- | Combine two axes so that the second works on the children of the results
 -- of the first.
@@ -202,7 +208,7 @@ f &// g = f >=> descendant >=> g
 f &.// g = f >=> orSelf descendant >=> g
 
 -- | Apply an axis to a 'Cursor'.
-($|) :: Cursor -> (Cursor -> [a]) -> [a]
+($|) :: Cursor -> (Cursor -> a) -> a
 v $| f = f v
 
 -- | Apply an axis to the children of a 'Cursor'.

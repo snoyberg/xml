@@ -22,7 +22,7 @@ import Text.XML.Enumerator.Parse (decodeEntities)
 import qualified Text.XML.Enumerator.Parse as P
 import qualified Text.XML.Enumerator.Render as R
 import qualified Text.XML.Enumerator.Cursor as Cu
-import Text.XML.Enumerator.Cursor ((&/), (&//), (&.//), ($|), ($/), ($//), ($.//))
+import Text.XML.Enumerator.Cursor ((&|), (&/), (&//), (&.//), ($|), ($/), ($//), ($.//))
 import qualified Data.Map as Map
 import qualified Data.ByteString.Lazy.Char8 as L
 import Control.Monad.IO.Class (liftIO)
