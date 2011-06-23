@@ -289,7 +289,7 @@ attribute n Cursor{node=NodeElement e} = do (n', v) <- elementAttributes e
                                             return v
 attribute _ _ = []
 
--- | Select attributes on the current element (or nothing if it is not an element). XPath:
+-- | Select attributes on the current element (or nothing if it is not an element).  Namespace and case are ignored. XPath:
 -- /the attribute axis contains the attributes of the context node; the axis will be empty unless the context node is an element/
 -- 
 -- Note that this is not strictly an 'Axis', but will work with most combinators.
