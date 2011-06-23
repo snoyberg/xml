@@ -26,6 +26,8 @@ module Text.XML.Enumerator.Resolved
     , writePrettyFile
     , renderLBS
     , prettyLBS
+    , renderText
+    , prettyText
     , renderBytes
     , prettyBytes
       -- * Conversion
@@ -70,6 +72,9 @@ import System.IO.Unsafe (unsafePerformIO)
 import Text.XML.Enumerator.Document (lazyConsume)
 import qualified Data.Set as Set
 import Data.Set (Set)
+
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TLE
 
 data Document = Document
     { documentPrologue :: Prologue
@@ -207,3 +212,10 @@ renderLBS doc =
 prettyLBS :: Document -> L.ByteString
 prettyLBS doc =
     L.fromChunks $ unsafePerformIO $ lazyConsume $ prettyBytes doc
+
+renderText :: Document -> TL.Text
+renderText = TLE.decodeUtf8 . renderLBS
+
+-- | Pretty prints via 'prettyBytes'.
+prettyText :: Document -> TL.Text
+prettyText = TLE.decodeUtf8 . prettyLBS

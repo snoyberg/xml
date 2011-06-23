@@ -73,6 +73,7 @@ main = hspec $ descriptions $
     , describe "resolved"
         [ it "identifies unresolved entities" resolvedIdentifies
         , it "works for resolvable entities" resolvedAllGood
+        , it "merges adjacent content nodes" resolvedMergeContent
         ]
     ]
 
@@ -257,3 +258,9 @@ resolvedAllGood =
     Res.toXMLDocument (Res.parseLBS_ xml P.decodeEntities)
   where
     xml = "<foo><bar/><baz/></foo>"
+
+resolvedMergeContent =
+    Res.documentRoot (Res.parseLBS_ xml P.decodeEntities) @=?
+    Res.Element "foo" [] [Res.NodeContent "bar&baz"]
+  where
+    xml = "<foo>bar&amp;baz</foo>"
