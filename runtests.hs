@@ -67,6 +67,7 @@ main = hspec $ descriptions $
         , it "has correct laxElement" cursorLaxElement
         , it "has correct content" cursorContent
         , it "has correct attribute" cursorAttribute
+        , it "has correct laxAttribute" cursorLaxAttribute
         , it "has correct &* and $* operators" cursorDeep
         ]
     , describe "resolved"
@@ -233,6 +234,7 @@ cursorContent = do
   Cu.content cursor @?= []
   (cursor $.// Cu.content) @?= ["a", "b"]
 cursorAttribute = Cu.attribute "attr" cursor @?= ["x"]
+cursorLaxAttribute = Cu.laxAttribute "Attr" cursor @?= ["x"]
 cursorDeep = do
   (Cu.element "foo" &/ Cu.element "bar2" &// Cu.attribute "attr") cursor @?= ["y"]
   (return &.// Cu.attribute "attr") cursor @?= ["x", "y"]

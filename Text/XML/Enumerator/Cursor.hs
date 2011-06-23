@@ -28,6 +28,7 @@ module Text.XML.Enumerator.Cursor
     , laxElement
     , content
     , attribute
+    , laxAttribute
     -- * Operators
     , (&|)
     , (&/)
@@ -287,3 +288,16 @@ attribute n Cursor{node=NodeElement e} = do (n', v) <- elementAttributes e
                                             guard $ n == n'
                                             return v
 attribute _ _ = []
+
+-- | Select attributes on the current element (or nothing if it is not an element). XPath:
+-- /the attribute axis contains the attributes of the context node; the axis will be empty unless the context node is an element/
+-- 
+-- Note that this is not strictly an 'Axis', but will work with most combinators.
+-- 
+-- The return list of the generalised axis contains as elements lists of 'Content' 
+-- elements, each full list representing an attribute value.
+laxAttribute :: T.Text -> Cursor -> [T.Text]
+laxAttribute n Cursor{node=NodeElement e} = do (n', v) <- elementAttributes e
+                                               guard $ (on (==) T.toCaseFold) n (nameLocalName n')
+                                               return v
+laxAttribute _ _ = []
