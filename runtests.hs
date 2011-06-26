@@ -69,6 +69,8 @@ main = hspec $ descriptions $
         , it "has correct attribute" cursorAttribute
         , it "has correct laxAttribute" cursorLaxAttribute
         , it "has correct &* and $* operators" cursorDeep
+        , it "has correct force" cursorForce
+        , it "has correct forceM" cursorForceM
         ]
     , describe "resolved"
         [ it "identifies unresolved entities" resolvedIdentifies
@@ -243,6 +245,14 @@ cursorDeep = do
   (cursor $/ Cu.element "bar2" &// Cu.attribute "attr") @?= ["y"]
   (cursor $/ Cu.element "bar2" &/ Cu.element "baz2" >=> Cu.attribute "attr") @?= ["y"]
   null (cursor $| Cu.element "foo") @?= False
+cursorForce = do
+  Cu.force () [] @?= (Nothing :: Maybe Integer)
+  Cu.force () [1] @?= Just 1
+  Cu.force () [1,2] @?= Just 1
+cursorForceM = do
+  Cu.forceM () [] @?= (Nothing :: Maybe Integer)
+  Cu.forceM () [Just 1, Nothing] @?= Just 1
+  Cu.forceM () [Nothing, Just 1] @?= Nothing
 
 showEq :: (Show a, Show b) => Either a b -> Either a b -> Assertion
 showEq x y = show x @=? show y

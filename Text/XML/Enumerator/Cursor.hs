@@ -39,12 +39,16 @@ module Text.XML.Enumerator.Cursor
     , ($//)
     , ($.//)
     , (>=>)
+    -- * Error handling
+    , force
+    , forceM
     ) where
 
 import           Control.Monad
 import           Data.Function                (on)
 import           Data.List                    (foldl')
 import           Text.XML.Enumerator.Resolved
+import qualified Control.Failure              as F
 import qualified Data.Text                    as T
 
 -- TODO: Consider [Cursor] -> [Cursor]?
@@ -301,3 +305,11 @@ laxAttribute n Cursor{node=NodeElement e} = do (n', v) <- elementAttributes e
                                                guard $ (on (==) T.toCaseFold) n (nameLocalName n')
                                                return v
 laxAttribute _ _ = []
+
+force :: F.Failure e f => e -> [a] -> f a
+force e [] = F.failure e
+force _ (x:_) = return x
+
+forceM :: F.Failure e f => e -> [f a] -> f a
+forceM e [] = F.failure e
+forceM _ (x:_) = x
