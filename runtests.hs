@@ -197,7 +197,7 @@ cursor =
         ,       "<bin2/>"
         ,       "<bin3/>"
         ,    "</bar3>"
-        ,    "<bar1 xmlns=\"http://example.com\"/>"
+        ,    "<Bar1 xmlns=\"http://example.com\" Attr=\"q\"/>"
         , "</foo>"
         ]
 
@@ -214,28 +214,28 @@ cursorPreceding = do
   name (Cu.preceding baz2) @?= ["baz1", "bar1"]
   name (Cu.preceding bin2) @?= ["bin1", "baz3", "baz2", "baz1", "bar2", "bar1"]
 cursorFollowing = do
-  name (Cu.following baz2) @?= ["baz3", "bar3", "bin1", "bin2", "bin3", "bar1"]
-  name (Cu.following bar2) @?= ["bar3", "bin1", "bin2", "bin3", "bar1"]
+  name (Cu.following baz2) @?= ["baz3", "bar3", "bin1", "bin2", "bin3", "Bar1"]
+  name (Cu.following bar2) @?= ["bar3", "bin1", "bin2", "bin3", "Bar1"]
 cursorPrecedingSib = name (Cu.precedingSibling baz2) @?= ["baz1"]
 cursorFollowingSib = name (Cu.followingSibling baz2) @?= ["baz3"]
-cursorDescendant = (name $ Cu.descendant cursor) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3 bar1"
+cursorDescendant = (name $ Cu.descendant cursor) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3 Bar1"
 cursorCheck = null (cursor $.// Cu.check (const False)) @?= True
 cursorPredicate = (name $ cursor $.// Cu.check Cu.descendant) @?= T.words "foo bar2 baz3 bar3"
-cursorCheckNode = (name $ cursor $// Cu.checkNode f) @?= T.words "bar1 bar2 bar3 bar1"
+cursorCheckNode = (name $ cursor $// Cu.checkNode f) @?= T.words "bar1 bar2 bar3"
     where f (Res.NodeElement e) = "bar" `T.isPrefixOf` Res.nameLocalName (Res.elementName e)
           f _               = False
-cursorCheckElement = (name $ cursor $// Cu.checkElement f) @?= T.words "bar1 bar2 bar3 bar1"
+cursorCheckElement = (name $ cursor $// Cu.checkElement f) @?= T.words "bar1 bar2 bar3"
     where f e = "bar" `T.isPrefixOf` Res.nameLocalName (Res.elementName e)
-cursorCheckName = (name $ cursor $// Cu.checkName f) @?= T.words "bar1 bar2 bar3 bar1"
+cursorCheckName = (name $ cursor $// Cu.checkName f) @?= T.words "bar1 bar2 bar3"
     where f n = "bar" `T.isPrefixOf` nameLocalName n
-cursorAnyElement = (name $ cursor $// Cu.anyElement) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3 bar1"
+cursorAnyElement = (name $ cursor $// Cu.anyElement) @?= T.words "bar1 bar2 baz1 baz2 baz3 bar3 bin1 bin2 bin3 Bar1"
 cursorElement = (name $ cursor $// Cu.element "bar1") @?= ["bar1"]
-cursorLaxElement = (name $ cursor $// Cu.laxElement "bar1") @?= ["bar1", "bar1"]
+cursorLaxElement = (name $ cursor $// Cu.laxElement "bar1") @?= ["bar1", "Bar1"]
 cursorContent = do
   Cu.content cursor @?= []
   (cursor $.// Cu.content) @?= ["a", "b"]
 cursorAttribute = Cu.attribute "attr" cursor @?= ["x"]
-cursorLaxAttribute = Cu.laxAttribute "Attr" cursor @?= ["x"]
+cursorLaxAttribute = (cursor $.// Cu.laxAttribute "Attr") @?= ["x", "y", "q"]
 cursorDeep = do
   (Cu.element "foo" &/ Cu.element "bar2" &// Cu.attribute "attr") cursor @?= ["y"]
   (return &.// Cu.attribute "attr") cursor @?= ["x", "y"]
