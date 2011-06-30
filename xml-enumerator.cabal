@@ -28,6 +28,7 @@ library
                    , blaze-builder             >= 0.2      && < 0.4
                    , blaze-builder-enumerator  >= 0.2      && < 0.3
                    , transformers              >= 0.2      && < 0.3
+                   , failure                   >= 0.1      && < 0.2
     exposed-modules: Text.XML.Enumerator.Parse
                      Text.XML.Enumerator.Render
                      Text.XML.Enumerator.Document

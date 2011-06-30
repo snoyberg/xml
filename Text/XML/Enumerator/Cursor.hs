@@ -25,8 +25,10 @@ module Text.XML.Enumerator.Cursor
     , checkName
     , anyElement
     , element
+    , laxElement
     , content
     , attribute
+    , laxAttribute
     -- * Operators
     , (&|)
     , (&/)
@@ -37,12 +39,17 @@ module Text.XML.Enumerator.Cursor
     , ($//)
     , ($.//)
     , (>=>)
+    -- * Error handling
+    , force
+    , forceM
     ) where
 
 import           Control.Monad
-import           Data.List      (foldl')
+import           Data.Function                (on)
+import           Data.List                    (foldl')
 import           Text.XML.Enumerator.Resolved
-import qualified Data.Text      as T
+import qualified Control.Failure              as F
+import qualified Data.Text                    as T
 
 -- TODO: Consider [Cursor] -> [Cursor]?
 -- | The type of an Axis that returns a list of Cursors.
@@ -259,6 +266,11 @@ anyElement = checkElement (const True)
 element :: Name -> Axis
 element n = checkName (== n)
 
+-- | Select only those elements with a loosely matching tag name. Namespace and case are ignored. XPath:
+-- /A node test that is a QName is true if and only if the type of the node (see [5 Data Model]) is the principal node type and has an expanded-name equal to the expanded-name specified by the QName./
+laxElement :: T.Text -> Axis
+laxElement n = checkName (on (==) T.toCaseFold n . nameLocalName)
+
 -- | Select only text nodes, and directly give the 'Content' values. XPath:
 -- /The node test text() is true for any text node./
 -- 
@@ -280,3 +292,24 @@ attribute n Cursor{node=NodeElement e} = do (n', v) <- elementAttributes e
                                             guard $ n == n'
                                             return v
 attribute _ _ = []
+
+-- | Select attributes on the current element (or nothing if it is not an element).  Namespace and case are ignored. XPath:
+-- /the attribute axis contains the attributes of the context node; the axis will be empty unless the context node is an element/
+-- 
+-- Note that this is not strictly an 'Axis', but will work with most combinators.
+-- 
+-- The return list of the generalised axis contains as elements lists of 'Content' 
+-- elements, each full list representing an attribute value.
+laxAttribute :: T.Text -> Cursor -> [T.Text]
+laxAttribute n Cursor{node=NodeElement e} = do (n', v) <- elementAttributes e
+                                               guard $ (on (==) T.toCaseFold) n (nameLocalName n')
+                                               return v
+laxAttribute _ _ = []
+
+force :: F.Failure e f => e -> [a] -> f a
+force e [] = F.failure e
+force _ (x:_) = return x
+
+forceM :: F.Failure e f => e -> [f a] -> f a
+forceM e [] = F.failure e
+forceM _ (x:_) = x
