@@ -71,6 +71,8 @@ main = hspec $ descriptions $
         , it "has correct &* and $* operators" cursorDeep
         , it "has correct force" cursorForce
         , it "has correct forceM" cursorForceM
+        , it "has correct hasAttribute" cursorHasAttribute
+        , it "has correct attributeIs" cursorAttributeIs
         ]
     , describe "resolved"
         [ it "identifies unresolved entities" resolvedIdentifies
@@ -238,6 +240,10 @@ cursorContent = do
   (cursor $.// Cu.content) @?= ["a", "b"]
 cursorAttribute = Cu.attribute "attr" cursor @?= ["x"]
 cursorLaxAttribute = (cursor $.// Cu.laxAttribute "Attr") @?= ["x", "y", "q"]
+
+cursorHasAttribute = (length $ cursor $.// Cu.hasAttribute "attr") @?= 2
+cursorAttributeIs = (length $ cursor $.// Cu.attributeIs "attr" "y") @?= 1
+
 cursorDeep = do
   (Cu.element "foo" &/ Cu.element "bar2" &// Cu.attribute "attr") cursor @?= ["y"]
   (return &.// Cu.attribute "attr") cursor @?= ["x", "y"]

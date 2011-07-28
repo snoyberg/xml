@@ -38,6 +38,8 @@ module Text.XML.Enumerator.Cursor
     , content
     , attribute
     , laxAttribute
+    , hasAttribute
+    , attributeIs
     -- * Operators
     , (&|)
     , (&/)
@@ -319,6 +321,20 @@ laxAttribute n Cursor{node=NodeElement e} = do (n', v) <- elementAttributes e
                                                guard $ (on (==) T.toCaseFold) n (nameLocalName n')
                                                return v
 laxAttribute _ _ = []
+
+-- | Select only those element nodes with the given attribute.
+hasAttribute :: Name -> Axis
+hasAttribute n c =
+    case node c of
+        NodeElement (Element _ as _) -> maybe [] (const [c]) $ lookup n as
+        _ -> []
+
+-- | Select only those element nodes containing the given attribute key/value pair.
+attributeIs :: Name -> T.Text -> Axis
+attributeIs n v c =
+    case node c of
+        NodeElement (Element _ as _) -> if Just v == lookup n as then [c] else []
+        _ -> []
 
 force :: F.Failure e f => e -> [a] -> f a
 force e [] = F.failure e
