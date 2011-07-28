@@ -1,12 +1,24 @@
 name:            xml-enumerator
-version:         0.3.4
+version:         0.3.4.1
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michaels@suite-sol.com>, Aristid Breitkreuz <aristidb@googlemail.com>
 maintainer:      Michael Snoyman <michaels@suite-sol.com>
 synopsis:        Pure-Haskell utilities for dealing with XML with the enumerator package.
 description:
-    Provides the ability to parse and render XML in a streaming manner using the enumerator package.
+    This package provides parsing and rendering functions for XML. It is based on the datatypes found in the xml-types package. This package is broken up into five modules:
+    .
+    * Parse: Streaming parser, including some streaming parser combinators.
+    .
+    * Render: Streaming renderer.
+    .
+    * Document: DOM-based parsing and rendering using xml-types Document/Node datatypes.
+    .
+    * Resolved: Almost identical to Document, with one major difference: The datatypes here require all entities to be resolved on parsing. This module is much simpler to use than Document. Unless you have specific needs for the former, use this module.
+    .
+    * Cursor: Provides a higher level interface on top of Resolved for traversing the DOM bidirectionally, similar to XPath.
+    .
+    Additionally, the xml-hamlet package <http://hackage.haskell.org/package/xml-hamlet> provides a more convenient syntax for creating XML documents.
 category:        XML, Enumerator
 stability:       Stable
 cabal-version:   >= 1.6

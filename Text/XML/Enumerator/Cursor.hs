@@ -1,10 +1,19 @@
+-- | This module provides for simple DOM traversal. It is inspired by XPath. There are two central concepts here:
+--
+-- * A 'Cursor' represents a node in the DOM. It also contains information on the node's /location/. While the 'Node' datatype will only know of its children, a @Cursor@ knows about its parent and siblings as well. (The underlying mechanism allowing this is called a zipper, see <http://www.haskell.org/haskellwiki/Zipper> and <http://www.haskell.org/haskellwiki/Tying_the_Knot>.)
+--
+-- * An 'Axis', in its simplest form, takes a @Cursor@ and returns a list of @Cursor@s. It is used for selections, such as finding children, ancestors, etc. Axes can be chained together to express complex rules, such as all children named /foo/.
+--
+-- The terminology used in this module is taken directly from the XPath
+-- specification: <http://www.w3.org/TR/xpath/>. For those familiar with XPath,
+-- the one major difference is that attributes are not considered nodes in this
+-- module.
 module Text.XML.Enumerator.Cursor
     (
-    -- * Type classes  
-      Boolean(..)
-    -- * Cursor and Axis  
+    -- * Data types
+      Cursor
     , Axis
-    , Cursor
+    -- * Production
     , fromDocument
     , fromNode
     , cut
@@ -39,6 +48,8 @@ module Text.XML.Enumerator.Cursor
     , ($//)
     , ($.//)
     , (>=>)
+    -- * Type classes
+    , Boolean(..)
     -- * Error handling
     , force
     , forceM
@@ -77,7 +88,7 @@ type Axis = Cursor -> [Cursor]
 type DiffCursor = [Cursor] -> [Cursor]
 
 -- TODO: Decide whether to use an existing package for this
--- | Something that can be used in a predicate check as a "boolean".
+-- | Something that can be used in a predicate check as a boolean.
 class Boolean a where
     bool :: a -> Bool
 
@@ -113,6 +124,9 @@ cut = fromNode . node
 
 -- | The parent axis. As described in XPath:
 -- /the parent axis contains the parent of the context node, if there is one/.
+--
+-- Every node but the root element of the document has a parent. Parent nodes
+-- will always be 'NodeElement's.
 parent :: Axis
 parent c = case parent' c of
              Nothing -> []
