@@ -82,7 +82,7 @@ import Data.XML.Types
     ( Name (..), Event (..), Content (..)
     , Instruction (..), ExternalID (..)
     )
-import Control.Applicative ((<|>), (<$>))
+import Control.Applicative ((<|>), (<$>), Alternative(empty,(<|>)))
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Read (Reader, decimal, hexadecimal)
@@ -574,6 +574,9 @@ instance Exception XmlException
 -- are unhandled attributes. Use the 'requireAttr', 'optionalAttr' et al
 -- functions for handling an attribute, and 'ignoreAttrs' if you would like to
 -- skip the rest of the attributes on an element.
+--
+-- 'Alternative' instance behave like 'First' monoid. It chooses first
+-- parser which doesn't fail.
 newtype AttrParser a = AttrParser { runAttrParser :: [(Name, [Content])] -> Either XmlException ([(Name, [Content])], a) }
 
 instance Monad AttrParser where
@@ -587,6 +590,12 @@ instance Functor AttrParser where
 instance Applicative AttrParser where
     pure = return
     (<*>) = ap
+instance Alternative AttrParser where
+    empty = AttrParser $ const $ Left $ XmlException "AttrParser.empty" Nothing
+    AttrParser f <|> AttrParser g = AttrParser $ \x ->
+      case f x of
+        Left  _ -> g x
+        res     -> res
 
 optionalAttrRaw :: ((Name, [Content]) -> Maybe b) -> AttrParser (Maybe b)
 optionalAttrRaw f =
