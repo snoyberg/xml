@@ -207,7 +207,7 @@ prettify level names (Continue k) = do
                     (Right (EventBeginElement name attrs), Just (EventEndElement _)) -> do
                         EL.drop 1
                         return ([before level, EventBeginElement name attrs, EventEndElement name, after], level, names)
-                    (Right (EventBeginElement name attrs), _) -> do
+                    (Right (EventBeginElement name attrs), _) ->
                         return ([before level, EventBeginElement name attrs, after], level + 1, name : names)
                     (Right (EventEndElement _), _) -> do
                         let newLevel = level - 1
