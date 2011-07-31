@@ -82,7 +82,7 @@ import Data.XML.Types
     ( Name (..), Event (..), Content (..)
     , Instruction (..), ExternalID (..)
     )
-import Control.Applicative ((<|>), (<$>))
+import Control.Applicative (Applicative(..), Alternative(empty,(<|>)), (<$>))
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Read (Reader, decimal, hexadecimal)
@@ -106,7 +106,6 @@ import qualified Data.Enumerator.Binary as EB
 import Control.Monad (unless, ap, liftM)
 import qualified Data.Text as TS
 import Data.List (foldl')
-import Control.Applicative (Applicative (..))
 import Data.Typeable (Typeable)
 import Control.Exception (Exception, throwIO, SomeException)
 import Data.Enumerator.Binary (enumFile)
@@ -215,8 +214,7 @@ iterToken :: Monad m => DecodeEntities -> Iteratee TS.Text m (Maybe Token)
 iterToken de = iterParser ((endOfInput >> return Nothing) <|> fmap Just (parseToken de))
 
 parseToken :: DecodeEntities -> Parser Token
-parseToken de = do
-    (char '<' >> parseLt) <|> fmap TokenContent (parseContent de False False)
+parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False False
   where
     parseLt =
         (char '?' >> parseInstr) <|>
@@ -574,6 +572,9 @@ instance Exception XmlException
 -- are unhandled attributes. Use the 'requireAttr', 'optionalAttr' et al
 -- functions for handling an attribute, and 'ignoreAttrs' if you would like to
 -- skip the rest of the attributes on an element.
+--
+-- 'Alternative' instance behave like 'First' monoid. It chooses first
+-- parser which doesn't fail.
 newtype AttrParser a = AttrParser { runAttrParser :: [(Name, [Content])] -> Either XmlException ([(Name, [Content])], a) }
 
 instance Monad AttrParser where
@@ -587,6 +588,12 @@ instance Functor AttrParser where
 instance Applicative AttrParser where
     pure = return
     (<*>) = ap
+instance Alternative AttrParser where
+    empty = AttrParser $ const $ Left $ XmlException "AttrParser.empty" Nothing
+    AttrParser f <|> AttrParser g = AttrParser $ \x ->
+      case f x of
+        Left  _ -> g x
+        res     -> res
 
 optionalAttrRaw :: ((Name, [Content]) -> Maybe b) -> AttrParser (Maybe b)
 optionalAttrRaw f =
