@@ -21,7 +21,7 @@ description:
     Additionally, the xml-hamlet package <http://hackage.haskell.org/package/xml-hamlet> provides a more convenient syntax for creating XML documents.
 category:        XML, Enumerator
 stability:       Stable
-cabal-version:   >= 1.6
+cabal-version:   >= 1.8
 build-type:      Simple
 homepage:        http://github.com/snoyberg/xml-enumerator
 
@@ -50,14 +50,21 @@ library
     other-modules:   Text.XML.Stream.Token
     ghc-options:     -Wall
 
-executable runtests
-    main-is:         runtests.hs
-    if flag(test)
-        Buildable: True
-        Build-depends: base, HUnit, hspec >= 0.3 && < 0.4
-    else
-        Buildable: False
+test-suite runtests
+    type: exitcode-stdio-1.0
+    main-is: main.hs
+    hs-source-dirs: test
+    build-depends:          base                         >= 4               && < 5
+                          , containers                   >= 0.2             && < 0.5
+                          , text                                               < 1
+                          , transformers                 >= 0.2             && < 0.3
+                          , enumerator                   >= 0.4.14          && < 0.5
+                          , bytestring                   >= 0.9             && < 0.10
+                          , xml-enumerator               >= 0.4             && < 0.5
+                          , hspec                        >= 0.6.1           && < 0.7
+                          , HUnit                        >= 1.2             && < 1.3
+                          , xml-types                    >= 0.3             && < 0.4
 
 source-repository head
   type:     git
-  location: git://github.com/snoyberg/xml-enumerator.git
+  location: git://github.com/snoyberg/xml.git

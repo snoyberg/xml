@@ -156,8 +156,8 @@ tokenToEvent n (TokenCDATA t) = (n, [EventCDATA t])
 tnameToName :: Bool -> NSLevel -> TName -> Name
 tnameToName _ _ (TName (Just "xml") name) =
     Name name (Just "http://www.w3.org/XML/1998/namespace") (Just "xml")
-tnameToName isAttr (NSLevel def _) (TName Nothing name) =
-    Name name (if isAttr then Nothing else def) Nothing
+tnameToName isAttr (NSLevel def' _) (TName Nothing name) =
+    Name name (if isAttr then Nothing else def') Nothing
 tnameToName _ (NSLevel _ m) (TName (Just pref) name) =
     case Map.lookup pref m of
         Just ns -> Name name (Just ns) (Just pref)
@@ -537,9 +537,9 @@ force msg i = do
         Just a -> return a
 
 -- | The same as 'parseFile', but throws any exceptions.
-parseFile_ :: FilePath -> ParseSettings -> Iteratee Event IO a -> IO a
-parseFile_ fn de p =
-    parseFile fn de p >>= go
+parseFile_ :: ParseSettings -> FilePath -> Iteratee Event IO a -> IO a
+parseFile_ de fn p =
+    parseFile de fn p >>= go
   where
     go (Left e) = liftIO $ throwIO e
     go (Right a) = return a
@@ -547,23 +547,23 @@ parseFile_ fn de p =
 -- | A helper function which reads a file from disk using 'enumFile', detects
 -- character encoding using 'detectUtf', parses the XML using 'parseBytes', and
 -- then hands off control to your supplied parser.
-parseFile :: FilePath
-          -> ParseSettings
+parseFile :: ParseSettings
+          -> FilePath
           -> Iteratee Event IO a
           -> IO (Either SomeException a)
-parseFile fn de p =
+parseFile de fn p =
     run $ enumFile fn     $$ joinI
         $ parseBytes de   $$ p
 
 -- | Parse an event stream from a lazy 'L.ByteString'.
-parseLBS :: L.ByteString -> ParseSettings -> Iteratee Event IO a -> IO (Either SomeException a)
-parseLBS lbs de p =
+parseLBS :: ParseSettings -> L.ByteString -> Iteratee Event IO a -> IO (Either SomeException a)
+parseLBS de lbs p =
     run $ enumSingle (L.toChunks lbs)   $$ joinI
         $ parseBytes de                 $$ p
 
 -- | Same as 'parseLBS', but throws exceptions.
-parseLBS_ :: L.ByteString -> ParseSettings -> Iteratee Event IO a -> IO a
-parseLBS_ lbs de p =
+parseLBS_ :: ParseSettings -> L.ByteString -> Iteratee Event IO a -> IO a
+parseLBS_ de lbs p =
     run_ $ enumSingle (L.toChunks lbs)   $$ joinI
          $ parseBytes de                 $$ p
 
