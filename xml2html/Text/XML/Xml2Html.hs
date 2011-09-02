@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Text.XML.Xml2Html () where
 
-import qualified Text.XML.Enumerator.Resolved as X
+import qualified Text.XML as X
 import qualified Text.Blaze as B
 import qualified Text.Blaze.Html5 as B5
 import qualified Text.Blaze.Internal as BI

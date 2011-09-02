@@ -20,7 +20,7 @@ import Prelude hiding (FilePath)
 import Filesystem.Path.CurrentOS (FilePath, encodeString, directory, (</>), fromText)
 import qualified Data.Map as Map
 import Data.Text (Text)
-import qualified Text.XML.Enumerator.Resolved as X
+import qualified Text.XML as X
 import Control.Monad (foldM)
 import qualified Data.IORef as I
 import qualified Data.Map as Map
@@ -51,7 +51,7 @@ type Catalog = Map.Map PubSys FilePath
 -- | Load a 'Catalog' from the given path.
 loadCatalog :: FilePath -> IO Catalog
 loadCatalog fp = do
-    X.Document _ (X.Element _ _ ns) _ <- X.readFile_ (encodeString fp) X.decodeEntities
+    X.Document _ (X.Element _ _ ns) _ <- X.readFile_ X.def (encodeString fp)
     foldM addNode Map.empty ns
   where
     dir = directory fp
