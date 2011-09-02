@@ -8,12 +8,10 @@
 module Text.XML.Unresolved
     ( -- * Non-streaming functions
       writeFile
-    , writePrettyFile
     , readFile
     , readFile_
       -- * Lazy bytestrings
     , renderLBS
-    , prettyLBS
     , parseLBS
     , parseLBS_
       -- * Streaming functions
@@ -22,10 +20,6 @@ module Text.XML.Unresolved
     , renderBuilder
     , renderBytes
     , renderText
-      -- ** Pretty versions
-    , prettyBuilder
-    , prettyBytes
-    , prettyText
       -- * Exceptions
     , InvalidEventStream (InvalidEventStream)
       -- * Internal
@@ -35,6 +29,9 @@ module Text.XML.Unresolved
       -- ** Parse
     , P.ParseSettings
     , P.psDecodeEntities
+      -- ** Render
+    , R.RenderSettings
+    , R.rsPretty
     ) where
 
 import Prelude hiding (writeFile, readFile)
@@ -71,23 +68,13 @@ readFile fn de = run $ enumFile fn $$ joinI $ P.parseBytes de $$ fromEvents
 readFile_ :: FilePath -> P.ParseSettings -> IO Document
 readFile_ fn de = run_ $ enumFile fn $$ joinI $ P.parseBytes de $$ fromEvents
 
-writeFile :: FilePath -> Document -> IO ()
-writeFile fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->
-    run_ $ renderBytes doc $$ iterHandle h
+writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
+writeFile rs fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->
+    run_ $ renderBytes rs doc $$ iterHandle h
 
--- | Pretty prints via 'prettyBytes'.
-writePrettyFile :: FilePath -> Document -> IO ()
-writePrettyFile fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->
-    run_ $ prettyBytes doc $$ iterHandle h
-
-renderLBS :: Document -> L.ByteString
-renderLBS doc =
-    L.fromChunks $ unsafePerformIO $ lazyConsume $ renderBytes doc
-
--- | Pretty prints via 'prettyBytes'.
-prettyLBS :: Document -> L.ByteString
-prettyLBS doc =
-    L.fromChunks $ unsafePerformIO $ lazyConsume $ prettyBytes doc
+renderLBS :: R.RenderSettings -> Document -> L.ByteString
+renderLBS rs doc =
+    L.fromChunks $ unsafePerformIO $ lazyConsume $ renderBytes rs doc
 
 parseLBS :: L.ByteString -> P.ParseSettings -> Either SomeException Document
 parseLBS lbs de = runIdentity
@@ -133,23 +120,14 @@ data InvalidEventStream = InvalidEventStream String
     deriving (Show, Typeable)
 instance Exception InvalidEventStream
 
-prettyBuilder :: MonadIO m => Document -> Enumerator Builder m a
-prettyBuilder doc = enumList 8 (toEvents doc) `joinE` R.prettyBuilder
+renderBuilder :: MonadIO m => R.RenderSettings -> Document -> Enumerator Builder m a
+renderBuilder rs doc = enumList 8 (toEvents doc) `joinE` R.renderBuilder rs
 
-prettyBytes :: MonadIO m => Document -> Enumerator ByteString m a
-prettyBytes doc = enumList 8 (toEvents doc) `joinE` R.prettyBytes
+renderBytes :: MonadIO m => R.RenderSettings -> Document -> Enumerator ByteString m a
+renderBytes rs doc = enumList 8 (toEvents doc) `joinE` R.renderBytes rs
 
-prettyText :: MonadIO m => Document -> Enumerator Text m a
-prettyText doc = enumList 8 (toEvents doc) `joinE` R.prettyText
-
-renderBuilder :: MonadIO m => Document -> Enumerator Builder m a
-renderBuilder doc = enumList 8 (toEvents doc) `joinE` R.renderBuilder
-
-renderBytes :: MonadIO m => Document -> Enumerator ByteString m a
-renderBytes doc = enumList 8 (toEvents doc) `joinE` R.renderBytes
-
-renderText :: MonadIO m => Document -> Enumerator Text m a
-renderText doc = enumList 8 (toEvents doc) `joinE` R.renderText
+renderText :: MonadIO m => R.RenderSettings -> Document -> Enumerator Text m a
+renderText rs doc = enumList 8 (toEvents doc) `joinE` R.renderText rs
 
 fromEvents :: Monad m => Iteratee Event m Document
 fromEvents = do

@@ -6,9 +6,9 @@ module Text.XML.Stream.Render
     ( renderBuilder
     , renderBytes
     , renderText
-    , prettyBuilder
-    , prettyBytes
-    , prettyText
+    , RenderSettings
+    , def
+    , rsPretty
     ) where
 
 import Data.XML.Types (Event (..), Content (..), Name (..))
@@ -27,6 +27,7 @@ import Data.Maybe (fromMaybe)
 import Data.ByteString (ByteString)
 import Control.Monad.IO.Class (MonadIO)
 import Data.Char (isSpace)
+import Data.Default (Default (def))
 
 -- | Pretty prints a stream of 'Event's into a stream of 'Builder's. This
 -- changes the meaning of some documents, by inserting/modifying whitespace.
@@ -50,33 +51,35 @@ prettyBuilder step0 =
       where
         go (ts, stack') = k (E.Chunks $ map tokenToBuilder $ ts []) >>== loop stack'
 
--- | Same as 'prettyBuilder', but produces a stream of 'ByteString's.
-prettyBytes :: MonadIO m => E.Enumeratee Event ByteString m b
-prettyBytes s = E.joinI $ prettyBuilder $$ builderToByteString s
-
--- | Same as 'prettyBuilder', but produces a stream of 'Text's.
-prettyText :: MonadIO m => E.Enumeratee Event Text m b
-prettyText s = E.joinI $ prettyBytes $$ ET.decode ET.utf8 s
-
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder' and 'builderToByteString', so it produces
 -- optimally sized 'ByteString's with minimal buffer copying.
 --
 -- The output is UTF8 encoded.
-renderBytes :: MonadIO m => E.Enumeratee Event ByteString m b
-renderBytes s = E.joinI $ renderBuilder $$ builderToByteString s
+renderBytes :: MonadIO m => RenderSettings -> E.Enumeratee Event ByteString m b
+renderBytes rs s = E.joinI $ renderBuilder rs $$ builderToByteString s
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder', 'builderToByteString' and 'renderBytes', so it
 -- produces optimally sized 'ByteString's with minimal buffer copying.
-renderText :: MonadIO m => E.Enumeratee Event Text m b
-renderText s = E.joinI $ renderBytes $$ ET.decode ET.utf8 s
+renderText :: MonadIO m => RenderSettings -> E.Enumeratee Event Text m b
+renderText rs s = E.joinI $ renderBytes rs $$ ET.decode ET.utf8 s
+
+data RenderSettings = RenderSettings
+    { rsPretty :: Bool
+    }
+
+instance Default RenderSettings where
+    def = RenderSettings
+        { rsPretty = False
+        }
 
 -- | Render a stream of 'Event's into a stream of 'Builder's. Builders are from
 -- the blaze-builder package, and allow the create of optimally sized
 -- 'ByteString's with minimal buffer copying.
-renderBuilder :: Monad m => E.Enumeratee Event Builder m b
-renderBuilder =
+renderBuilder :: Monad m => RenderSettings -> E.Enumeratee Event Builder m b
+renderBuilder RenderSettings { rsPretty = True } = prettyBuilder
+renderBuilder RenderSettings { rsPretty = False } =
     loop []
   where
     loop stack = E.checkDone $ step stack
@@ -121,8 +124,8 @@ nameToTName :: NSLevel -> Name -> TName
 nameToTName _ (Name name _ (Just pref))
     | pref == "xml" = TName (Just "xml") name
 nameToTName _ (Name name Nothing _) = TName Nothing name -- invariant that this is true
-nameToTName (NSLevel def sl) (Name name (Just ns) _)
-    | def == Just ns = TName Nothing name
+nameToTName (NSLevel def' sl) (Name name (Just ns) _)
+    | def' == Just ns = TName Nothing name
     | otherwise =
         case Map.lookup ns sl of
             Nothing -> error "nameToTName"
@@ -143,21 +146,21 @@ mkBeginToken isPretty isClosed s name attrs =
     (sl2, tattrs2) = foldr newAttrStack (sl1, tattrs1) attrs
 
 newElemStack :: NSLevel -> Name -> (NSLevel, TName, [TAttribute])
-newElemStack nsl@(NSLevel def _) (Name local ns _)
-    | def == ns = (nsl, TName Nothing local, [])
+newElemStack nsl@(NSLevel def' _) (Name local ns _)
+    | def' == ns = (nsl, TName Nothing local, [])
 newElemStack (NSLevel _ nsmap) (Name local Nothing _) =
     (NSLevel Nothing nsmap, TName Nothing local, [(TName Nothing "xmlns", [])])
 newElemStack (NSLevel _ nsmap) (Name local (Just ns) Nothing) =
     (NSLevel (Just ns) nsmap, TName Nothing local, [(TName Nothing "xmlns", [ContentText ns])])
-newElemStack (NSLevel def nsmap) (Name local (Just ns) (Just pref)) =
+newElemStack (NSLevel def' nsmap) (Name local (Just ns) (Just pref)) =
     case Map.lookup ns nsmap of
         Just pref'
             | pref == pref' ->
-                ( NSLevel def nsmap
+                ( NSLevel def' nsmap
                 , TName (Just pref) local
                 , []
                 )
-        _ -> ( NSLevel def nsmap'
+        _ -> ( NSLevel def' nsmap'
              , TName (Just pref) local
              , [(TName (Just "xmlns") pref, [ContentText ns])]
              )
@@ -165,8 +168,8 @@ newElemStack (NSLevel def nsmap) (Name local (Just ns) (Just pref)) =
     nsmap' = Map.insert ns pref nsmap
 
 newAttrStack :: (Name, [Content]) -> (NSLevel, [TAttribute]) -> (NSLevel, [TAttribute])
-newAttrStack (name, value) (NSLevel def nsmap, attrs) =
-    (NSLevel def nsmap', addNS $ (tname, value) : attrs)
+newAttrStack (name, value) (NSLevel def' nsmap, attrs) =
+    (NSLevel def' nsmap', addNS $ (tname, value) : attrs)
   where
     (nsmap', tname, addNS) =
         case name of

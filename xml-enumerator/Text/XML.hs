@@ -34,19 +34,19 @@ module Text.XML
     , parseEnum_
     , fromEvents
     , UnresolvedEntityException (..)
-      -- ** Settings
-    , ParseSettings
-    , def
-    , psDecodeEntities
       -- * Rendering
     , writeFile
-    , writePrettyFile
     , renderLBS
-    , prettyLBS
     , renderText
-    , prettyText
     , renderBytes
-    , prettyBytes
+      -- * Settings
+    , def
+      -- ** Parsing
+    , ParseSettings
+    , psDecodeEntities
+      -- ** Rendering
+    , R.RenderSettings
+    , R.rsPretty
       -- * Conversion
     , toXMLDocument
     , fromXMLDocument
@@ -206,33 +206,16 @@ data UnresolvedEntityException = UnresolvedEntityException (Set Text)
     deriving (Show, Typeable)
 instance Exception UnresolvedEntityException
 
-renderBytes :: MonadIO m => Document -> Enumerator ByteString m a
-renderBytes doc = enumList 8 (D.toEvents $ toXMLDocument doc) `joinE` R.renderBytes
+renderBytes :: MonadIO m => R.RenderSettings -> Document -> Enumerator ByteString m a
+renderBytes rs doc = enumList 8 (D.toEvents $ toXMLDocument doc) `joinE` R.renderBytes rs
 
-prettyBytes :: MonadIO m => Document -> Enumerator ByteString m a
-prettyBytes doc = enumList 8 (D.toEvents $ toXMLDocument doc) `joinE` R.prettyBytes
+writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
+writeFile rs fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->
+    run_ $ renderBytes rs doc $$ iterHandle h
 
-writeFile :: FilePath -> Document -> IO ()
-writeFile fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->
-    run_ $ renderBytes doc $$ iterHandle h
+renderLBS :: R.RenderSettings -> Document -> L.ByteString
+renderLBS rs doc =
+    L.fromChunks $ unsafePerformIO $ lazyConsume $ renderBytes rs doc
 
--- | Pretty prints via 'prettyBytes'.
-writePrettyFile :: FilePath -> Document -> IO ()
-writePrettyFile fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->
-    run_ $ prettyBytes doc $$ iterHandle h
-
-renderLBS :: Document -> L.ByteString
-renderLBS doc =
-    L.fromChunks $ unsafePerformIO $ lazyConsume $ renderBytes doc
-
--- | Pretty prints via 'prettyBytes'.
-prettyLBS :: Document -> L.ByteString
-prettyLBS doc =
-    L.fromChunks $ unsafePerformIO $ lazyConsume $ prettyBytes doc
-
-renderText :: Document -> TL.Text
-renderText = TLE.decodeUtf8 . renderLBS
-
--- | Pretty prints via 'prettyBytes'.
-prettyText :: Document -> TL.Text
-prettyText = TLE.decodeUtf8 . prettyLBS
+renderText :: R.RenderSettings -> Document -> TL.Text
+renderText rs = TLE.decodeUtf8 . renderLBS rs
