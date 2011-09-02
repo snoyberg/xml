@@ -14,7 +14,7 @@
 --
 -- For simpler, bidirectional traversal of the DOM tree, see the
 -- "Text.XML.Enumerator.Cursor" module.
-module Text.XML.Enumerator.Resolved
+module Text.XML
     ( -- * Data types
       Document (..)
     , Prologue (..)
@@ -65,10 +65,10 @@ import Data.XML.Types
     )
 import Data.Typeable (Typeable)
 import Data.Text (Text)
-import Text.XML.Enumerator.Parse (DecodeEntities, decodeEntities)
-import qualified Text.XML.Enumerator.Parse as P
-import qualified Text.XML.Enumerator.Document as D
-import qualified Text.XML.Enumerator.Render as R
+import Text.XML.Stream.Parse (DecodeEntities, decodeEntities)
+import qualified Text.XML.Stream.Parse as P
+import qualified Text.XML.Unresolved as D
+import qualified Text.XML.Stream.Render as R
 import qualified Data.Text as T
 import Data.Either (partitionEithers)
 import Prelude hiding (readFile, writeFile)
@@ -84,7 +84,7 @@ import qualified Data.ByteString.Lazy as L
 import Data.Functor.Identity (runIdentity)
 import qualified System.IO as SIO
 import System.IO.Unsafe (unsafePerformIO)
-import Text.XML.Enumerator.Document (lazyConsume)
+import Text.XML.Unresolved (lazyConsume)
 import qualified Data.Set as Set
 import Data.Set (Set)
 

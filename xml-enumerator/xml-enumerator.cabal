@@ -1,5 +1,5 @@
 name:            xml-enumerator
-version:         0.3.4.1
+version:         0.4.0
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michaels@suite-sol.com>, Aristid Breitkreuz <aristidb@googlemail.com>
@@ -41,12 +41,12 @@ library
                    , blaze-builder-enumerator  >= 0.2      && < 0.3
                    , transformers              >= 0.2      && < 0.3
                    , failure                   >= 0.1      && < 0.2
-    exposed-modules: Text.XML.Enumerator.Parse
-                     Text.XML.Enumerator.Render
-                     Text.XML.Enumerator.Document
-                     Text.XML.Enumerator.Cursor
-                     Text.XML.Enumerator.Resolved
-    other-modules:   Text.XML.Enumerator.Token
+    exposed-modules: Text.XML.Stream.Parse
+                     Text.XML.Stream.Render
+                     Text.XML.Unresolved
+                     Text.XML.Cursor
+                     Text.XML
+    other-modules:   Text.XML.Stream.Token
     ghc-options:     -Wall
 
 executable runtests

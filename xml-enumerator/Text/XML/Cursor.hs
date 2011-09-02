@@ -8,7 +8,7 @@
 -- specification: <http://www.w3.org/TR/xpath/>. For those familiar with XPath,
 -- the one major difference is that attributes are not considered nodes in this
 -- module.
-module Text.XML.Enumerator.Cursor
+module Text.XML.Cursor
     (
     -- * Data types
       Cursor
@@ -60,7 +60,7 @@ module Text.XML.Enumerator.Cursor
 import           Control.Monad
 import           Data.Function                (on)
 import           Data.List                    (foldl')
-import           Text.XML.Enumerator.Resolved
+import           Text.XML
 import qualified Control.Failure              as F
 import qualified Data.Text                    as T
 

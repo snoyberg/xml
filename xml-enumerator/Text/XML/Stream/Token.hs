@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Text.XML.Enumerator.Token
+module Text.XML.Stream.Token
     ( tokenToBuilder
     , TName (..)
     , Token (..)

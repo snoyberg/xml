@@ -5,7 +5,7 @@
 -- text or entities. In most cases, these can be fully resolved at parsing. If
 -- that is the case for your documents, the "Text.XML.Enumerator.Resolved"
 -- module provides simplified datatypes that only contain raw text.
-module Text.XML.Enumerator.Document
+module Text.XML.Unresolved
     ( -- * Non-streaming functions
       writeFile
     , writePrettyFile
@@ -43,8 +43,8 @@ import Data.Typeable (Typeable)
 import qualified Data.Enumerator.List as EL
 import Blaze.ByteString.Builder (Builder)
 import Control.Monad.IO.Class (MonadIO)
-import qualified Text.XML.Enumerator.Render as R
-import qualified Text.XML.Enumerator.Parse as P
+import qualified Text.XML.Stream.Render as R
+import qualified Text.XML.Stream.Parse as P
 import Data.ByteString (ByteString)
 import Data.Text (Text)
 import Control.Applicative ((<$>), (<*>))

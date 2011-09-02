@@ -38,7 +38,7 @@
 -- functions written by Aristid Breitkreuz and Dmitry Olshansky. To keep this
 -- package simpler, those functions are being moved to a separate package. This
 -- note will be updated with the name of the package(s) when available.
-module Text.XML.Enumerator.Parse
+module Text.XML.Stream.Parse
     ( -- * Parsing XML files
       parseBytes
     , parseText
@@ -90,7 +90,7 @@ import Data.Text.Encoding (decodeUtf32BEWith)
 import Data.Text.Encoding.Error (ignore)
 import Data.Word (Word32)
 import Blaze.ByteString.Builder (fromWord32be, toByteString)
-import Text.XML.Enumerator.Token
+import Text.XML.Stream.Token
 import Prelude hiding (takeWhile)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
@@ -667,6 +667,6 @@ decodeChar readNum backup = either (const backup) toContent . readNum
   where
     toContent (num, extra) | T.null extra =
       case decodeUtf32BEWith ignore . toByteString $ fromWord32be num of
-          char | T.length char == 1 -> ContentText char
+          c    | T.length c    == 1 -> ContentText c
                | otherwise          -> backup
     toContent _ = backup
