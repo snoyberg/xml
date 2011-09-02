@@ -175,9 +175,9 @@ preceding :: Axis
 preceding c =
     go (precedingSibling' c []) (parent c >>= preceding)
   where
-    go x y = foldl' (\b a -> go' a b) y x
+    go x y = foldl' (flip go') y x
     go' :: Cursor -> DiffCursor
-    go' x rest = foldl' (\b a -> go' a b) (x : rest) (child x)
+    go' x rest = foldl' (flip  go') (x : rest) (child x)
 
 -- | The following axis. XPath:
 -- /the following axis contains all nodes in the same document as the context node that are after the context node in document order, excluding any descendants and excluding attribute nodes and namespace nodes/.
@@ -185,12 +185,9 @@ following :: Axis
 following c =
     go (followingSibling' c) (parent c >>= following)
   where
-    go x z =
-        foldr (\a b -> go' a b) z y
-      where
-        y = x []
+    go x z = foldr go' z (x [])
     go' :: Cursor -> DiffCursor
-    go' x rest = x : foldr (\a b -> go' a b) rest (child x)
+    go' x rest = x : foldr go' rest (child x)
 
 -- | The ancestor axis. XPath:
 -- /the ancestor axis contains the ancestors of the context node; the ancestors of the context node consist of the parent of context node and the parent's parent and so on; thus, the ancestor axis will always include the root node, unless the context node is the root node/.

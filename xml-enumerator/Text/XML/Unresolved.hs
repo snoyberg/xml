@@ -44,21 +44,20 @@ import Control.Exception (Exception, SomeException)
 import Data.Typeable (Typeable)
 import qualified Data.Enumerator.List as EL
 import Blaze.ByteString.Builder (Builder)
-import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Text.XML.Stream.Render as R
 import qualified Text.XML.Stream.Parse as P
 import Data.ByteString (ByteString)
 import Data.Text (Text)
 import Control.Applicative ((<$>), (<*>))
+import Control.Monad       (when)
 import qualified System.IO as SIO
 import Data.Enumerator.Binary (enumFile, iterHandle)
 import qualified Data.Text as T
 import Data.Char (isSpace)
 import qualified Data.ByteString.Lazy as L
-import System.IO.Unsafe (unsafePerformIO)
 import qualified Control.Concurrent.MVar as M
-import System.IO.Unsafe (unsafeInterleaveIO)
-import Control.Monad.IO.Class (liftIO)
+import System.IO.Unsafe (unsafeInterleaveIO, unsafePerformIO)
 import Control.Concurrent (forkIO)
 import Data.Functor.Identity (runIdentity)
 
@@ -141,7 +140,7 @@ fromEvents = do
   where
     skip e = do
         x <- peek
-        if x == Just e then EL.drop 1 else return ()
+        when (x == Just e) (EL.drop 1)
     many f =
         go id
       where
