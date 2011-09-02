@@ -19,15 +19,16 @@ module Text.XML.Cursor
     , cut
     -- * Axes
     , parent
-    , precedingSibling
-    , followingSibling
+    , CG.precedingSibling
+    , CG.followingSibling
     , child
     , node
-    , preceding
-    , following
-    , ancestor
+    , CG.preceding
+    , CG.following
+    , CG.ancestor
     , descendant
     , orSelf
+      -- ** Filters
     , check
     , checkNode
     , checkElement
@@ -41,15 +42,15 @@ module Text.XML.Cursor
     , hasAttribute
     , attributeIs
     -- * Operators
-    , (&|)
-    , (&/)
-    , (&//)
-    , (&.//)
-    , ($|)
-    , ($/)
-    , ($//)
-    , ($.//)
-    , (>=>)
+    , (CG.&|)
+    , (CG.&/)
+    , (CG.&//)
+    , (CG.&.//)
+    , (CG.$|)
+    , (CG.$/)
+    , (CG.$//)
+    , (CG.$.//)
+    , (CG.>=>)
     -- * Type classes
     , Boolean(..)
     -- * Error handling
@@ -59,10 +60,12 @@ module Text.XML.Cursor
 
 import           Control.Monad
 import           Data.Function                (on)
-import           Data.List                    (foldl')
 import           Text.XML
 import qualified Control.Failure              as F
 import qualified Data.Text                    as T
+import qualified Text.XML.Cursor.Generic      as CG
+import           Text.XML.Cursor.Generic      (node, child, parent, descendant, orSelf)
+import           Data.Maybe                   (maybeToList)
 
 -- TODO: Consider [Cursor] -> [Cursor]?
 -- | The type of an Axis that returns a list of Cursors.
@@ -87,8 +90,6 @@ type Axis = Cursor -> [Cursor]
 
 -- XPath axes as in http://www.w3.org/TR/xpath/#axes
 
-type DiffCursor = [Cursor] -> [Cursor]
-
 -- TODO: Decide whether to use an existing package for this
 -- | Something that can be used in a predicate check as a boolean.
 class Boolean a where
@@ -106,43 +107,11 @@ instance Boolean (Either a b) where
     bool (Right _) = True
 
 -- | A cursor: contains an XML 'Node' and pointers to its children, ancestors and siblings.
-data Cursor = Cursor
-    { parent' :: Maybe Cursor
-    , precedingSibling' :: DiffCursor
-    , followingSibling' :: DiffCursor
-    -- | The child axis. XPath:
-    -- /the child axis contains the children of the context node/.
-    , child :: [Cursor]
-    -- | The current node.
-    , node :: Node
-    }
-
-instance Show Cursor where
-    show Cursor { node = n } = "Cursor @ " ++ show n
+type Cursor = CG.Cursor Node
 
 -- | Cut a cursor off from its parent. The idea is to allow restricting the scope of queries on it.
 cut :: Cursor -> Cursor
-cut = fromNode . node
-
--- | The parent axis. As described in XPath:
--- /the parent axis contains the parent of the context node, if there is one/.
---
--- Every node but the root element of the document has a parent. Parent nodes
--- will always be 'NodeElement's.
-parent :: Axis
-parent c = case parent' c of
-             Nothing -> []
-             Just p -> [p]
-
--- | The preceding-sibling axis. XPath:
--- /the preceding-sibling axis contains all the preceding siblings of the context node [...]/.
-precedingSibling :: Axis
-precedingSibling = ($ []) . precedingSibling'
-
--- | The following-sibling axis. XPath:
--- /the following-sibling axis contains all the following siblings of the context node [...]/.
-followingSibling :: Axis
-followingSibling = ($ []) . followingSibling'
+cut = fromNode . CG.node
 
 -- | Convert a 'Document' to a 'Cursor'. It will point to the document root.
 fromDocument :: Document -> Cursor
@@ -150,102 +119,11 @@ fromDocument = fromNode . NodeElement . documentRoot
 
 -- | Convert a 'Node' to a 'Cursor' (without parents).
 fromNode :: Node -> Cursor
-fromNode = toCursor' Nothing id id
-
-toCursor' :: Maybe Cursor -> DiffCursor -> DiffCursor -> Node -> Cursor
-toCursor' par pre fol n =
-    me
+fromNode =
+    CG.toCursor cs
   where
-    me = Cursor par pre fol chi n
-    chi' =
-        case n of
-            NodeElement (Element _ _ x) -> x
-            _ -> []
-    chi = go id chi' []
-    go _ [] = id
-    go pre' (n':ns') =
-        (:) me' . fol'
-      where
-        me' = toCursor' (Just me) pre' fol' n'
-        fol' = go (pre' . (:) me') ns'
-
--- | The preceding axis. XPath:
--- /the preceding axis contains all nodes in the same document as the context node that are before the context node in document order, excluding any ancestors and excluding attribute nodes and namespace nodes/.
-preceding :: Axis
-preceding c =
-    go (precedingSibling' c []) (parent c >>= preceding)
-  where
-    go x y = foldl' (flip go') y x
-    go' :: Cursor -> DiffCursor
-    go' x rest = foldl' (flip  go') (x : rest) (child x)
-
--- | The following axis. XPath:
--- /the following axis contains all nodes in the same document as the context node that are after the context node in document order, excluding any descendants and excluding attribute nodes and namespace nodes/.
-following :: Axis
-following c =
-    go (followingSibling' c) (parent c >>= following)
-  where
-    go x z = foldr go' z (x [])
-    go' :: Cursor -> DiffCursor
-    go' x rest = x : foldr go' rest (child x)
-
--- | The ancestor axis. XPath:
--- /the ancestor axis contains the ancestors of the context node; the ancestors of the context node consist of the parent of context node and the parent's parent and so on; thus, the ancestor axis will always include the root node, unless the context node is the root node/.
-ancestor :: Axis
-ancestor = parent >=> (\p -> p : ancestor p)
-
--- | The descendant axis. XPath:
--- /the descendant axis contains the descendants of the context node; a descendant is a child or a child of a child and so on; thus the descendant axis never contains attribute or namespace nodes/.
-descendant :: Axis
-descendant = child >=> (\c -> c : descendant c)
-
--- | Modify an axis by adding the context node itself as the first element of the result list.
-orSelf :: Axis -> Axis
-orSelf ax c = c : ax c
-
-infixr 1 &|
-infixr 1 &/ 
-infixr 1 &// 
-infixr 1 &.// 
-infixr 1 $|
-infixr 1 $/
-infixr 1 $//
-infixr 1 $.//
-
--- | Apply a function to the result of an axis.
-(&|) :: (Cursor -> [a]) -> (a -> b) -> (Cursor -> [b])
-f &| g = map g . f
-
--- | Combine two axes so that the second works on the children of the results
--- of the first.
-(&/) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
-f &/ g = f >=> child >=> g
-
--- | Combine two axes so that the second works on the descendants of the results
--- of the first.
-(&//) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
-f &// g = f >=> descendant >=> g
-
--- | Combine two axes so that the second works on both the result nodes, and their
--- descendants.
-(&.//) :: Axis -> (Cursor -> [a]) -> (Cursor -> [a])
-f &.// g = f >=> orSelf descendant >=> g
-
--- | Apply an axis to a 'Cursor'.
-($|) :: Cursor -> (Cursor -> a) -> a
-v $| f = f v
-
--- | Apply an axis to the children of a 'Cursor'.
-($/) :: Cursor -> (Cursor -> [a]) -> [a]
-v $/ f = child v >>= f
-
--- | Apply an axis to the descendants of a 'Cursor'.
-($//) :: Cursor -> (Cursor -> [a]) -> [a]
-v $// f = descendant v >>= f
-
--- | Apply an axis to a 'Cursor' as well as its descendants.
-($.//) :: Cursor -> (Cursor -> [a]) -> [a]
-v $.// f = orSelf descendant v >>= f
+    cs (NodeElement (Element _ _ x)) = x
+    cs _ = []
 
 -- | Filter cursors that don't pass a check.
 check :: Boolean b => (Cursor -> b) -> Axis
@@ -301,10 +179,10 @@ content c = case node c of
 -- The return list of the generalised axis contains as elements lists of 'Content' 
 -- elements, each full list representing an attribute value.
 attribute :: Name -> Cursor -> [T.Text]
-attribute n Cursor{node=NodeElement e} = do (n', v) <- elementAttributes e
-                                            guard $ n == n'
-                                            return v
-attribute _ _ = []
+attribute n c =
+    case node c of
+        NodeElement e -> maybeToList $ lookup n $ elementAttributes e
+        _ -> []
 
 -- | Select attributes on the current element (or nothing if it is not an element).  Namespace and case are ignored. XPath:
 -- /the attribute axis contains the attributes of the context node; the axis will be empty unless the context node is an element/
@@ -314,10 +192,13 @@ attribute _ _ = []
 -- The return list of the generalised axis contains as elements lists of 'Content' 
 -- elements, each full list representing an attribute value.
 laxAttribute :: T.Text -> Cursor -> [T.Text]
-laxAttribute n Cursor{node=NodeElement e} = do (n', v) <- elementAttributes e
-                                               guard $ (on (==) T.toCaseFold) n (nameLocalName n')
-                                               return v
-laxAttribute _ _ = []
+laxAttribute n c =
+    case node c of
+        NodeElement e -> do
+            (n', v) <- elementAttributes e
+            guard $ (on (==) T.toCaseFold) n (nameLocalName n')
+            return v
+        _ -> []
 
 -- | Select only those element nodes with the given attribute.
 hasAttribute :: Name -> Axis

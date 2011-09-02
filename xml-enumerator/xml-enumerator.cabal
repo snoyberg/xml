@@ -46,6 +46,7 @@ library
                      Text.XML.Stream.Render
                      Text.XML.Unresolved
                      Text.XML.Cursor
+                     Text.XML.Cursor.Generic
                      Text.XML
     other-modules:   Text.XML.Stream.Token
     ghc-options:     -Wall
