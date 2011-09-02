@@ -8,22 +8,22 @@ synopsis:        Pure-Haskell utilities for dealing with XML with the enumerator
 description:
     This package provides parsing and rendering functions for XML. It is based on the datatypes found in the xml-types package. This package is broken up into five modules:
     .
-    * Parse: Streaming parser, including some streaming parser combinators.
+    * Text.XML: DOM-based parsing and rendering. This is the most commonly used module.
     .
-    * Render: Streaming renderer.
+    * Text.XML.Cursor: A wrapper around "Text.XML" which allows bidirectional traversing of the DOM, similar to XPath.
     .
-    * Document: DOM-based parsing and rendering using xml-types Document/Node datatypes.
+    * Text.XML.Unresolved: A slight modification to "Text.XML" which does not require all entities to be resolved at parsing. The datatypes are slightly more complicated here, and therefore this module is only recommended when you need to deal directly with raw entities.
     .
-    * Resolved: Almost identical to Document, with one major difference: The datatypes here require all entities to be resolved on parsing. This module is much simpler to use than Document. Unless you have specific needs for the former, use this module.
+    * Text.XML.Stream.Parse: Streaming parser, including some streaming parser combinators.
     .
-    * Cursor: Provides a higher level interface on top of Resolved for traversing the DOM bidirectionally, similar to XPath.
+    * Text.XML.Stream.Render: Streaming renderer.
     .
     Additionally, the xml-hamlet package <http://hackage.haskell.org/package/xml-hamlet> provides a more convenient syntax for creating XML documents.
 category:        XML, Enumerator
 stability:       Stable
 cabal-version:   >= 1.8
 build-type:      Simple
-homepage:        http://github.com/snoyberg/xml-enumerator
+homepage:        http://github.com/snoyberg/xml
 
 flag test
     default: False

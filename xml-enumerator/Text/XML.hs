@@ -1,19 +1,17 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 -- | DOM-based parsing and rendering.
 --
--- Unlike the "Text.XML.Enumerator.Document" module, the functions and
--- datatypes here require that all entities are resolved at parsing. Unresolved
--- entities are considered a parse error. If you need to allow entity
--- passthrough, please use the above-mentioned module. This module is
--- recommended for most use cases.
+-- This module requires that all entities be resolved at parsing. If you need
+-- to interact with unresolved entities, please use "Text.XML.Unresolved". This
+-- is the recommended module for most uses cases.
 --
 -- While many of the datatypes in this module are simply re-exported from
--- "Data.XML.Types", 'Document', 'Node' and 'Element' are all redefined here to
+-- @Data.XML.Types@, 'Document', 'Node' and 'Element' are all redefined here to
 -- disallow the possibility of unresolved entities. Conversion functions are
 -- provided to switch between the two sets of datatypes.
 --
 -- For simpler, bidirectional traversal of the DOM tree, see the
--- "Text.XML.Enumerator.Cursor" module.
+-- "Text.XML.Cursor" module.
 module Text.XML
     ( -- * Data types
       Document (..)

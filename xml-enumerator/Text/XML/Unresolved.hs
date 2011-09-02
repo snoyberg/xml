@@ -3,8 +3,8 @@
 --
 -- In this module, attribute values and content nodes can contain either raw
 -- text or entities. In most cases, these can be fully resolved at parsing. If
--- that is the case for your documents, the "Text.XML.Enumerator.Resolved"
--- module provides simplified datatypes that only contain raw text.
+-- that is the case for your documents, the "Text.XML" module provides
+-- simplified datatypes that only contain raw text.
 module Text.XML.Unresolved
     ( -- * Non-streaming functions
       writeFile
