@@ -41,6 +41,7 @@ library
                    , blaze-builder-enumerator  >= 0.2      && < 0.3
                    , transformers              >= 0.2      && < 0.3
                    , failure                   >= 0.1      && < 0.2
+                   , data-default              >= 0.2      && < 0.4
     exposed-modules: Text.XML.Stream.Parse
                      Text.XML.Stream.Render
                      Text.XML.Unresolved

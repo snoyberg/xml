@@ -47,9 +47,11 @@ module Text.XML.Stream.Parse
     , parseFile_
     , parseLBS
     , parseLBS_
-      -- ** Entity decoding
+      -- ** Parser settings
+    , ParseSettings
+    , def
     , DecodeEntities
-    , decodeEntities
+    , psDecodeEntities
       -- * Event parsing
     , tag
     , tagPredicate
@@ -112,6 +114,7 @@ import Control.Exception (Exception, throwIO, SomeException)
 import Data.Enumerator.Binary (enumFile)
 import Control.Monad.IO.Class (liftIO)
 import Data.Char (isSpace)
+import Data.Default (Default (..))
 
 tokenToEvent :: [NSLevel] -> Token -> ([NSLevel], [Event])
 tokenToEvent n (TokenBeginDocument _) = (n, [])
@@ -190,7 +193,7 @@ detectUtf step = do
 --
 -- This relies on 'detectUtf' to determine character encoding, and 'parseText'
 -- to do the actual parsing.
-parseBytes :: Monad m => DecodeEntities -> Enumeratee S.ByteString Event m a
+parseBytes :: Monad m => ParseSettings -> Enumeratee S.ByteString Event m a
 parseBytes de step = joinI $ detectUtf $$ parseText de step
 
 -- | Parses a character stream into 'Event's. This function is implemented
@@ -198,7 +201,7 @@ parseBytes de step = joinI $ detectUtf $$ parseText de step
 -- messages do not give line/column information, so you may prefer to stick
 -- with the parser provided by libxml-enumerator. However, this has the
 -- advantage of not relying on any C libraries.
-parseText :: Monad m => DecodeEntities -> Enumeratee TS.Text Event m a
+parseText :: Monad m => ParseSettings -> Enumeratee TS.Text Event m a
 parseText de =
     checkDone $ \k -> k (Chunks [EventBeginDocument]) >>== loop []
   where
@@ -211,8 +214,17 @@ parseText de =
                 let (levels', events) = tokenToEvent levels token
                  in k (Chunks events) >>== loop levels'
 
-iterToken :: Monad m => DecodeEntities -> Iteratee TS.Text m (Maybe Token)
-iterToken de = iterParser ((endOfInput >> return Nothing) <|> fmap Just (parseToken de))
+data ParseSettings = ParseSettings
+    { psDecodeEntities :: DecodeEntities
+    }
+
+instance Default ParseSettings where
+    def = ParseSettings
+        { psDecodeEntities = decodeEntities
+        }
+
+iterToken :: Monad m => ParseSettings -> Iteratee TS.Text m (Maybe Token)
+iterToken de = iterParser ((endOfInput >> return Nothing) <|> fmap Just (parseToken $ psDecodeEntities de))
 
 parseToken :: DecodeEntities -> Parser Token
 parseToken de = do
@@ -525,7 +537,7 @@ force msg i = do
         Just a -> return a
 
 -- | The same as 'parseFile', but throws any exceptions.
-parseFile_ :: FilePath -> DecodeEntities -> Iteratee Event IO a -> IO a
+parseFile_ :: FilePath -> ParseSettings -> Iteratee Event IO a -> IO a
 parseFile_ fn de p =
     parseFile fn de p >>= go
   where
@@ -536,7 +548,7 @@ parseFile_ fn de p =
 -- character encoding using 'detectUtf', parses the XML using 'parseBytes', and
 -- then hands off control to your supplied parser.
 parseFile :: FilePath
-          -> DecodeEntities
+          -> ParseSettings
           -> Iteratee Event IO a
           -> IO (Either SomeException a)
 parseFile fn de p =
@@ -544,13 +556,13 @@ parseFile fn de p =
         $ parseBytes de   $$ p
 
 -- | Parse an event stream from a lazy 'L.ByteString'.
-parseLBS :: L.ByteString -> DecodeEntities -> Iteratee Event IO a -> IO (Either SomeException a)
+parseLBS :: L.ByteString -> ParseSettings -> Iteratee Event IO a -> IO (Either SomeException a)
 parseLBS lbs de p =
     run $ enumSingle (L.toChunks lbs)   $$ joinI
         $ parseBytes de                 $$ p
 
 -- | Same as 'parseLBS', but throws exceptions.
-parseLBS_ :: L.ByteString -> DecodeEntities -> Iteratee Event IO a -> IO a
+parseLBS_ :: L.ByteString -> ParseSettings -> Iteratee Event IO a -> IO a
 parseLBS_ lbs de p =
     run_ $ enumSingle (L.toChunks lbs)   $$ joinI
          $ parseBytes de                 $$ p

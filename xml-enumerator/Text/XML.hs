@@ -26,8 +26,6 @@ module Text.XML
     , Doctype (..)
     , ExternalID (..)
       -- * Parsing
-    , DecodeEntities
-    , decodeEntities
     , readFile
     , readFile_
     , parseLBS
@@ -36,6 +34,10 @@ module Text.XML
     , parseEnum_
     , fromEvents
     , UnresolvedEntityException (..)
+      -- ** Settings
+    , ParseSettings
+    , def
+    , psDecodeEntities
       -- * Rendering
     , writeFile
     , writePrettyFile
@@ -65,7 +67,6 @@ import Data.XML.Types
     )
 import Data.Typeable (Typeable)
 import Data.Text (Text)
-import Text.XML.Stream.Parse (DecodeEntities, decodeEntities)
 import qualified Text.XML.Stream.Parse as P
 import qualified Text.XML.Unresolved as D
 import qualified Text.XML.Stream.Render as R
@@ -75,6 +76,7 @@ import Prelude hiding (readFile, writeFile)
 import Control.Exception (SomeException, Exception)
 import Data.Enumerator.Binary (enumFile, iterHandle)
 import Control.Monad.IO.Class (MonadIO)
+import Text.XML.Stream.Parse (ParseSettings, def, psDecodeEntities)
 import Data.Enumerator
     ( Enumerator, Iteratee, throwError, ($$), run, run_, joinI, enumList
     , joinE
@@ -113,8 +115,8 @@ data Element = Element
   deriving (Show, Eq, Typeable)
 
 {-
-readFile :: FilePath -> DecodeEntities -> IO (Either SomeException Document)
-readFile_ :: FIlePath -> DecodeEntities -> IO Document
+readFile :: FilePath -> ParseSettings -> IO (Either SomeException Document)
+readFile_ :: FIlePath -> ParseSettings -> IO Document
 -}
 
 toXMLDocument :: Document -> X.Document
@@ -168,30 +170,30 @@ fromXMLNode (X.NodeContent (X.ContentEntity t)) = Left $ Set.singleton t
 fromXMLNode (X.NodeComment c) = Right $ NodeComment c
 fromXMLNode (X.NodeInstruction i) = Right $ NodeInstruction i
 
-readFile :: FilePath -> DecodeEntities -> IO (Either SomeException Document)
+readFile :: FilePath -> ParseSettings -> IO (Either SomeException Document)
 readFile fn = parseEnum $ enumFile fn
 
-readFile_ :: FilePath -> DecodeEntities -> IO Document
+readFile_ :: FilePath -> ParseSettings -> IO Document
 readFile_ fn = parseEnum_ $ enumFile fn
 
 lbsEnum :: Monad m => L.ByteString -> Enumerator ByteString m a
 lbsEnum = enumList 8 . L.toChunks
 
-parseLBS :: L.ByteString -> DecodeEntities -> Either SomeException Document
+parseLBS :: L.ByteString -> ParseSettings -> Either SomeException Document
 parseLBS lbs = runIdentity . parseEnum (lbsEnum lbs)
 
-parseLBS_ :: L.ByteString -> DecodeEntities -> Document
+parseLBS_ :: L.ByteString -> ParseSettings -> Document
 parseLBS_ lbs = runIdentity . parseEnum_ (lbsEnum lbs)
 
 parseEnum :: Monad m
           => Enumerator ByteString m Document
-          -> DecodeEntities
+          -> ParseSettings
           -> m (Either SomeException Document)
 parseEnum enum de = run $ enum $$ joinI $ P.parseBytes de $$ fromEvents
 
 parseEnum_ :: Monad m
            => Enumerator ByteString m Document
-           -> DecodeEntities
+           -> ParseSettings
            -> m Document
 parseEnum_ enum de = run_ $ enum $$ joinI $ P.parseBytes de $$ fromEvents
 

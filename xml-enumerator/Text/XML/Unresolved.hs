@@ -30,6 +30,11 @@ module Text.XML.Unresolved
     , InvalidEventStream (InvalidEventStream)
       -- * Internal
     , lazyConsume
+      -- * Settings
+    , P.def
+      -- ** Parse
+    , P.ParseSettings
+    , P.psDecodeEntities
     ) where
 
 import Prelude hiding (writeFile, readFile)
@@ -60,10 +65,10 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Concurrent (forkIO)
 import Data.Functor.Identity (runIdentity)
 
-readFile :: FilePath -> P.DecodeEntities -> IO (Either SomeException Document)
+readFile :: FilePath -> P.ParseSettings -> IO (Either SomeException Document)
 readFile fn de = run $ enumFile fn $$ joinI $ P.parseBytes de $$ fromEvents
 
-readFile_ :: FilePath -> P.DecodeEntities -> IO Document
+readFile_ :: FilePath -> P.ParseSettings -> IO Document
 readFile_ fn de = run_ $ enumFile fn $$ joinI $ P.parseBytes de $$ fromEvents
 
 writeFile :: FilePath -> Document -> IO ()
@@ -84,12 +89,12 @@ prettyLBS :: Document -> L.ByteString
 prettyLBS doc =
     L.fromChunks $ unsafePerformIO $ lazyConsume $ prettyBytes doc
 
-parseLBS :: L.ByteString -> P.DecodeEntities -> Either SomeException Document
+parseLBS :: L.ByteString -> P.ParseSettings -> Either SomeException Document
 parseLBS lbs de = runIdentity
                 $ run $ enumSingle (L.toChunks lbs)
                      $$ joinI $ P.parseBytes de $$ fromEvents
 
-parseLBS_ :: L.ByteString -> P.DecodeEntities -> Document
+parseLBS_ :: L.ByteString -> P.ParseSettings -> Document
 parseLBS_ lbs de = runIdentity
                  $ run_ $ enumSingle (L.toChunks lbs)
                        $$ joinI $ P.parseBytes de $$ fromEvents
