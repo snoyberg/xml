@@ -170,32 +170,32 @@ fromXMLNode (X.NodeContent (X.ContentEntity t)) = Left $ Set.singleton t
 fromXMLNode (X.NodeComment c) = Right $ NodeComment c
 fromXMLNode (X.NodeInstruction i) = Right $ NodeInstruction i
 
-readFile :: FilePath -> ParseSettings -> IO (Either SomeException Document)
-readFile fn = parseEnum $ enumFile fn
+readFile :: ParseSettings -> FilePath -> IO (Either SomeException Document)
+readFile ps fn = parseEnum ps $ enumFile fn
 
-readFile_ :: FilePath -> ParseSettings -> IO Document
-readFile_ fn = parseEnum_ $ enumFile fn
+readFile_ :: ParseSettings -> FilePath -> IO Document
+readFile_ ps fn = parseEnum_ ps $ enumFile fn
 
 lbsEnum :: Monad m => L.ByteString -> Enumerator ByteString m a
 lbsEnum = enumList 8 . L.toChunks
 
-parseLBS :: L.ByteString -> ParseSettings -> Either SomeException Document
-parseLBS lbs = runIdentity . parseEnum (lbsEnum lbs)
+parseLBS :: ParseSettings -> L.ByteString -> Either SomeException Document
+parseLBS ps = runIdentity . parseEnum ps . lbsEnum
 
-parseLBS_ :: L.ByteString -> ParseSettings -> Document
-parseLBS_ lbs = runIdentity . parseEnum_ (lbsEnum lbs)
+parseLBS_ :: ParseSettings -> L.ByteString -> Document
+parseLBS_ ps = runIdentity . parseEnum_ ps . lbsEnum
 
 parseEnum :: Monad m
-          => Enumerator ByteString m Document
-          -> ParseSettings
+          => ParseSettings
+          -> Enumerator ByteString m Document
           -> m (Either SomeException Document)
-parseEnum enum de = run $ enum $$ joinI $ P.parseBytes de $$ fromEvents
+parseEnum de enum = run $ enum $$ joinI $ P.parseBytes de $$ fromEvents
 
 parseEnum_ :: Monad m
-           => Enumerator ByteString m Document
-           -> ParseSettings
+           => ParseSettings
+           -> Enumerator ByteString m Document
            -> m Document
-parseEnum_ enum de = run_ $ enum $$ joinI $ P.parseBytes de $$ fromEvents
+parseEnum_ de enum = run_ $ enum $$ joinI $ P.parseBytes de $$ fromEvents
 
 fromEvents :: Monad m => Iteratee X.Event m Document
 fromEvents = do

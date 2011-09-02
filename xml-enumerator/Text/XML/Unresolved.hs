@@ -62,11 +62,11 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Concurrent (forkIO)
 import Data.Functor.Identity (runIdentity)
 
-readFile :: FilePath -> P.ParseSettings -> IO (Either SomeException Document)
-readFile fn de = run $ enumFile fn $$ joinI $ P.parseBytes de $$ fromEvents
+readFile :: P.ParseSettings -> FilePath -> IO (Either SomeException Document)
+readFile de fn = run $ enumFile fn $$ joinI $ P.parseBytes de $$ fromEvents
 
-readFile_ :: FilePath -> P.ParseSettings -> IO Document
-readFile_ fn de = run_ $ enumFile fn $$ joinI $ P.parseBytes de $$ fromEvents
+readFile_ :: P.ParseSettings -> FilePath -> IO Document
+readFile_ de fn = run_ $ enumFile fn $$ joinI $ P.parseBytes de $$ fromEvents
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
 writeFile rs fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->
@@ -76,13 +76,13 @@ renderLBS :: R.RenderSettings -> Document -> L.ByteString
 renderLBS rs doc =
     L.fromChunks $ unsafePerformIO $ lazyConsume $ renderBytes rs doc
 
-parseLBS :: L.ByteString -> P.ParseSettings -> Either SomeException Document
-parseLBS lbs de = runIdentity
+parseLBS :: P.ParseSettings -> L.ByteString -> Either SomeException Document
+parseLBS de lbs = runIdentity
                 $ run $ enumSingle (L.toChunks lbs)
                      $$ joinI $ P.parseBytes de $$ fromEvents
 
-parseLBS_ :: L.ByteString -> P.ParseSettings -> Document
-parseLBS_ lbs de = runIdentity
+parseLBS_ :: P.ParseSettings -> L.ByteString -> Document
+parseLBS_ de lbs = runIdentity
                  $ run_ $ enumSingle (L.toChunks lbs)
                        $$ joinI $ P.parseBytes de $$ fromEvents
 
