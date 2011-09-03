@@ -34,6 +34,12 @@ import qualified Data.Text.Lazy.IO as TLIO
 import Data.Maybe (mapMaybe)
 import qualified Data.HashTable.IO as HT
 import Data.Hashable (Hashable (..), combine)
+import Network.URI.Enumerator
+import Data.Enumerator (run_, ($$))
+import Data.Enumerator.List (consume)
+import Data.Text.Lazy.Encoding (decodeUtf8With)
+import Data.Text.Encoding.Error (lenientDecode)
+import qualified Data.ByteString.Lazy as L
 
 -- | Either a public or system identifier.
 data PubSys = Public Text | System Text
@@ -46,15 +52,14 @@ instance Hashable PubSys where
     hashWithSalt s (System b) = s `combine` 1 `hashWithSalt` b
 
 -- | An XML catalog, mapping public and system identifiers to filepaths.
-type Catalog = Map.Map PubSys FilePath
+type Catalog = Map.Map PubSys URI
 
 -- | Load a 'Catalog' from the given path.
-loadCatalog :: FilePath -> IO Catalog
-loadCatalog fp = do
-    X.Document _ (X.Element _ _ ns) _ <- X.readFile_ X.def (encodeString fp)
+loadCatalog :: URI -> IO Catalog
+loadCatalog uri = do
+    X.Document _ (X.Element _ _ ns) _ <- X.parseEnum_ X.def $ readURI uri
     foldM addNode Map.empty ns
   where
-    dir = directory fp
     addNode c (X.NodeElement (X.Element name as ns)) = do
         foldM addNode c' ns
       where
@@ -62,11 +67,17 @@ loadCatalog fp = do
             case name of
                 "{urn:oasis:names:tc:entity:xmlns:xml:catalog}public" ->
                     case (lookup "publicId" as, lookup "uri" as) of
-                        (Just pid, Just uri) -> Map.insert (Public pid) (dir </> fromText uri) c
+                        (Just pid, Just ref) ->
+                            case parseURIReference ref >>= flip relativeTo uri of
+                                Just uri' -> Map.insert (Public pid) uri' c
+                                Nothing -> c
                         _ -> c
                 "{urn:oasis:names:tc:entity:xmlns:xml:catalog}system" ->
                     case (lookup "systemId" as, lookup "uri" as) of
-                        (Just sid, Just uri) -> Map.insert (System sid) (dir </> fromText uri) c
+                        (Just sid, Just ref) ->
+                            case parseURIReference ref >>= flip relativeTo uri of
+                                Just uri' -> Map.insert (System sid) uri' c
+                                Nothing -> c
                         _ -> c
                 _ -> c
     addNode c _ = return c
@@ -90,7 +101,8 @@ loadDTD (DTDCache icache catalog) ext = do
             case Map.lookup pubsys catalog of
                 Nothing -> throwIO $ UnknownExternalID ext
                 Just fp -> do
-                    dtd <- fmap parseDTD $ TLIO.readFile $ encodeString fp
+                    bss <- run_ $ readURI fp $$ consume
+                    let dtd = parseDTD $ decodeUtf8With lenientDecode $ L.fromChunks bss
                     HT.insert icache pubsys dtd
                     return dtd
   where
