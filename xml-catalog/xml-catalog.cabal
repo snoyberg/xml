@@ -24,3 +24,4 @@ Library
                      , bytestring               >= 0.9        && < 0.10
                      , enumerator               >= 0.4.14     && < 0.5
                      , uri-enumerator           >= 0.0        && < 0.1
+                     , transformers             >= 0.2        && < 0.3

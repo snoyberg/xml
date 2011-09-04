@@ -24,6 +24,8 @@ module Network.URI.Enumerator
     , readURI
     , writeURI
     , copyURI
+      -- * Exception
+    , URIException (..)
     ) where
 
 import qualified Network.URI as N

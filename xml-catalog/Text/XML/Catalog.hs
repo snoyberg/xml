@@ -9,6 +9,7 @@ module Text.XML.Catalog
     , loadCatalog
       -- * DTD caching
     , DTDCache
+    , dcSchemeMap
     , newDTDCache
     , loadDTD
     , UnknownExternalID (..)
@@ -40,6 +41,7 @@ import Data.Enumerator.List (consume)
 import Data.Text.Lazy.Encoding (decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
 import qualified Data.ByteString.Lazy as L
+import Control.Monad.IO.Class (MonadIO (liftIO))
 
 -- | Either a public or system identifier.
 data PubSys = Public Text | System Text
@@ -55,9 +57,9 @@ instance Hashable PubSys where
 type Catalog = Map.Map PubSys URI
 
 -- | Load a 'Catalog' from the given path.
-loadCatalog :: URI -> IO Catalog
-loadCatalog uri = do
-    X.Document _ (X.Element _ _ ns) _ <- X.parseEnum_ X.def $ readURI uri
+loadCatalog :: MonadIO m => SchemeMap m -> URI -> m Catalog
+loadCatalog sm uri = do
+    X.Document _ (X.Element _ _ ns) _ <- X.parseEnum_ X.def $ readURI sm uri
     foldM addNode Map.empty ns
   where
     addNode c (X.NodeElement (X.Element name as ns)) = do
@@ -82,28 +84,29 @@ loadCatalog uri = do
                 _ -> c
     addNode c _ = return c
 
-data DTDCache = DTDCache
+data DTDCache m = DTDCache
     { _dcCache :: HT.BasicHashTable PubSys D.DTD
     , _dcCatalog :: Catalog
+    , dcSchemeMap :: SchemeMap m
     }
 
-newDTDCache :: Catalog -> IO DTDCache
-newDTDCache c = do
-    x <- HT.new
-    return $ DTDCache x c
+newDTDCache :: MonadIO m => Catalog -> SchemeMap m -> m (DTDCache m)
+newDTDCache c sm = do
+    x <- liftIO HT.new
+    return $ DTDCache x c sm
 
-loadDTD :: DTDCache -> X.ExternalID -> IO D.DTD
-loadDTD (DTDCache icache catalog) ext = do
-    res <- HT.lookup icache pubsys
+loadDTD :: MonadIO m => DTDCache m -> X.ExternalID -> m D.DTD
+loadDTD (DTDCache icache catalog sm) ext = do
+    res <- liftIO $ HT.lookup icache pubsys
     case res of
         Just dtd -> return dtd
         Nothing ->
             case Map.lookup pubsys catalog of
-                Nothing -> throwIO $ UnknownExternalID ext
+                Nothing -> liftIO $ throwIO $ UnknownExternalID ext
                 Just fp -> do
-                    bss <- run_ $ readURI fp $$ consume
+                    bss <- run_ $ readURI sm fp $$ consume
                     let dtd = parseDTD $ decodeUtf8With lenientDecode $ L.fromChunks bss
-                    HT.insert icache pubsys dtd
+                    liftIO $ HT.insert icache pubsys dtd
                     return dtd
   where
     pubsys =
@@ -115,7 +118,7 @@ data UnknownExternalID = UnknownExternalID X.ExternalID
     deriving (Show, Typeable)
 instance Exception UnknownExternalID
 
-applyDTD :: DTDCache -> X.Document -> IO X.Document
+applyDTD :: MonadIO m => DTDCache m -> X.Document -> m X.Document
 applyDTD dc doc@(X.Document pro@(X.Prologue _ mdoctype _) root epi) =
     case mdoctype of
         Just (X.Doctype _ (Just extid)) -> do
