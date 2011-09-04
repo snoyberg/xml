@@ -13,7 +13,6 @@ import qualified Data.Text as T
 import qualified Data.Set as Set
 import Data.Enumerator (run_, ($$), Enumerator, tryIO, Iteratee (..))
 import Data.Enumerator.Binary (iterHandle, enumHandle)
-import Data.Maybe (fromMaybe)
 import Control.Monad.IO.Class (liftIO)
 import qualified System.IO as SIO
 import Data.ByteString (ByteString)

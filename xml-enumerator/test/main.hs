@@ -2,42 +2,26 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-import           Control.Monad                (guard)
 import           Control.Monad.IO.Class       (liftIO)
-import           Data.Char                    (chr,ord)
-import           Data.String                  (fromString)
-import           Data.Text                    (toLower)
 import           Data.XML.Types
 import           Test.HUnit                   hiding (Test)
 import           Test.Hspec
-import           Test.Hspec.HUnit
-import qualified Control.Exception            as C
 import qualified Data.ByteString.Lazy.Char8   as L
-import qualified Data.Map                     as Map
 import qualified Text.XML.Unresolved          as D
 import qualified Text.XML.Stream.Parse        as P
-import qualified Text.XML.Stream.Render       as R
 import qualified Text.XML                     as Res
 import qualified Text.XML.Cursor              as Cu
 import           Text.XML.Stream.Parse        (def)
 
-import Text.XML.Cursor ((&|), (&/), (&//), (&.//), ($|), ($/), ($//), ($.//))
-import qualified Data.Map as Map
-import qualified Data.ByteString.Lazy.Char8 as L
-import Control.Monad.IO.Class (liftIO)
-import qualified Data.Enumerator as E
-import Data.Enumerator(($$))
-import qualified Data.Enumerator.List as EL
-import Data.Monoid
+import Text.XML.Cursor ((&/), (&//), (&.//), ($|), ($/), ($//), ($.//))
 import Data.Text(Text)
-import Control.Monad.IO.Class(MonadIO)
 import Control.Monad
-import Control.Applicative((<$>), (<*>))
 import qualified Data.Text as T
 import qualified Data.Set as Set
 import Control.Exception (toException)
+import Test.Hspec.HUnit ()
 
---main :: IO [Spec]
+main :: IO [Spec]
 main = hspec $ descriptions $
     [ describe "XML parsing and rendering"
         [ it "is idempotent to parse and render a document" documentParseRender
@@ -102,6 +86,7 @@ documentParseRender =
             "<foo><!-- this is a comment --></foo>"
         ]
 
+combinators :: Assertion
 combinators = P.parseLBS_ def input $ do
     P.force "need hello" $ P.tagName "hello" (P.requireAttr "world") $ \world -> do
         liftIO $ world @?= "true"
@@ -123,13 +108,14 @@ combinators = P.parseLBS_ def input $ do
         , "</hello>"
         ]
 
+testChoose :: Assertion
 testChoose = P.parseLBS_ def input $ do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.tagNoAttr "failure" $ return 1
             , P.tagNoAttr "success" $ return 2
             ]
-        liftIO $ x @?= Just 2
+        liftIO $ x @?= Just (2 :: Int)
   where
     input = L.concat
         [ "<?xml version='1.0'?>\n"
@@ -139,6 +125,7 @@ testChoose = P.parseLBS_ def input $ do
         , "</hello>"
         ]
 
+testMany :: Assertion
 testMany = P.parseLBS_ def input $ do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.many $ P.tagNoAttr "success" $ return ()
@@ -161,7 +148,7 @@ testOrE = P.parseLBS_ def input $ do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.tagNoAttr "failure" (return 1) `P.orE`
              P.tagNoAttr "success" (return 2)
-        liftIO $ x @?= Just 2
+        liftIO $ x @?= Just (2 :: Int)
   where
     input = L.concat
         [ "<?xml version='1.0'?>\n"
@@ -178,6 +165,7 @@ name (c:cs) = ($ name cs) $ case Cu.node c of
                               Res.NodeElement e -> ((Res.nameLocalName $ Res.elementName e) :)
                               _ -> id
 
+cursor :: Cu.Cursor
 cursor =
     Cu.fromDocument $ Res.parseLBS_ def input
   where
@@ -199,12 +187,21 @@ cursor =
         , "</foo>"
         ]
 
+bar2, baz2, bar3, bin2 :: Cu.Cursor
 bar2 = Cu.child cursor !! 1
 baz2 = Cu.child bar2 !! 1
 
 bar3 = Cu.child cursor !! 2
 bin2 = Cu.child bar3 !! 1
 
+cursorParent, cursorAncestor, cursorOrSelf, cursorPreceding, cursorFollowing,
+    cursorPrecedingSib, cursorFollowingSib, cursorDescendant, cursorCheck,
+    cursorPredicate, cursorCheckNode, cursorCheckElement, cursorCheckName,
+    cursorAnyElement, cursorElement, cursorLaxElement, cursorContent,
+    cursorAttribute, cursorLaxAttribute, cursorHasAttribute,
+    cursorAttributeIs, cursorDeep, cursorForce, cursorForceM,
+    resolvedIdentifies, resolvedAllGood, resolvedMergeContent
+    :: Assertion
 cursorParent = name (Cu.parent bar2) @?= ["foo"]
 cursorAncestor = name (Cu.ancestor baz2) @?= ["bar2", "foo"]
 cursorOrSelf = name (Cu.orSelf Cu.ancestor baz2) @?= ["baz2", "bar2", "foo"]
@@ -247,12 +244,12 @@ cursorDeep = do
   null (cursor $| Cu.element "foo") @?= False
 cursorForce = do
   Cu.force () [] @?= (Nothing :: Maybe Integer)
-  Cu.force () [1] @?= Just 1
-  Cu.force () [1,2] @?= Just 1
+  Cu.force () [1] @?= Just (1 :: Int)
+  Cu.force () [1,2] @?= Just (1 :: Int)
 cursorForceM = do
   Cu.forceM () [] @?= (Nothing :: Maybe Integer)
-  Cu.forceM () [Just 1, Nothing] @?= Just 1
-  Cu.forceM () [Nothing, Just 1] @?= Nothing
+  Cu.forceM () [Just 1, Nothing] @?= Just (1 :: Int)
+  Cu.forceM () [Nothing, Just (1 :: Int)] @?= Nothing
 
 showEq :: (Show a, Show b) => Either a b -> Either a b -> Assertion
 showEq x y = show x @=? show y

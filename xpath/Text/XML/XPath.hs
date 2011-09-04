@@ -6,7 +6,6 @@ module Text.XML.XPath (xp) where
 import Language.Haskell.TH.Quote (QuasiQuoter (..))
 import Language.Haskell.TH.Syntax
 import Data.Attoparsec.Text
-import Data.Attoparsec.Combinator (choice)
 import Data.Text (Text, pack, unpack)
 import Control.Applicative ((<|>))
 import Prelude hiding (takeWhile)
@@ -80,7 +79,10 @@ liftName :: X.Name -> Q Exp
 liftName (X.Name a b c) =
     [|X.Name $(liftT a) $(liftMT b) $(liftMT c)|]
 
+liftT :: T.Text -> Q Exp
 liftT t = [|pack $(lift $ unpack t)|]
+
+liftMT :: Maybe T.Text -> Q Exp
 liftMT Nothing = [|Nothing|]
 liftMT (Just t) = [|Just $ pack $(lift $ unpack t)|]
 
@@ -165,6 +167,7 @@ elem' c =
         X.NodeElement e -> [e]
         _ -> []
 
+checkAttr :: X.Name -> Text -> Cursor -> [Cursor]
 checkAttr name val c =
     case node c of
         X.NodeElement (X.Element _ as _)
@@ -172,10 +175,10 @@ checkAttr name val c =
         _ -> []
 
 liftPiece :: Piece -> Q Exp
-liftPiece (Piece axis nt conds) = do
+liftPiece (Piece axis' nt conds) = do
     x <- if isAttr nt
             then liftNodeType nt
-            else [|$(liftAxis axis) >=> $(liftNodeType nt)|]
+            else [|$(liftAxis axis') >=> $(liftNodeType nt)|]
     addConds x conds
   where
     isAttr Attr{} = True
@@ -187,6 +190,7 @@ liftPiece (Piece axis nt conds) = do
 liftAxis :: Axis -> Q Exp
 liftAxis Child = [|child|]
 liftAxis Descendant = [|descendant|]
+liftAxis _ = error "liftAxis"
 
 anyAttribute :: Cursor -> [(X.Name, Text)]
 anyAttribute c =

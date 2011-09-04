@@ -9,6 +9,7 @@ Maintainer:          michaels@suite-sol.com
 Category:            Text
 Build-type:          Simple
 Cabal-version:       >=1.6
+Description:         Read and write URIs
 
 Library
   Exposed-modules:     Network.URI.Enumerator
