@@ -18,23 +18,16 @@ module Text.XML.Catalog
     ) where
 
 import Prelude hiding (FilePath)
-import Filesystem.Path.CurrentOS (FilePath, encodeString, directory, (</>), fromText)
 import qualified Data.Map as Map
 import Data.Text (Text)
 import qualified Text.XML as X
 import Control.Monad (foldM)
 import qualified Data.IORef as I
-import qualified Data.Map as Map
 import Data.XML.DTD.Parse (parseDTD)
 import qualified Data.XML.DTD.Types as D
-import Data.Text (Text)
 import Control.Exception (Exception, throwIO)
 import Data.Typeable (Typeable)
-import Filesystem.Path.CurrentOS (encodeString)
-import qualified Data.Text.Lazy.IO as TLIO
 import Data.Maybe (mapMaybe)
-import qualified Data.HashTable.IO as HT
-import Data.Hashable (Hashable (..), combine)
 import Network.URI.Enumerator
 import Data.Enumerator (run_, ($$))
 import Data.Enumerator.List (consume)
@@ -46,12 +39,6 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 -- | Either a public or system identifier.
 data PubSys = Public Text | System Text
     deriving (Eq, Show, Ord)
-
-instance Hashable PubSys where
-    hash (Public a)  = 0 `hashWithSalt` a
-    hash (System b) = 1 `hashWithSalt` b
-    hashWithSalt s (Public a)  = s `combine` 0 `hashWithSalt` a
-    hashWithSalt s (System b) = s `combine` 1 `hashWithSalt` b
 
 -- | An XML catalog, mapping public and system identifiers to filepaths.
 type Catalog = Map.Map PubSys URI
@@ -85,19 +72,19 @@ loadCatalog sm uri = do
     addNode c _ = return c
 
 data DTDCache m = DTDCache
-    { _dcCache :: HT.BasicHashTable PubSys D.DTD
+    { _dcCache :: I.IORef (Map.Map PubSys D.DTD)
     , _dcCatalog :: Catalog
     , dcSchemeMap :: SchemeMap m
     }
 
 newDTDCache :: MonadIO m => Catalog -> SchemeMap m -> m (DTDCache m)
 newDTDCache c sm = do
-    x <- liftIO HT.new
+    x <- liftIO $ I.newIORef Map.empty
     return $ DTDCache x c sm
 
 loadDTD :: MonadIO m => DTDCache m -> X.ExternalID -> m D.DTD
 loadDTD (DTDCache icache catalog sm) ext = do
-    res <- liftIO $ HT.lookup icache pubsys
+    res <- liftIO $ fmap (Map.lookup pubsys) $ I.readIORef icache
     case res of
         Just dtd -> return dtd
         Nothing ->
@@ -106,7 +93,8 @@ loadDTD (DTDCache icache catalog sm) ext = do
                 Just fp -> do
                     bss <- run_ $ readURI sm fp $$ consume
                     let dtd = parseDTD $ decodeUtf8With lenientDecode $ L.fromChunks bss
-                    liftIO $ HT.insert icache pubsys dtd
+                    liftIO $ I.atomicModifyIORef icache $ \m ->
+                        (Map.insert pubsys dtd m, ())
                     return dtd
   where
     pubsys =
