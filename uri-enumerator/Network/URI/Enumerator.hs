@@ -1,28 +1,45 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
 module Network.URI.Enumerator
-    ( URI (..)
+    ( -- * Base datatypes
+      URI (..)
     , URIAuth (..)
-    , hasExtension
-    , readURI
-    , writeURI
-    , decodeString
-    , relativeTo
+      -- * Parsing
     , parseURI
     , parseURIReference
     , parseRelativeReference
+      -- * Utils
     , nullURI
+    , hasExtension
+    , relativeTo
+      -- * Conversion
+    , toNetworkURI
+    , fromNetworkURI
+      -- * Perform I/O
+    , Scheme (..)
+    , SchemeMap
+    , toSchemeMap
+    , readURI
+    , writeURI
     , copyURI
     ) where
 
 import qualified Network.URI as N
 import Data.Text (Text, cons, isSuffixOf, pack, unpack)
-import Data.Enumerator (Enumerator, run_, ($$))
+import Data.Enumerator (Enumerator, run_, ($$), throwError)
 import Data.ByteString (ByteString)
 import Control.Monad.IO.Class (MonadIO)
 import qualified Filesystem as F
 import qualified Filesystem.Path.CurrentOS as FP
 import qualified Data.Text as T
 import Data.Enumerator.Binary (enumFile, iterHandle)
+import qualified Data.Map as Map
+import qualified Data.Set as Set
+import Control.Failure (Failure (..))
+import Control.Exception (Exception)
+import Data.Typeable (Typeable)
 
 data URI = URI
     { uriScheme :: Text
@@ -40,48 +57,53 @@ data URIAuth = URIAuth
     }
     deriving (Show, Eq, Ord)
 
-parseURI :: Text -> Maybe URI
-parseURI = fmap fromNetworkURI . N.parseURI . unpack
+parseURI :: Failure URIException m => Text -> m URI
+parseURI t = maybe (failure $ InvalidURI t) (return . fromNetworkURI) $ N.parseURI $ unpack t
 
-parseURIReference :: Text -> Maybe URI
-parseURIReference = fmap fromNetworkURI . N.parseURIReference . unpack
+parseURIReference :: Failure URIException m => Text -> m URI
+parseURIReference t = maybe (failure $ InvalidURI t) (return .  fromNetworkURI) $ N.parseURIReference $ unpack t
 
-parseRelativeReference :: Text -> Maybe URI
-parseRelativeReference = fmap fromNetworkURI . N.parseRelativeReference . unpack
+parseRelativeReference :: Failure URIException m => Text -> m URI
+parseRelativeReference t = maybe (failure $ InvalidRelativeReference t) (return . fromNetworkURI) $ N.parseRelativeReference $ unpack t
 
 hasExtension :: URI -> Text -> Bool
 hasExtension URI { uriPath = p } t = (cons '.' t) `isSuffixOf` p
 
--- FIXME make much more extensible
-readURI :: URI -> Enumerator ByteString IO b -- FIXME make it work in other monads
-readURI uri step =
-    case uriScheme uri of
-        "file:" -> do
-            let fp = FP.fromText $ uriPath uri
-            enumFile (FP.encodeString fp) step
-        x -> error $ "Unknown URI scheme: " ++ show x
+data Scheme m = Scheme
+    { schemeNames :: Set.Set Text
+    , schemeReader :: forall b. Maybe (URI -> Enumerator ByteString m b)
+    , schemeWriter :: Maybe (URI -> Enumerator ByteString m () -> m ())
+    }
 
-writeURI :: URI -> Enumerator ByteString IO () -> IO ()
-writeURI uri enum =
-    case uriScheme uri of
-        "file:" -> do
-            let fp = FP.fromText $ uriPath uri
-            F.createTree $ FP.directory fp
-            F.withFile fp F.WriteMode $ \h -> run_ $ enum $$ iterHandle h
+type SchemeMap m = Map.Map Text (Scheme m)
 
-decodeString :: String -> IO URI
-decodeString s =
-    case N.parseURI s of
-        Just u -> return $ fromNetworkURI u
-        Nothing -> do
-            wd <- F.getWorkingDirectory
-            let fp = wd FP.</> FP.decodeString s
-            case N.parseURI $ unpack $ T.append "file://" $ T.map fixSlash $ either id id $ FP.toText fp of
-                Nothing -> error $ "Could not parse URI: " ++ s
-                Just uri -> return $ fromNetworkURI uri
+toSchemeMap :: [Scheme m] -> SchemeMap m
+toSchemeMap =
+    Map.unions . map go
   where
-    fixSlash '\\' = '/'
-    fixSlash c = c
+    go s =
+        Map.unions $ map go' $ Set.toList $ schemeNames s
+      where
+        go' name = Map.singleton name s
+
+data URIException = UnknownReadScheme URI
+                  | UnknownWriteScheme URI
+                  | InvalidURI Text
+                  | InvalidRelativeReference Text
+  deriving (Show, Typeable)
+instance Exception URIException
+
+readURI :: Monad m => SchemeMap m -> URI -> Enumerator ByteString m b
+readURI sm uri step =
+    case Map.lookup (uriScheme uri) sm >>= schemeReader of
+        Nothing -> throwError $ UnknownReadScheme uri
+        Just f -> f uri step
+
+writeURI :: Failure URIException m => SchemeMap m -> URI -> Enumerator ByteString m () -> m ()
+writeURI sm uri enum =
+    case Map.lookup (uriScheme uri) sm >>= schemeWriter of
+        Nothing -> failure $ UnknownWriteScheme uri
+        Just f -> f uri enum
 
 toNetworkURI :: URI -> N.URI
 toNetworkURI u = N.URI
@@ -119,5 +141,5 @@ relativeTo a b = fmap fromNetworkURI $ toNetworkURI a `N.relativeTo` toNetworkUR
 nullURI :: URI
 nullURI = fromNetworkURI N.nullURI
 
-copyURI :: URI -> URI -> IO ()
-copyURI src dst = writeURI dst $ readURI src
+copyURI :: Failure URIException m => SchemeMap m -> URI -> URI -> m ()
+copyURI sm src dst = writeURI sm dst $ readURI sm src
