@@ -9,6 +9,7 @@ Maintainer:          michaels@suite-sol.com
 Category:            Text
 Build-type:          Simple
 Cabal-version:       >=1.6
+Description:         Parse XML catalog files
 
 Library
   Exposed-modules:     Text.XML.Catalog

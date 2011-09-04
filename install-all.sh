@@ -10,6 +10,7 @@ pkgs=( xml-enumerator
        uri-enumerator
        xml2html
        xml-hamlet
+       xml-catalog
      )
        # xpath
 
