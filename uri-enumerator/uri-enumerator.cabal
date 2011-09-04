@@ -26,3 +26,4 @@ Library
                      , failure                  >= 0.1        && < 0.2
                      , http-types               >= 0.6        && < 0.7
                      , http-enumerator          >= 0.6.6      && < 0.8
+                     , monad-control            >= 0.2.0.3    && < 0.3

@@ -28,13 +28,8 @@ module Network.URI.Enumerator
 
 import qualified Network.URI as N
 import Data.Text (Text, cons, isSuffixOf, pack, unpack)
-import Data.Enumerator (Enumerator, run_, ($$), throwError)
+import Data.Enumerator (Enumerator, throwError)
 import Data.ByteString (ByteString)
-import Control.Monad.IO.Class (MonadIO)
-import qualified Filesystem as F
-import qualified Filesystem.Path.CurrentOS as FP
-import qualified Data.Text as T
-import Data.Enumerator.Binary (enumFile, iterHandle)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Control.Failure (Failure (..))
