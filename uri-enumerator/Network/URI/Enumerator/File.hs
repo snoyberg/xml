@@ -2,6 +2,7 @@
 module Network.URI.Enumerator.File
     ( decodeString
     , fileScheme
+    , toFilePath
     ) where
 
 import Prelude hiding (catch)
@@ -56,4 +57,7 @@ enumFile fp step = do
     Iteratee (finally (runIteratee iter) (liftIO $ SIO.hClose h))
 
 toFilePath :: URI -> FP.FilePath
-toFilePath uri = FP.fromText $ fromMaybe "" (fmap uriRegName $ uriAuthority uri) `T.append` uriPath uri
+toFilePath uri = FP.fromText $
+    case uriAuthority uri of
+        Nothing -> uriPath uri
+        Just a -> T.concat [uriRegName a, uriPort a, uriPath uri]
