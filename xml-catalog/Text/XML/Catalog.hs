@@ -29,13 +29,18 @@ import Control.Exception (Exception, throwIO)
 import Data.Typeable (Typeable)
 import Data.Maybe (mapMaybe)
 import Network.URI.Enumerator
+import Network.URI.Enumerator.File (toFilePath)
+import Filesystem.Path.CurrentOS (encodeString)
 import Data.Enumerator (run_, ($$))
 import Data.Enumerator.List (consume)
 import Data.Text.Lazy.Encoding (decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
 import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Lazy.Char8 as L8
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import qualified Data.Text as T
+import System.Process (readProcess)
+import Control.Monad (liftM)
 
 -- | Either a public or system identifier.
 data PubSys = Public Text | System Text
@@ -82,15 +87,16 @@ data DTDCache m = DTDCache
     { _dcCache :: I.IORef (Map.Map PubSys D.DTD)
     , _dcCatalog :: Catalog
     , dcSchemeMap :: SchemeMap m
+    , _dcFlattenJar :: String
     }
 
-newDTDCache :: MonadIO m => Catalog -> SchemeMap m -> m (DTDCache m)
-newDTDCache c sm = do
+newDTDCache :: MonadIO m => String -> Catalog -> SchemeMap m -> m (DTDCache m)
+newDTDCache fj c sm = do
     x <- liftIO $ I.newIORef Map.empty
-    return $ DTDCache x c sm
+    return $ DTDCache x c sm fj
 
 loadDTD :: MonadIO m => DTDCache m -> X.ExternalID -> m D.DTD
-loadDTD (DTDCache icache catalog sm) ext = do
+loadDTD (DTDCache icache catalog sm flattenJar) ext = do
     res <- liftIO $ fmap (Map.lookup pubsys) $ I.readIORef icache
     case res of
         Just dtd -> return dtd
@@ -98,8 +104,9 @@ loadDTD (DTDCache icache catalog sm) ext = do
             case Map.lookup pubsys catalog of
                 Nothing -> liftIO $ throwIO $ UnknownExternalID ext
                 Just fp -> do
-                    bss <- run_ $ readURI sm fp $$ consume
-                    let dtd = parseDTD $ decodeUtf8With lenientDecode $ L.fromChunks bss
+                    let dtdFP = encodeString $ toFilePath fp
+                    lbs <- liftM L8.pack $ liftIO $ readProcess "java" ["-jar", flattenJar, dtdFP] ""
+                    let dtd = parseDTD $ decodeUtf8With lenientDecode lbs
                     liftIO $ I.atomicModifyIORef icache $ \m ->
                         (Map.insert pubsys dtd m, ())
                     return dtd
@@ -113,7 +120,8 @@ data UnknownExternalID = UnknownExternalID X.ExternalID
     deriving (Show, Typeable)
 instance Exception UnknownExternalID
 
-applyDTD :: MonadIO m => DTDCache m -> X.Document -> m X.Document
+applyDTD :: MonadIO m
+         => DTDCache m -> X.Document -> m X.Document
 applyDTD dc doc@(X.Document pro@(X.Prologue _ mdoctype _) root epi) =
     case mdoctype of
         Just (X.Doctype _ (Just extid)) -> do
