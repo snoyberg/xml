@@ -6,6 +6,7 @@ module Network.URI.Enumerator.File
     ) where
 
 import Prelude hiding (catch)
+import Network.URI (unEscapeString)
 import Network.URI.Enumerator
 import qualified Filesystem as F
 import qualified Filesystem.Path.CurrentOS as FP
@@ -59,4 +60,4 @@ toFilePath :: URI -> FP.FilePath
 toFilePath uri = FP.fromText $
     case uriAuthority uri of
         Nothing -> uriPath uri
-        Just a -> T.concat [uriRegName a, uriPort a, uriPath uri]
+        Just a -> T.concat [uriRegName a, uriPort a, T.pack $ unEscapeString $ T.unpack $ uriPath uri]
