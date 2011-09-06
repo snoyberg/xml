@@ -9,6 +9,7 @@ module Text.XML.Stream.Render
     , RenderSettings
     , def
     , rsPretty
+    , prettify
     ) where
 
 import Data.XML.Types (Event (..), Content (..), Name (..))
@@ -33,7 +34,7 @@ import Data.Default (Default (def))
 -- changes the meaning of some documents, by inserting/modifying whitespace.
 prettyBuilder :: Monad m => E.Enumeratee Event Builder m b
 prettyBuilder step0 =
-    E.joinI $ prettify 0 [] $$ loop [] step0
+    E.joinI $ prettify $$ loop [] step0
   where
     loop stack = E.checkDone $ step stack
     step stack k = do
@@ -192,8 +193,13 @@ getPrefix ppref nsmap ns =
         | x `elem` xs = findUnused (x `T.snoc` '_') xs
         | otherwise = x
 
-prettify :: Monad m => Int -> [Name] -> E.Enumeratee Event Event m a
-prettify level names (Continue k) = do
+-- | Convert a stream of 'Event's into a prettified one, adding extra
+-- whitespace. Note that this can change the meaning of your XML.
+prettify :: Monad m => E.Enumeratee Event Event m a
+prettify = prettify' 0 []
+
+prettify' :: Monad m => Int -> [Name] -> E.Enumeratee Event Event m a
+prettify' level names (Continue k) = do
     mx <- eventHead
     case mx of
         Nothing -> return $ Continue k
@@ -223,11 +229,11 @@ prettify level names (Continue k) = do
                         return ([before level, EventComment $ T.map normalSpace t, after], level, names)
                     (Right e, _) -> do
                         return ([before level, e, after], level, names)
-            k (E.Chunks chunks) >>== prettify level' names'
+            k (E.Chunks chunks) >>== prettify' level' names'
   where
     before l = EventContent $ ContentText $ T.replicate l "    "
     after = EventContent $ ContentText "\n"
-prettify _ _ step = return step
+prettify' _ _ step = return step
 
 eventHead :: Monad m => Iteratee Event m (Maybe (Either [Content] Event))
 eventHead = do
