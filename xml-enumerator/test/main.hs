@@ -29,6 +29,7 @@ main = hspec $ descriptions $
         , it "has working choose function" testChoose
         , it "has working many function" testMany
         , it "has working orE" testOrE
+        , it "is idempotent to parse and pretty render a document" documentParsePrettyRender
         ]
     , describe "XML Cursors"
         [ it "has correct parent" cursorParent
@@ -84,6 +85,22 @@ documentParseRender =
             "<foo><?instr this is a processing instruction?></foo>"
         , D.parseLBS_ def
             "<foo><!-- this is a comment --></foo>"
+        ]
+
+documentParsePrettyRender :: IO ()
+documentParsePrettyRender =
+    L.unpack (D.renderLBS def { D.rsPretty = True } (D.parseLBS_ def $ doc True)) @?= L.unpack (doc False)
+  where
+    doc x = L.unlines
+        [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+        , "<foo>"
+        , "    <?bar bar?>"
+        , if x
+            then "    text"
+            else "    text     "
+        , "    <?bin bin?>"
+        , "</foo>"
+        , ""
         ]
 
 combinators :: Assertion

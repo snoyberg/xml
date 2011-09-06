@@ -216,16 +216,12 @@ prettify level names (Continue k) = do
                         let newLevel = level - 1
                         return ([before newLevel, EventEndElement $ head names, after], newLevel, tail names)
                     (Right EventBeginDocument, _) -> do
-                        _ <- takeContents id
                         return ([EventBeginDocument], level, names)
                     (Right EventEndDocument, _) -> do
-                        _ <- takeContents id
                         return ([EventEndDocument, after], level, names)
                     (Right (EventComment t), _) -> do
-                        _ <- takeContents id
                         return ([before level, EventComment $ T.map normalSpace t, after], level, names)
                     (Right e, _) -> do
-                        _ <- takeContents id
                         return ([before level, e, after], level, names)
             k (E.Chunks chunks) >>== prettify level' names'
   where
