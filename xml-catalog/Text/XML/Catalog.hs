@@ -35,6 +35,7 @@ import Data.Text.Lazy.Encoding (decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
 import qualified Data.ByteString.Lazy as L
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import qualified Data.Text as T
 
 -- | Either a public or system identifier.
 data PubSys = Public Text | System Text
@@ -52,19 +53,25 @@ loadCatalog sm uri = do
     addNode c (X.NodeElement (X.Element name as ns)) = do
         foldM addNode c' ns
       where
+        -- FIXME handle hierarchies
+        base =
+            case lookup "{http://www.w3.org/XML/1998/namespace}base" as of
+                Nothing -> ""
+                Just x -> x
+        withBase = T.append base
         c' =
             case name of
                 "{urn:oasis:names:tc:entity:xmlns:xml:catalog}public" ->
                     case (lookup "publicId" as, lookup "uri" as) of
                         (Just pid, Just ref) ->
-                            case parseURIReference ref >>= flip relativeTo uri of
+                            case parseURIReference (withBase ref) >>= flip relativeTo uri of
                                 Just uri' -> Map.insert (Public pid) uri' c
                                 Nothing -> c
                         _ -> c
                 "{urn:oasis:names:tc:entity:xmlns:xml:catalog}system" ->
                     case (lookup "systemId" as, lookup "uri" as) of
                         (Just sid, Just ref) ->
-                            case parseURIReference ref >>= flip relativeTo uri of
+                            case parseURIReference (withBase ref) >>= flip relativeTo uri of
                                 Just uri' -> Map.insert (System sid) uri' c
                                 Nothing -> c
                         _ -> c
