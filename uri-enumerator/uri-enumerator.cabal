@@ -1,5 +1,5 @@
 Name:                uri-enumerator
-Version:             0.0.0
+Version:             0.0.1
 Synopsis:            Read and write URIs
 Homepage:            http://github.com/snoyberg/xml
 License:             BSD3
@@ -15,6 +15,7 @@ Library
   Exposed-modules:     Network.URI.Enumerator
                        Network.URI.Enumerator.File
                        Network.URI.Enumerator.HTTP
+                       Network.URI.Enumerator.ZIP
   Build-depends:       base                     >= 4          && < 5
                      , enumerator               >= 0.4.14     && < 0.5
                      , text                     >= 0.5        && < 1.0
@@ -28,3 +29,4 @@ Library
                      , http-types               >= 0.6        && < 0.7
                      , http-enumerator          >= 0.6.6      && < 0.8
                      , monad-control            >= 0.2.0.3    && < 0.3
+                     , zip-archive              >= 0.1.1.7    && < 0.2
