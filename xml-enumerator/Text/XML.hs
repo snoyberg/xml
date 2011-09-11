@@ -24,12 +24,20 @@ module Text.XML
     , Doctype (..)
     , ExternalID (..)
       -- * Parsing
+      -- ** Files
     , readFile
     , readFile_
+      -- ** Bytes
     , parseLBS
     , parseLBS_
     , parseEnum
     , parseEnum_
+      -- ** Text
+    , parseText
+    , parseText_
+    , parseTextEnum
+    , parseTextEnum_
+      -- ** Other
     , fromEvents
     , UnresolvedEntityException (..)
       -- * Rendering
@@ -177,6 +185,9 @@ readFile_ ps fn = parseEnum_ ps $ enumFile fn
 lbsEnum :: Monad m => L.ByteString -> Enumerator ByteString m a
 lbsEnum = enumList 8 . L.toChunks
 
+textEnum :: Monad m => TL.Text -> Enumerator Text m a
+textEnum = enumList 8 . TL.toChunks
+
 parseLBS :: ParseSettings -> L.ByteString -> Either SomeException Document
 parseLBS ps = runIdentity . parseEnum ps . lbsEnum
 
@@ -194,6 +205,24 @@ parseEnum_ :: Monad m
            -> Enumerator ByteString m Document
            -> m Document
 parseEnum_ de enum = run_ $ enum $$ joinI $ P.parseBytes de $$ fromEvents
+
+parseText :: ParseSettings -> TL.Text -> Either SomeException Document
+parseText ps = runIdentity . parseTextEnum ps . textEnum
+
+parseText_ :: ParseSettings -> TL.Text -> Document
+parseText_ ps = runIdentity . parseTextEnum_ ps . textEnum
+
+parseTextEnum :: Monad m
+              => ParseSettings
+              -> Enumerator Text m Document
+              -> m (Either SomeException Document)
+parseTextEnum de enum = run $ enum $$ joinI $ P.parseText de $$ fromEvents
+
+parseTextEnum_ :: Monad m
+               => ParseSettings
+               -> Enumerator Text m Document
+               -> m Document
+parseTextEnum_ de enum = run_ $ enum $$ joinI $ P.parseText de $$ fromEvents
 
 fromEvents :: Monad m => Iteratee X.Event m Document
 fromEvents = do
