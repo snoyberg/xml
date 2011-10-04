@@ -7,6 +7,8 @@ module Text.XML.Catalog
       Catalog
     , PubSys (..)
     , loadCatalog
+      -- * Resolving
+    , resolveURI
     ) where
 
 import Prelude hiding (FilePath)
@@ -69,3 +71,22 @@ loadCatalog sm uri = do
                         Nothing -> return c
                 _ -> return c
     addNode c _ = return c
+
+resolveURI :: Catalog
+           -> Maybe URI -- ^ base URI for relative system identifiers
+           -> X.ExternalID
+           -> Maybe URI
+resolveURI catalog mbase (X.PublicID public system) =
+    case Map.lookup (Public public) catalog of
+        Nothing -> resolveURI catalog mbase (X.SystemID system)
+        Just x -> Just x
+resolveURI catalog mbase (X.SystemID system) =
+    case Map.lookup (System system) catalog of
+        Nothing ->
+            case parseURI system of
+                Just uri -> Just uri
+                Nothing -> do
+                    base <- mbase
+                    ref <- parseURIReference system
+                    ref `relativeTo` base
+        Just x -> Just x
