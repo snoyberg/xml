@@ -25,4 +25,5 @@ Library
                      , transformers             >= 0.2        && < 0.3
                      , process
                      , system-filepath
+                     , attoparsec == 0.9.*
   Ghc-options: -Wall
