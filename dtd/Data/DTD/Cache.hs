@@ -19,10 +19,11 @@ import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import qualified Data.IORef as I
-import Control.Exception (Exception, throwIO)
+import Control.Exception (Exception, throwIO, SomeException)
 import Data.Typeable (Typeable)
 import Data.Maybe (mapMaybe)
 import Control.Monad.IO.Control (MonadControlIO)
+import qualified Network.URI as NU
 
 toAttrs :: [D.DTDComponent] -> AttrMap
 toAttrs comps =
@@ -64,7 +65,8 @@ loadDTD (DTDCache icache catalog sm) ext = do
             case Map.lookup pubsys catalog of
                 Nothing -> liftIO $ throwIO $ UnknownExternalID ext
                 Just uri -> do
-                    comps <- E.run_ $ readEID catalog (uriToEID uri) sm E.$$ EL.consume
+                    ecomps <- E.run $ readEID catalog (uriToEID uri) sm E.$$ EL.consume
+                    comps <- either (liftIO . throwIO . CannotLoadDTD (toNetworkURI uri)) return ecomps
                     let attrMap = toAttrs comps
                     liftIO $ I.atomicModifyIORef icache $ \m ->
                         (Map.insert pubsys attrMap m, ())
@@ -76,6 +78,7 @@ loadDTD (DTDCache icache catalog sm) ext = do
             X.PublicID t _ -> Public t
 
 data UnknownExternalID = UnknownExternalID X.ExternalID
+                       | CannotLoadDTD NU.URI SomeException
     deriving (Show, Typeable)
 instance Exception UnknownExternalID
 
