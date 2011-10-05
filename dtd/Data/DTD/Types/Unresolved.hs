@@ -172,7 +172,7 @@ instance Typeable ElementDecl where
 data ContentDecl =
      ContentEmpty                   -- ^ No content
    | ContentAny                     -- ^ Unrestricted content
-   | ContentElement ContentModel    -- ^ Structured element content
+   | ContentElement [EntityValue]   -- ^ Structured element content
    | ContentMixed [Text]            -- ^ A mixture of text and elements
    | ContentPERef PERef
   deriving (Show, Eq)

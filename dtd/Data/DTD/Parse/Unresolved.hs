@@ -188,6 +188,11 @@ entityValue = try (quotedVal '"') <|> quotedVal '\''
     content q =  EntityPERef <$> try pERef <|> EntityText <$> text q
     text q = takeTill $ \c -> c == '%' || c == q
 
+entityValueUnquoted :: Parser [EntityValue]
+entityValueUnquoted = many $
+    ((EntityPERef <$> pERef) <|>
+    (EntityText <$> (A.takeWhile1 $ not . flip elem "%>")))
+
 -- | Parse a parameter entity reference
 pERef :: Parser PERef
 pERef = "%" .*> name <*. ";"
@@ -205,7 +210,7 @@ contentDecl = choice $ map try
     ,      ContentMixed <$> pcdata
     , ContentPERef <$> pERef
     ] ++
-    [      ContentElement <$> contentModel
+    [      ContentElement <$> entityValueUnquoted
     ]
   where
     pcdata = "(" .*> skipWS *> "#PCDATA" .*> skipWS *>

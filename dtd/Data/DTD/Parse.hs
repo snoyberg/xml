@@ -183,7 +183,7 @@ resolvef (U.DTDElementDecl (U.ElementDecl name' c)) = do
         case c of
             U.ContentEmpty -> return ContentEmpty
             U.ContentAny -> return ContentAny
-            U.ContentElement cm -> return $ ContentElement cm
+            U.ContentElement ev -> resolveContentModel ev
             U.ContentMixed cm -> return $ ContentMixed cm
             U.ContentPERef p -> do
                 t <- resolvePERefText p
@@ -193,7 +193,7 @@ resolvef (U.DTDElementDecl (U.ElementDecl name' c)) = do
                             U.ContentPERef{} -> throwError $ RecursiveContentDeclPERef p
                             U.ContentEmpty -> return ContentEmpty
                             U.ContentAny -> return ContentAny
-                            U.ContentElement cm -> return $ ContentElement cm
+                            U.ContentElement cm -> resolveContentModel cm
                             U.ContentMixed cm -> return $ ContentMixed cm
                     x -> throwError $ InvalidContentDecl p t x
     return [DTDElementDecl $ ElementDecl name c']
@@ -231,12 +231,21 @@ resolveEntityValue rs evs =
             Nothing -> Left $ UnknownPERefValue p
             Just t -> Right t
 
+resolveContentModel :: MonadIO m => [U.EntityValue] -> ResolveMonad m ContentDecl
+resolveContentModel ev = do
+    rs <- lift get
+    text <- either throwError return $ resolveEntityValue rs ev
+    case runPartial $ A.parse UP.contentModel $ T.strip text of
+        A.Done "" x -> return $ ContentElement x
+        x -> throwError $ InvalidContentModel text x
+
 data ResolveException
     = UnknownPERef U.PERef
     | UnknownPERefValue U.PERef
     | UnknownPERefText U.PERef
     | CannotResolveExternalID ExternalID
     | InvalidContentDecl U.PERef T.Text (A.Result U.ContentDecl)
+    | InvalidContentModel T.Text (A.Result U.ContentModel)
     | InvalidAttDecl U.PERef T.Text (A.Result [U.AttDecl])
     | RecursiveContentDeclPERef U.PERef
   deriving (Show, Typeable)
