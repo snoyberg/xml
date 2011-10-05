@@ -87,6 +87,7 @@ import Data.XML.Types
 import Control.Applicative (Applicative(..), Alternative(empty,(<|>)), (<$>))
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
 import Data.Text.Read (Reader, decimal, hexadecimal)
 import Data.Text.Encoding (decodeUtf32BEWith)
 import Data.Text.Encoding.Error (ignore)
@@ -99,8 +100,9 @@ import qualified Data.ByteString.Lazy as L
 import qualified Data.Map as Map
 import Data.Enumerator
     ( Iteratee, Enumeratee, (>>==), Stream (..), run_, Enumerator, Step (..)
-    , checkDone, yield, ($$), joinI, run, throwError, returnI
+    , checkDone, yield, ($$), joinI, run, throwError, returnI, continue
     )
+import Control.Monad (when)
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import qualified Data.Enumerator.Text as ET
@@ -201,8 +203,12 @@ parseBytes de step = joinI $ detectUtf $$ parseText de step
 -- with the parser provided by libxml-enumerator. However, this has the
 -- advantage of not relying on any C libraries.
 parseText :: Monad m => ParseSettings -> Enumeratee TS.Text Event m a
-parseText de =
-    checkDone $ \k -> k (Chunks [EventBeginDocument]) >>== loop []
+parseText de step = do
+    -- drop the BOM
+    c <- peek
+    when (c == Just '\xfeef') $ ET.head >> return ()
+
+    (checkDone $ \k -> k (Chunks [EventBeginDocument]) >>== loop []) step
   where
     loop levels = checkDone $ go levels
     go levels k = do
@@ -212,6 +218,13 @@ parseText de =
             Just token ->
                 let (levels', events) = tokenToEvent levels token
                  in k (Chunks events) >>== loop levels'
+
+peek :: Monad m => Iteratee TS.Text m (Maybe Char)
+peek = continue loop where
+    loop (Chunks xs) = case TL.uncons (TL.fromChunks xs) of
+        Just (c, _) -> yield (Just c) $ Chunks xs
+        Nothing -> peek
+    loop EOF = yield Nothing EOF
 
 data ParseSettings = ParseSettings
     { psDecodeEntities :: DecodeEntities
