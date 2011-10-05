@@ -30,7 +30,7 @@ import Network.URI.Enumerator.File (decodeString, fileScheme)
 import qualified Data.Enumerator as E
 import Text.XML.Stream.Parse (detectUtf)
 import Data.Attoparsec.Text.Enumerator (iterParser)
-import Control.Applicative ((*>), (<*), (<|>))
+import Control.Applicative ((*>), (<*), (<|>), (<$>))
 import qualified Data.IORef as I
 import Control.Monad.IO.Control (MonadControlIO)
 import qualified Data.Attoparsec.Text as A
@@ -53,11 +53,18 @@ readEID catalog eid sm step = do
 
 readerToEnum :: MonadControlIO m => ResolveReader -> E.Enumerator DTDComponent m a
 readerToEnum rr step =
-    ((((readURI (rrSchemeMap rr) (rrBase rr)
+    (((((readURI (rrSchemeMap rr) (rrBase rr)
                 E.$= detectUtf)
+                E.$= singleChunk) -- FIXME this is working around an apparent bug in attoparsec-text
                 E.$= streamUnresolved)
                 E.$= EL.concatMap id)
                 E.$= resolveEnum rr) step
+
+-- | For some reason, attoparsec-text seems to be dropping bits of text when
+-- being served chunks. This occurred in both streaming and lazy. See
+-- lazy-bug.hs for a demonstration.
+singleChunk :: Monad m => E.Enumeratee T.Text T.Text m a
+singleChunk = E.sequence $ T.concat <$> EL.consume
 
 readFile_ :: FilePath -> IO [DTDComponent]
 readFile_ fp = E.run_ $ enumFile fp E.$$ EL.consume
