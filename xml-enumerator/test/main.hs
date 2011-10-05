@@ -5,7 +5,7 @@
 import           Control.Monad.IO.Class       (liftIO)
 import           Data.XML.Types
 import           Test.HUnit                   hiding (Test)
-import           Test.Hspec
+import           Test.Hspec.Monadic
 import qualified Data.ByteString.Lazy.Char8   as L
 import qualified Text.XML.Unresolved          as D
 import qualified Text.XML.Stream.Parse        as P
@@ -21,48 +21,45 @@ import qualified Data.Set as Set
 import Control.Exception (toException)
 import Test.Hspec.HUnit ()
 
-main :: IO [Spec]
-main = hspec $ descriptions $
-    [ describe "XML parsing and rendering"
-        [ it "is idempotent to parse and render a document" documentParseRender
-        , it "has valid parser combinators" combinators
-        , it "has working choose function" testChoose
-        , it "has working many function" testMany
-        , it "has working orE" testOrE
-        , it "is idempotent to parse and pretty render a document" documentParsePrettyRender
-        ]
-    , describe "XML Cursors"
-        [ it "has correct parent" cursorParent
-        , it "has correct ancestor" cursorAncestor
-        , it "has correct orSelf" cursorOrSelf
-        , it "has correct preceding" cursorPreceding
-        , it "has correct following" cursorFollowing
-        , it "has correct precedingSibling" cursorPrecedingSib
-        , it "has correct followingSibling" cursorFollowingSib
-        , it "has correct descendant" cursorDescendant
-        , it "has correct check" cursorCheck
-        , it "has correct check with lists" cursorPredicate
-        , it "has correct checkNode" cursorCheckNode
-        , it "has correct checkElement" cursorCheckElement
-        , it "has correct checkName" cursorCheckName
-        , it "has correct anyElement" cursorAnyElement
-        , it "has correct element" cursorElement
-        , it "has correct laxElement" cursorLaxElement
-        , it "has correct content" cursorContent
-        , it "has correct attribute" cursorAttribute
-        , it "has correct laxAttribute" cursorLaxAttribute
-        , it "has correct &* and $* operators" cursorDeep
-        , it "has correct force" cursorForce
-        , it "has correct forceM" cursorForceM
-        , it "has correct hasAttribute" cursorHasAttribute
-        , it "has correct attributeIs" cursorAttributeIs
-        ]
-    , describe "resolved"
-        [ it "identifies unresolved entities" resolvedIdentifies
-        , it "works for resolvable entities" resolvedAllGood
-        , it "merges adjacent content nodes" resolvedMergeContent
-        ]
-    ]
+main :: IO ()
+main = hspecX $ do
+    describe "XML parsing and rendering" $ do
+        it "is idempotent to parse and render a document" documentParseRender
+        it "has valid parser combinators" combinators
+        it "has working choose function" testChoose
+        it "has working many function" testMany
+        it "has working orE" testOrE
+        it "is idempotent to parse and pretty render a document" documentParsePrettyRender
+        it "ignores the BOM" parseIgnoreBOM
+    describe "XML Cursors" $ do
+        it "has correct parent" cursorParent
+        it "has correct ancestor" cursorAncestor
+        it "has correct orSelf" cursorOrSelf
+        it "has correct preceding" cursorPreceding
+        it "has correct following" cursorFollowing
+        it "has correct precedingSibling" cursorPrecedingSib
+        it "has correct followingSibling" cursorFollowingSib
+        it "has correct descendant" cursorDescendant
+        it "has correct check" cursorCheck
+        it "has correct check with lists" cursorPredicate
+        it "has correct checkNode" cursorCheckNode
+        it "has correct checkElement" cursorCheckElement
+        it "has correct checkName" cursorCheckName
+        it "has correct anyElement" cursorAnyElement
+        it "has correct element" cursorElement
+        it "has correct laxElement" cursorLaxElement
+        it "has correct content" cursorContent
+        it "has correct attribute" cursorAttribute
+        it "has correct laxAttribute" cursorLaxAttribute
+        it "has correct &* and $* operators" cursorDeep
+        it "has correct force" cursorForce
+        it "has correct forceM" cursorForceM
+        it "has correct hasAttribute" cursorHasAttribute
+        it "has correct attributeIs" cursorAttributeIs
+    describe "resolved" $ do
+        it "identifies unresolved entities" resolvedIdentifies
+        it "works for resolvable entities" resolvedAllGood
+        it "merges adjacent content nodes" resolvedMergeContent
 
 documentParseRender :: IO ()
 documentParseRender =
@@ -287,3 +284,8 @@ resolvedMergeContent =
     Res.Element "foo" [] [Res.NodeContent "bar&baz"]
   where
     xml = "<foo>bar&amp;baz</foo>"
+
+parseIgnoreBOM :: Assertion
+parseIgnoreBOM = do
+    either (const $ Left (1 :: Int)) Right (Res.parseText Res.def "\xfeef<foo/>") @?=
+        either (const $ Left (2 :: Int)) Right (Res.parseText Res.def "<foo/>")
