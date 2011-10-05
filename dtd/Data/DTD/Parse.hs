@@ -153,14 +153,14 @@ resolvef (U.DTDEntityDecl (U.InternalGeneralEntityDecl a b)) = do
 
 -- store external entities
 resolvef (U.DTDEntityDecl (U.ExternalParameterEntityDecl name eid)) = do
-    lift $ modify $ \rs -> rs { rsRefEid = Map.insert name eid $ rsRefEid rs }
+    lift $ modify $ \rs -> rs { rsRefEid = insertNoReplace name eid $ rsRefEid rs }
     return []
 
 -- store internal entities
 resolvef (U.DTDEntityDecl (U.InternalParameterEntityDecl name vals)) = do
     rs <- lift get
     t <- either throwError return $ resolveEntityValue rs vals
-    lift $ put $ rs { rsRefText = Map.insert name t $ rsRefText rs }
+    lift $ put $ rs { rsRefText = insertNoReplace name t $ rsRefText rs }
     return []
 
 -- pull in perefs
@@ -251,3 +251,9 @@ data ResolveException
   deriving (Show, Typeable)
 instance Exception ResolveException
 instance Error ResolveException
+
+insertNoReplace :: Ord k => k -> v -> Map.Map k v -> Map.Map k v
+insertNoReplace k v m =
+    case Map.lookup k m of
+        Nothing -> Map.insert k v m
+        Just{} -> m
