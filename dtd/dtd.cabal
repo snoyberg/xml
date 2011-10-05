@@ -14,10 +14,23 @@ Description:         Parse and render DTD files
 Library
   Exposed-modules:     Data.DTD.Types.Unresolved
                        Data.DTD.Parse.Unresolved
+                       Data.DTD.Types
+                       Data.DTD.Parse
+                       Data.DTD.Render
+                       Data.DTD.Cache
+                       Data.Enumerator.Unwrap
   Build-depends:       base                     >= 4          && < 5
                      , text                     >= 0.11       && < 1.0
                      , containers               >= 0.2        && < 0.5
                      , xml-enumerator           >= 0.4        && < 0.5
                      , uri-enumerator           >= 0.0        && < 0.1
                      , transformers             >= 0.2        && < 0.3
+                     , xml-types                >= 0.3        && < 0.4
+                     , attoparsec               >= 0.9        && < 0.10
+                     , attoparsec-text          >= 0.8.5      && < 0.9
+                     , attoparsec-text-enumerator >= 0.2      && < 0.3
+                     , monad-control            >= 0.2        && < 0.3
+                     , enumerator               >= 0.4.14     && < 0.5
+                     , xml-catalog              >= 0.2        && < 0.3
+                     , blaze-builder            >= 0.3        && < 0.4
   Ghc-options: -Wall
