@@ -5,6 +5,7 @@ module Data.DTD.Cache
     , applyDTD
     , newDTDCache
     , newDTDCacheFile
+    , loadAttrMap
     ) where
 
 import qualified Text.XML as X
@@ -56,8 +57,8 @@ newDTDCacheFile fp = do
     c <- loadCatalog (toSchemeMap [fileScheme]) uri
     newDTDCache c (toSchemeMap [fileScheme])
 
-loadDTD :: MonadControlIO m => DTDCache -> X.ExternalID -> m AttrMap
-loadDTD (DTDCache icache catalog sm) ext = do
+loadAttrMap :: MonadControlIO m => DTDCache -> X.ExternalID -> m AttrMap
+loadAttrMap (DTDCache icache catalog sm) ext = do
     res <- liftIO $ fmap (Map.lookup pubsys) $ I.readIORef icache
     case res of
         Just dtd -> return dtd
@@ -87,7 +88,7 @@ applyDTD :: MonadControlIO m
 applyDTD dc doc@(X.Document pro@(X.Prologue _ mdoctype _) root epi) =
     case mdoctype of
         Just (X.Doctype _ (Just extid)) -> do
-            attrs <- loadDTD dc extid
+            attrs <- loadAttrMap dc extid
             let root' = go attrs root
             return $ X.Document pro root' epi
         _ -> return doc
