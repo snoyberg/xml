@@ -208,7 +208,7 @@ resolveAttDeclPERef :: MonadControlIO m => U.AttDeclPERef -> ResolveMonad m [Att
 resolveAttDeclPERef (U.ADPDecl d) = return [d]
 resolveAttDeclPERef (U.ADPPERef p) = do
     t <- resolvePERefText p
-    case runPartial $ A.parse (A.many1 UP.attDecl) t of
+    case runPartial $ A.parse (A.many1 UP.attDecl) $ T.strip t of
         A.Done "" x -> return x
         x -> throwError $ InvalidAttDecl p t x
 
