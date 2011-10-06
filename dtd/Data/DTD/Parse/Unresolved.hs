@@ -333,7 +333,7 @@ ws = satisfy isXMLSpace
 
 -- | Skip zero or more characters of white space
 skipWS :: Parser ()
-skipWS = A.takeWhile isXMLSpace *> pure ()
+skipWS = A.skipWhile isXMLSpace
 
 -- | Type-specialized version of manyTill, so we can use the 'IsString'
 -- instance for 'Parser' 'Text' with it.
