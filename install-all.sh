@@ -8,6 +8,9 @@ $CABAL install HUnit QuickCheck 'hspec >= 0.6.1 && < 0.7'
 
 pkgs=( xml-enumerator
        uri-enumerator
+       uri-enumerator-file
+       uri-enumerator-http
+       uri-enumerator-zip
        xml2html
        xml-hamlet
        xml-catalog
