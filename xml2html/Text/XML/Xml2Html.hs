@@ -20,8 +20,14 @@ instance B.ToHtml X.Element where
     toHtml (X.Element name' attrs children) =
         if isVoid
             then foldl' (B.!) leaf attrs'
-            else foldl' (B.!) parent attrs' $ mapM_ B.toHtml children
+            else foldl' (B.!) parent attrs' childrenHtml
       where
+        childrenHtml :: B.Html
+        childrenHtml =
+            case (name `elem` ["style", "script"], children) of
+                (True, [X.NodeContent t]) -> B.preEscapedText t
+                _ -> mapM_ B.toHtml children
+
         isVoid = X.nameLocalName name' `Set.member` voidElems
 
         parent :: B.Html -> B.Html
