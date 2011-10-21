@@ -14,6 +14,9 @@ module Text.XML.Unresolved
     , renderLBS
     , parseLBS
     , parseLBS_
+      -- * Byte streams
+    , parseEnum
+    , parseEnum_
       -- * Streaming functions
     , toEvents
     , fromEvents
@@ -66,6 +69,18 @@ readFile de fn = run $ enumFile fn $$ joinI $ P.parseBytes de $$ fromEvents
 
 readFile_ :: P.ParseSettings -> FilePath -> IO Document
 readFile_ de fn = run_ $ enumFile fn $$ joinI $ P.parseBytes de $$ fromEvents
+
+parseEnum :: Monad m
+          => P.ParseSettings
+          -> Enumerator ByteString m Document
+          -> m (Either SomeException Document)
+parseEnum de enum = run $ enum $$ joinI $ P.parseBytes de $$ fromEvents
+
+parseEnum_ :: Monad m
+           => P.ParseSettings
+           -> Enumerator ByteString m Document
+           -> m Document
+parseEnum_ de enum = run_ $ enum $$ joinI $ P.parseBytes de $$ fromEvents
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
 writeFile rs fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->
