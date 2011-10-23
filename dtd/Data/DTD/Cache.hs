@@ -28,7 +28,6 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import qualified Data.IORef as I
 import Control.Exception (Exception, throwIO, SomeException)
 import Data.Typeable (Typeable)
-import Data.Maybe (mapMaybe)
 import Control.Monad.IO.Control (MonadControlIO)
 import qualified Network.URI as NU
 
@@ -38,14 +37,14 @@ toMaps =
   where
     go (D.DTDEntityDecl (D.InternalGeneralEntityDecl k v)) (e, a) = (Map.insert k v e, a)
     go (D.DTDAttList (D.AttList lname atts)) (e, a) =
-        (e, Map.unionWith (++) (Map.singleton (X.Name lname Nothing Nothing) (mapMaybe go' atts)) a)
+        (e, Map.unionWith Map.union (Map.singleton (X.Name lname Nothing Nothing) (Map.unions $ map go' atts)) a)
     go _ m = m
 
     go' (D.AttDecl lname _ def) =
         case def of
-            D.AttFixed t -> Just (name, Fixed t)
-            D.AttDefaultValue t -> Just (name, Def t)
-            _ -> Nothing
+            D.AttFixed t -> Map.singleton name $ Fixed t
+            D.AttDefaultValue t -> Map.singleton name $ Def t
+            _ -> Map.empty
       where
         name = X.Name lname Nothing Nothing
 
@@ -120,7 +119,7 @@ applyDTD dc doc@(XU.Document pro@(X.Prologue _ mdoctype _) root epi) =
         as'' as' =
             case Map.lookup name attrs of
                 Nothing -> as'
-                Just x -> foldr goa as' x
+                Just x -> foldr goa as' $ Map.toList x
         gon (XU.NodeElement e) = fmap X.NodeElement $ go (ents, attrs) e
         gon (XU.NodeComment t) = Right $ X.NodeComment t
         gon (XU.NodeInstruction t) = Right $ X.NodeInstruction t
@@ -144,7 +143,7 @@ applyDTD dc doc@(XU.Document pro@(X.Prologue _ mdoctype _) root epi) =
 
 data Att = Def Text | Fixed Text
 
-type AttrMap = Map.Map X.Name [(X.Name, Att)]
+type AttrMap = Map.Map X.Name (Map.Map X.Name Att)
 type EntityMap = Map.Map Text Text
 
 getEntity :: EntityMap -> Text -> Either UnresolvedEntity Text
