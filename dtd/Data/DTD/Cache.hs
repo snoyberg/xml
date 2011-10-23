@@ -38,7 +38,7 @@ toMaps =
   where
     go (D.DTDEntityDecl (D.InternalGeneralEntityDecl k v)) (e, a) = (Map.insert k v e, a)
     go (D.DTDAttList (D.AttList lname atts)) (e, a) =
-        (e, Map.insert (X.Name lname Nothing Nothing) (mapMaybe go' atts) a)
+        (e, Map.unionWith (++) (Map.singleton (X.Name lname Nothing Nothing) (mapMaybe go' atts)) a)
     go _ m = m
 
     go' (D.AttDecl lname _ def) =
