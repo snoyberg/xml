@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Text.XML.Xml2Html () where
 
 import qualified Text.XML as X
@@ -7,7 +8,7 @@ import qualified Text.Blaze.Html5 as B5
 import qualified Text.Blaze.Internal as BI
 import qualified Data.Text as T
 import Data.String (fromString)
-import Data.Monoid (mempty)
+import Data.Monoid (mempty, mappend)
 import Data.List (foldl')
 import qualified Data.Set as Set
 import qualified Data.Map as Map
@@ -17,6 +18,16 @@ instance B.ToHtml X.Document where
     toHtml (X.Document _ root _) = B5.docType >> B.toHtml root
 
 instance B.ToHtml X.Element where
+    toHtml (X.Element
+                "{http://www.snoyman.com/xml2html}ie-cond"
+                [("cond", cond)]
+                children) =
+        B.preEscapedText "<!--[if "
+        `mappend` B.preEscapedText cond
+        `mappend` B.preEscapedText "]>"
+        `mappend` mapM_ B.toHtml children
+        `mappend` B.preEscapedText "<![endif]-->"
+
     toHtml (X.Element name' attrs children) =
         if isVoid
             then foldl' (B.!) leaf attrs'

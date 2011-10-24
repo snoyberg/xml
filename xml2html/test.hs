@@ -13,6 +13,8 @@ root = Element "html" [] [xml|
 <head>
     <title>Test
     <script>if (5 < 6 || 8 > 9) alert("Hello World!");
+    <{http://www.snoyman.com/xml2html}ie-cond cond="lt IE 7">
+        <link href="ie6.css">
     <style>body > h1 { color: red }
 <body>
     <h1>Hello World!
