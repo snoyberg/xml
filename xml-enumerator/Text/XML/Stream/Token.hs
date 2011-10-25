@@ -19,6 +19,8 @@ import Data.Monoid (mconcat, mempty, mappend)
 import Data.ByteString.Char8 ()
 import Data.Map (Map)
 import qualified Blaze.ByteString.Builder.Char8 as BC8
+import qualified Data.Set as Set
+import Data.List (foldl')
 
 oneSpace :: Builder
 oneSpace = copyByteString " "
@@ -43,7 +45,7 @@ tokenToBuilder (TokenInstruction (Instruction target data_)) = mconcat
     , fromText data_
     , fromByteString "?>"
     ]
-tokenToBuilder (TokenBeginElement name attrs isEmpty indent) =
+tokenToBuilder (TokenBeginElement name attrs' isEmpty indent) =
       copyByteString "<"
     `mappend` tnameToText name
     `mappend` foldAttrs
@@ -53,6 +55,7 @@ tokenToBuilder (TokenBeginElement name attrs isEmpty indent) =
         attrs
         (if isEmpty then fromByteString "/>" else fromByteString ">")
   where
+    attrs = nubAttrs attrs'
     lessThan3 [] = True
     lessThan3 [_] = True
     lessThan3 [_, _] = True
@@ -90,7 +93,7 @@ tokenToBuilder (TokenDoctype name eid) = mconcat
         ]
 
 data TName = TName (Maybe Text) Text
-    deriving Show
+    deriving (Show, Eq, Ord)
 
 tnameToText :: TName -> Builder
 tnameToText (TName Nothing name) = fromText name
@@ -149,3 +152,12 @@ data NSLevel = NSLevel
     , prefixes :: Map Text Text
     }
     deriving Show
+
+nubAttrs :: [TAttribute] -> [TAttribute]
+nubAttrs orig =
+    front []
+  where
+    (front, _) = foldl' go (id, Set.empty) orig
+    go (dlist, used) (k, v)
+        | k `Set.member` used = (dlist, used)
+        | otherwise = (dlist . ((k, v):), Set.insert k used)

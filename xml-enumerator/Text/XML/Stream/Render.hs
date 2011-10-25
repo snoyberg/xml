@@ -29,6 +29,8 @@ import Data.ByteString (ByteString)
 import Control.Monad.IO.Class (MonadIO)
 import Data.Char (isSpace)
 import Data.Default (Default (def))
+import qualified Data.Set as Set
+import Data.List (foldl')
 
 -- | Pretty prints a stream of 'Event's into a stream of 'Builder's. This
 -- changes the meaning of some documents, by inserting/modifying whitespace.
@@ -144,7 +146,7 @@ mkBeginToken isPretty isClosed s name attrs =
                 [] -> NSLevel Nothing Map.empty
                 sl':_ -> sl'
     (sl1, tname, tattrs1) = newElemStack prevsl name
-    (sl2, tattrs2) = foldr newAttrStack (sl1, tattrs1) attrs
+    (sl2, tattrs2) = foldr newAttrStack (sl1, tattrs1) $ nubAttrs attrs
 
 newElemStack :: NSLevel -> Name -> (NSLevel, TName, [TAttribute])
 newElemStack nsl@(NSLevel def' _) (Name local ns _)
@@ -271,3 +273,12 @@ cleanWhite x =
       where
         t' = (if isFront then T.dropWhile isSpace else id) $ T.map normalSpace t
     go _ end [] = end
+
+nubAttrs :: [(Name, v)] -> [(Name, v)]
+nubAttrs orig =
+    front []
+  where
+    (front, _) = foldl' go (id, Set.empty) orig
+    go (dlist, used) (k, v)
+        | k `Set.member` used = (dlist, used)
+        | otherwise = (dlist . ((k, v):), Set.insert k used)
