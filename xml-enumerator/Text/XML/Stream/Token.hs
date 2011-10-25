@@ -21,6 +21,7 @@ import Data.Map (Map)
 import qualified Blaze.ByteString.Builder.Char8 as BC8
 import qualified Data.Set as Set
 import Data.List (foldl')
+import Control.Arrow (first)
 
 oneSpace :: Builder
 oneSpace = copyByteString " "
@@ -55,7 +56,7 @@ tokenToBuilder (TokenBeginElement name attrs' isEmpty indent) =
         attrs
         (if isEmpty then fromByteString "/>" else fromByteString ">")
   where
-    attrs = nubAttrs attrs'
+    attrs = nubAttrs $ map (first splitTName) attrs'
     lessThan3 [] = True
     lessThan3 [_] = True
     lessThan3 [_, _] = True
@@ -161,3 +162,11 @@ nubAttrs orig =
     go (dlist, used) (k, v)
         | k `Set.member` used = (dlist, used)
         | otherwise = (dlist . ((k, v):), Set.insert k used)
+
+splitTName :: TName -> TName
+splitTName x@(TName Just{} _) = x
+splitTName x@(TName Nothing t)
+    | T.null b = x
+    | otherwise = TName (Just a) $ T.drop 1 b
+  where
+    (a, b) = T.break (== ':') t

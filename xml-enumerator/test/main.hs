@@ -31,6 +31,7 @@ main = hspecX $ do
         it "has working orE" testOrE
         it "is idempotent to parse and pretty render a document" documentParsePrettyRender
         it "ignores the BOM" parseIgnoreBOM
+        it "strips duplicated attributes" stripDuplicateAttributes
     describe "XML Cursors" $ do
         it "has correct parent" cursorParent
         it "has correct ancestor" cursorAncestor
@@ -289,3 +290,13 @@ parseIgnoreBOM :: Assertion
 parseIgnoreBOM = do
     either (const $ Left (1 :: Int)) Right (Res.parseText Res.def "\xfeef<foo/>") @?=
         either (const $ Left (2 :: Int)) Right (Res.parseText Res.def "<foo/>")
+
+stripDuplicateAttributes :: Assertion
+stripDuplicateAttributes = do
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<foo bar=\"baz\"/>" @=?
+        D.renderLBS def (Document (Prologue [] Nothing []) (Element "foo" [("bar", [ContentText "baz"]), ("bar", [ContentText "bin"])] []) [])
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<foo x:bar=\"baz\" xmlns:x=\"namespace\"/>" @=?
+        D.renderLBS def (Document (Prologue [] Nothing []) (Element "foo"
+            [ ("x:bar", [ContentText "baz"])
+            , (Name "bar" (Just "namespace") (Just "x"), [ContentText "bin"])
+            ] []) [])
