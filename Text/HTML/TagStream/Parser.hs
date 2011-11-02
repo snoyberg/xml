@@ -1,45 +1,56 @@
 {-# LANGUAGE OverloadedStrings, TupleSections #-}
 module Text.HTML.TagStream.Parser where
 
-import Control.Applicative ( (<$>), (<*), (<|>) )
+import Prelude hiding (takeWhile)
+import Debug.Trace
+import Control.Applicative ( (<$>), (<*>), (<*), (<|>) )
 import Data.Attoparsec.Char8
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S
 import Text.HTML.TagStream.Types
 
--- TODO handle escape double-quote
+f `or'` g = \a -> f a || g a
+
 value :: Parser ByteString
 value = do
     c <- anyChar
     case c of
-        '"' -> takeTill (=='"') <* anyChar
-        _   -> S.cons c <$> takeTill (inClass ">= ")
+        '"' -> unescape
+        _   -> S.cons c <$> takeTill (inClass ">=" `or'` isSpace)
+  where
+    unescape = do
+        v <- takeTill (inClass "\\\"")
+        c <- anyChar
+        case c of
+            '"' -> return v
+            '\\' -> S.append v <$> (S.cons <$> anyChar <*> unescape)
 
 attr :: Parser Attr
 attr = do
     skipSpace
     c <- satisfy (/='>')
-    name' <- takeTill (inClass ">= ")
+    name' <- takeTill (inClass ">=" `or'` isSpace)
     let name = S.cons c name'
     skipSpace
     option (name, S.empty) $ do
         _ <- char '='
         skipSpace
         (name,) <$> value
-        -- (name,) <$> takeTill (inClass ">= ")
 
 attrs :: Parser [Attr]
 attrs = many attr
 
+-- TODO self close tag
 tag :: Parser Token
 tag = do
     _ <- char '<'
-    skipSpace
-    name <- takeTill (inClass "> ")
-    c <- anyChar
+    spaces <- takeWhile isSpace
+    name' <- takeTill (inClass "<>=" `or'` isSpace)
+    let name = S.append spaces name'
+    c <- satisfy (isSpace `or'` (=='>'))
     case c of
         '>' -> case S.uncons name of
-                   Just ('/', name') -> return (TagClose name')
+                   Just ('/', name'') -> return (TagClose name'')
                    _ -> return (TagOpen name [])
         _   -> TagOpen name <$> attrs <* skipSpace <* char '>'
 
@@ -54,3 +65,6 @@ token = tag <|> text
 
 html :: Parser [Token]
 html = many token
+
+decode :: ByteString -> Either String [Token]
+decode = parseOnly html
