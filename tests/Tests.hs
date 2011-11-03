@@ -37,7 +37,7 @@ instance Arbitrary (Token' ByteString) where
 
 tests :: [Test]
 tests = [ testGroup "Property"
-            [ testProperty "revertiable" prop_revertiable1
+            [-- testProperty "revertiable" prop_revertiable1
             ]
         , testGroup "Special cases"
             [ testCase "special cases" testSpecialCases
@@ -83,12 +83,14 @@ testSpecialCases = mapM_ testOne testcases
          [TagOpen "a" [("href", "f\noo")] False] )
       ,( "<a href=>",
          [TagOpen "a" [("href", "")] False] )
+      ,( "<a href=http://www.douban.com/>",
+         [TagOpen "a" [("href", "http://www.douban.com/")] False] )
+      ,( "<a alt=foo />",
+         [TagOpen "a" [("alt", "foo")] True] )
       ,( "<a href>",
          [TagOpen "a" [("href", "")] False] )
-      ,( "<a href src=>",
-         [TagOpen "a" [("href", ""), ("src", "")] False] )
       ,( "<a href src=/>",
-         [TagOpen "a" [("href", ""), ("src", "")] True] )
+         [TagOpen "a" [("href", ""), ("src", "/")] False] )
       ,( "<a\tsrc\t\r\nhref\n=\n\"\nfo\t\no\n\" title\r\n\t=>",
          [TagOpen "a" [("src", ""), ("href", "\nfo\t\no\n"), ("title", "")] False] )
       ,( "<br />",

@@ -14,7 +14,7 @@ import Text.HTML.TagStream.Types
 
 value :: Parser ByteString
 value = char '"' *> str
-    <|> takeTill (inClass "/>=" ||. isSpace)
+    <|> takeTill (inClass ">=" ||. isSpace)
   where
     str = S.append <$> takeTill (inClass "\\\"") 
                    <*> (end <|> unescape)
