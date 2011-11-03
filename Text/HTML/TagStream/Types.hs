@@ -9,6 +9,7 @@ type Attr = Attr' ByteString
 data Token' s = TagOpen s [Attr' s] Bool
               | TagClose s
               | Text s
+              | Comment s
     deriving (Eq, Show)
 
 type Token = Token' ByteString
@@ -31,6 +32,7 @@ showToken hl (TagOpen name as close) =
     escape c = [c]
 showToken hl (TagClose name) = S.concat [hl "</", name, hl ">"]
 showToken _ (Text s) = s
+showToken hl (Comment s) = S.concat [hl "<!--", s, hl "-->"]
 
 encode :: [Token] -> ByteString
 encode = encodeHL id

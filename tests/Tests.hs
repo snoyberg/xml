@@ -105,6 +105,14 @@ testSpecialCases = mapM_ testCase cases
          [Text "<>"] )
       ,( "</>",
          [TagClose ""] )
+      ,( "</\ndiv>",
+         [TagClose "\ndiv"] )
+      ,( "<!--foo-->",
+         [Comment "foo"] )
+      ,( "<!--f--oo->-->",
+         [Comment "f--oo->"] )
+      ,( "<!--fo--o->",
+         [Text "<!--fo--o->"] )
       ]
 
 testRealworldFiles :: Assertion

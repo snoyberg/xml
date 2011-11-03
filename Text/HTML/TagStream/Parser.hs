@@ -37,14 +37,20 @@ attr = do
 attrs :: Parser [Attr]
 attrs = many attr
 
--- TODO comment tag
+comment :: Parser ByteString
+comment = S.append <$>
+            takeTill (=='-') <*>
+            ( string "-->" *> return "" <|>
+              S.cons <$> anyChar <*> comment )
+
 tag :: Parser Token
-tag = TagClose <$> ( string "</" *>
+tag = Comment <$> ( string "<!--" *> comment )
+  <|> TagClose <$> ( string "</" *>
                      takeTill (=='>') <*
                      char '>' )
   <|> TagOpen <$> ( char '<' *>
                     ( S.cons <$>
-                        satisfy (not . (isSpace ||. (=='>'))) <*>
+                        satisfy (not . (isSpace ||. (inClass "!>"))) <*>
                         takeTill (inClass "/>=" ||. isSpace)) )
               <*> attrs <* skipSpace
               <*> ( char '>' *> return False <|>
