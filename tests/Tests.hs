@@ -11,7 +11,6 @@ import Test.QuickCheck
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S
 import Text.HTML.TagStream
-import Text.HTML.TagStream.Parser
 
 main :: IO ()
 main = defaultMain tests
@@ -20,10 +19,11 @@ atLeast :: Arbitrary a => Int -> Gen [a]
 atLeast 0 = arbitrary
 atLeast n = (:) <$> arbitrary <*> atLeast (n-1)
 
--- testChar = growingElements "<>=\"' \t\n\rabcde!@$#^&*()_+\\~`"
--- testChar = growingElements "<>=\"' \t\n\rabcde\\"
+testChar :: Gen Char
 testChar = growingElements "<>=\"' \tabcde\\"
+testString :: Gen String
 testString = listOf testChar
+testBS :: Gen ByteString
 testBS = S.pack <$> testString
 
 instance Arbitrary ByteString where
@@ -62,13 +62,13 @@ assertDecode s = do
     return tokens
 
 testSpecialCases :: Assertion
-testSpecialCases = mapM_ testCase cases
+testSpecialCases = mapM_ testOne testcases
   where
-    testCase (str, tokens) =
+    testOne (str, tokens) =
       trace (show' str tokens) $
         assertDecode str >>= assertEqual "parse result incorrect" tokens
     show' str tokens = S.unpack $ S.concat [str, "\n", S.pack (show tokens)]
-    cases =
+    testcases =
       [( "<a readonly title=xxx href=\"f<o/>o\" class=\"foo bar\">bar</a>",
          [TagOpen "a" [("readonly", ""), ("title", "xxx"), ("href", "f<o/>o"), ("class", "foo bar")] False,
           Text "bar",
