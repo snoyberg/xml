@@ -22,4 +22,3 @@ accumParse acc input = liftM splitAccum $
 
 tokenStream :: Monad m => E.Enumeratee ByteString Token m b
 tokenStream = EL.concatMapAccumM accumParse S.empty
-

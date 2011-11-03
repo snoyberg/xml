@@ -10,14 +10,10 @@ data Token' s = TagOpen s [Attr' s] Bool
               | TagClose s
               | Text s
               | Comment s
+              | Special s s
     deriving (Eq, Show)
 
 type Token = Token' ByteString
-
--- instance Show (Token' ByteString) where
---     show (TagOpen name as) = "TagOpen "++S.unpack name++show as
---     show (TagClose name) = "TagClose "++S.unpack name
---     show (Text s) = "Text"++show (S.length s)
 
 showToken :: (ByteString -> ByteString) -> Token -> ByteString
 showToken hl (TagOpen name as close) =
@@ -33,6 +29,7 @@ showToken hl (TagOpen name as close) =
 showToken hl (TagClose name) = S.concat [hl "</", name, hl ">"]
 showToken _ (Text s) = s
 showToken hl (Comment s) = S.concat [hl "<!--", s, hl "-->"]
+showToken hl (Special name s) = S.concat [hl "<!", name, " ", s, hl ">"]
 
 encode :: [Token] -> ByteString
 encode = encodeHL id

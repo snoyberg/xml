@@ -43,18 +43,29 @@ comment = S.append <$>
             ( string "-->" *> return "" <|>
               S.cons <$> anyChar <*> comment )
 
+special :: Parser Token
+special = Comment <$> ( string "--" *> comment )
+      <|> Special
+          <$> ( S.cons
+                <$> satisfy (not . ((=='-') ||. isSpace))
+                <*> takeTill ((=='>') ||. isSpace)
+                <* skipSpace )
+          <*> takeTill (=='>')
+          <*  char '>'
+
 tag :: Parser Token
-tag = Comment <$> ( string "<!--" *> comment )
-  <|> TagClose <$> ( string "</" *>
-                     takeTill (=='>') <*
-                     char '>' )
-  <|> TagOpen <$> ( char '<' *>
-                    ( S.cons <$>
-                        satisfy (not . (isSpace ||. (inClass "!>"))) <*>
-                        takeTill (inClass "/>=" ||. isSpace)) )
-              <*> attrs <* skipSpace
-              <*> ( char '>' *> return False <|>
-                    string "/>" *> return True )
+tag = string "<!" *> special
+  <|> string "</"
+      *> (TagClose <$> takeTill (=='>'))
+      <* char '>'
+  <|> char '<'
+      *> ( TagOpen
+           <$> ( S.cons
+                 <$> satisfy (not . (isSpace ||. (inClass "!>")))
+                 <*> takeTill (inClass "/>" ||. isSpace) )
+           <*> attrs <* skipSpace
+           <*> ( char '>' *> return False
+             <|> string "/>" *> return True ) )
 
 text :: Parser Token
 text = Text <$> (

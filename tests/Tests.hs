@@ -113,6 +113,12 @@ testSpecialCases = mapM_ testCase cases
          [Comment "f--oo->"] )
       ,( "<!--fo--o->",
          [Text "<!--fo--o->"] )
+      ,( "<!--fo--o->",
+         [Text "<!--fo--o->"] )
+      ,( "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\">",
+         [Special "DOCTYPE" "html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\""] )
+      ,( "<!DOCTYPE/>",
+         [Special "DOCTYPE/" ""] )
       ]
 
 testRealworldFiles :: Assertion

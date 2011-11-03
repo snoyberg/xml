@@ -1,5 +1,4 @@
 import Data.Maybe
-import Control.Applicative
 import System.IO
 import System.Environment
 import Text.HTML.TagStream
