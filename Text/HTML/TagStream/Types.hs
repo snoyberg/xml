@@ -6,7 +6,7 @@ import qualified Data.ByteString.Char8 as S
 
 type Attr' s = (s, s)
 type Attr = Attr' ByteString
-data Token' s = TagOpen s [Attr' s]
+data Token' s = TagOpen s [Attr' s] Bool
               | TagClose s
               | Text s
     deriving (Eq, Show)
@@ -19,15 +19,18 @@ type Token = Token' ByteString
 --     show (Text s) = "Text"++show (S.length s)
 
 showToken :: (ByteString -> ByteString) -> Token -> ByteString
-showToken highlight (TagOpen name as) = S.concat $ [highlight "<", name] ++ map showAttr as ++ [highlight ">"]
+showToken hl (TagOpen name as close) =
+    S.concat $ [hl "<", name]
+            ++ map showAttr as
+            ++ [hl (if close then "/>" else ">")]
   where
     showAttr :: Attr -> ByteString
-    showAttr (key, value) = S.concat [" ", key, highlight "=\"", S.pack . concatMap escape . S.unpack $ value, highlight "\""]
+    showAttr (key, value) = S.concat [" ", key, hl "=\"", S.pack . concatMap escape . S.unpack $ value, hl "\""]
     escape '"' = "\\\""
     escape '\\' = "\\\\"
     escape c = [c]
-showToken highlight (TagClose name) = S.concat [highlight "</", name, highlight ">"]
-showToken highlight (Text s) = s
+showToken hl (TagClose name) = S.concat [hl "</", name, hl ">"]
+showToken _ (Text s) = s
 
 encode :: [Token] -> ByteString
 encode = encodeHL id

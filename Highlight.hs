@@ -12,6 +12,7 @@ color c s = S.concat [ S.pack $ setSGRCode [SetColor Foreground Dull c]
                      , S.pack $ setSGRCode [SetColor Foreground Dull White]
                      ]
 
+main :: IO ()
 main = do
     args <- getArgs
     (Right tokens) <- decode <$> maybe S.getContents S.readFile (listToMaybe args)

@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances, OverloadedStrings #-}
 module Main where
 
+import Debug.Trace
 import Control.Applicative
 import Test.Framework (defaultMain, testGroup, Test)
 import Test.Framework.Providers.HUnit
@@ -29,7 +30,7 @@ instance Arbitrary ByteString where
     arbitrary = testBS
 
 instance Arbitrary (Token' ByteString) where
-    arbitrary = oneof [ TagOpen <$> arbitrary <*> arbitrary
+    arbitrary = oneof [ TagOpen <$> arbitrary <*> arbitrary <*> arbitrary
                       , TagClose <$> arbitrary
                       , Text <$> S.pack <$> atLeast 1
                       ]
@@ -40,7 +41,7 @@ tests = [ testGroup "Property"
             ]
         , testGroup "Special cases"
             [ testCase "special cases" testSpecialCases
-            , testCase "parse real world file" testRealworldFiles
+            --, testCase "parse real world file" testRealworldFiles
             ]
         ]
 
@@ -63,22 +64,47 @@ assertDecode s = do
 testSpecialCases :: Assertion
 testSpecialCases = mapM_ testCase cases
   where
-    testCase (str, tokens) = assertDecode str >>= assertEqual "parse result incorrect" tokens
+    testCase (str, tokens) =
+      trace (show' str tokens) $
+        assertDecode str >>= assertEqual "parse result incorrect" tokens
+    show' str tokens = S.unpack $ S.concat [str, "\n", S.pack (show tokens)]
     cases =
-      [ ("<a href=\"foo\">bar</a>",
-         [TagOpen "a" [("href", "foo")], Text "bar", TagClose "a"] )
-      , ("<a href=foo class=\"bar1 bar2\">",
-         [TagOpen "a" [("href", "foo"), ("class", "bar1 bar2")]] )
-      , ("<a href=fo\"o >",
-         [TagOpen "a" [("href", "fo\"o")]] )
-      , ("<a href=\"f\\\"oo\" >",
-         [TagOpen "a" [("href", "f\"oo")]] )
-      , ("<a\ta\thref=\"f\\\"oo\" >",
-         [TagOpen "a" [("a", ""), ("href", "f\"oo")]] )
-      , ("<a\ta\thref=\"f\\o\\\\o\" >",
-         [TagOpen "a" [("a", ""), ("href", "fo\\o")]] )
-      , ("<br />",
-         [TagOpen "br" [], TagClose "br"] )
+      [( "<a readonly title=xxx href=\"f<o/>o\" class=\"foo bar\">bar</a>",
+         [TagOpen "a" [("readonly", ""), ("title", "xxx"), ("href", "f<o/>o"), ("class", "foo bar")] False,
+          Text "bar",
+          TagClose "a"] )
+      ,( "<a href=fo\"o >",
+         [TagOpen "a" [("href", "fo\"o")] False] )
+      ,( "<a href=\"f\\\"oo\" >",
+         [TagOpen "a" [("href", "f\"oo")] False] )
+      ,( "<a href=\"f\\\\\\\"oo\" >",
+         [TagOpen "a" [("href", "f\\\"oo")] False] )
+      ,( "<a href=\"f\noo\" >",
+         [TagOpen "a" [("href", "f\noo")] False] )
+      ,( "<a href=>",
+         [TagOpen "a" [("href", "")] False] )
+      ,( "<a href>",
+         [TagOpen "a" [("href", "")] False] )
+      ,( "<a href src=>",
+         [TagOpen "a" [("href", ""), ("src", "")] False] )
+      ,( "<a href src=/>",
+         [TagOpen "a" [("href", ""), ("src", "")] True] )
+      ,( "<a\tsrc\t\r\nhref\n=\n\"\nfo\t\no\n\" title\r\n\t=>",
+         [TagOpen "a" [("src", ""), ("href", "\nfo\t\no\n"), ("title", "")] False] )
+      ,( "<br />",
+         [TagOpen "br" [] True] )
+      ,( "</br/>",
+         [TagClose "br/"] )
+      ,( "<\n/br/>",
+         [Text "<\n/br/>"] )
+      ,( "< asafasd>",
+         [Text "< asafasd>"] )
+      ,( "<a href=\"http://",
+         [Text "<a href=\"http://"] )
+      ,( "<>",
+         [Text "<>"] )
+      ,( "</>",
+         [TagClose ""] )
       ]
 
 testRealworldFiles :: Assertion
@@ -87,6 +113,6 @@ testRealworldFiles = mapM_ testFile files
     testFile file = do
         result <- decode <$> S.readFile file
         assertEither result
-        assertEqual "not equal" result $ result >>= return . encode >>= decode
+        assertEqual "not equal" result $ encode <$> result >>= decode
     files = [ "qq.html"
             ]
