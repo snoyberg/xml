@@ -67,6 +67,12 @@ tag = string "<!" *> special
            <*> ( char '>' *> return False
              <|> string "/>" *> return True ) )
 
+tagClose :: ByteString -> Parser [Token]
+tagClose name = string (S.concat ["</", name, ">"]) *> return [TagClose name]
+
+textTill :: Parser [Token] -> Parser [Token]
+textTill p = (:) <$> text <*> (p <|> textTill p)
+
 text :: Parser Token
 text = Text <$> (
          S.cons <$> anyChar <*> takeTill (=='<')
@@ -76,7 +82,16 @@ token :: Parser Token
 token = tag <|> text
 
 html :: Parser [Token]
-html = many token
+html = html' <|> return []
+  where html' = do
+            x <- token
+            xs <- case x of
+                    TagOpen name _ _
+                      | name `elem` ["script", "style"]
+                        -> (++) <$> textTill (tagClose name)
+                                <*> html
+                    _ -> html
+            return (x:xs)
 
 decode :: ByteString -> Either String [Token]
 decode = parseOnly html

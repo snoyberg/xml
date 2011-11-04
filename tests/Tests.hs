@@ -121,6 +121,12 @@ testSpecialCases = mapM_ testOne testcases
          [Special "DOCTYPE" "html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\""] )
       ,( "<!DOCTYPE/>",
          [Special "DOCTYPE/" ""] )
+      ,( "<script > var x=\"<a href=xx />\";</script>",
+         [TagOpen "script" [] False
+         ,Text " var x=\""
+         ,Text "<a href=xx />\";"
+         ,TagClose "script"
+         ] )
       ]
 
 testRealworldFiles :: Assertion
