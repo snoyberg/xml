@@ -13,14 +13,14 @@ import Text.HTML.TagStream.Types
 -- (&&.) = liftA2 (&&)
 
 value :: Parser ByteString
-value = char '"' *> str
+value = (satisfy (inClass "'\"") >>= str)
     <|> takeTill (inClass ">=" ||. isSpace)
   where
-    str = S.append <$> takeTill (inClass "\\\"") 
-                   <*> (end <|> unescape)
-    end = char '"' *> return ""
-    unescape = char '\\' *> 
-               (S.cons <$> anyChar <*> str)
+    str q = S.append <$> takeTill ((=='\\') ||. (==q))
+                     <*> (end q <|> unescape q)
+    end q = char q *> return ""
+    unescape q = char '\\' *>
+                 (S.cons <$> anyChar <*> str q)
 
 attr :: Parser Attr
 attr = do

@@ -69,46 +69,54 @@ testSpecialCases = mapM_ testOne testcases
         assertDecode str >>= assertEqual "parse result incorrect" tokens
     show' str tokens = S.unpack $ S.concat [str, "\n", S.pack (show tokens)]
     testcases =
-      [( "<a readonly title=xxx href=\"f<o/>o\" class=\"foo bar\">bar</a>",
-         [TagOpen "a" [("readonly", ""), ("title", "xxx"), ("href", "f<o/>o"), ("class", "foo bar")] False,
+      -- normal
+      [( "<a readonly title=xxx href=\"f<o/>o\" class=\"foo bar\" style='display:none; color:red'>bar</a>",
+         [TagOpen "a" [("readonly", ""), ("title", "xxx"), ("href", "f<o/>o"), ("class", "foo bar"), ("style", "display:none; color:red")] False,
           Text "bar",
           TagClose "a"] )
-      ,( "<a href=fo\"o >",
-         [TagOpen "a" [("href", "fo\"o")] False] )
+      -- escape
       ,( "<a href=\"f\\\"oo\" >",
          [TagOpen "a" [("href", "f\"oo")] False] )
+      ,( "<a href='f\\'o\"o' >",
+         [TagOpen "a" [("href", "f'o\"o")] False] )
       ,( "<a href=\"f\\\\\\\"oo\" >",
          [TagOpen "a" [("href", "f\\\"oo")] False] )
+      -- attribute
+      ,( "<a href=fo\"o >",
+         [TagOpen "a" [("href", "fo\"o")] False] )
       ,( "<a href=\"f\noo\" >",
          [TagOpen "a" [("href", "f\noo")] False] )
       ,( "<a href=>",
          [TagOpen "a" [("href", "")] False] )
       ,( "<a href=http://www.douban.com/>",
          [TagOpen "a" [("href", "http://www.douban.com/")] False] )
-      ,( "<a alt=foo />",
-         [TagOpen "a" [("alt", "foo")] True] )
       ,( "<a href>",
          [TagOpen "a" [("href", "")] False] )
       ,( "<a href src=/>",
          [TagOpen "a" [("href", ""), ("src", "/")] False] )
-      ,( "<a\tsrc\t\r\nhref\n=\n\"\nfo\t\no\n\" title\r\n\t=>",
-         [TagOpen "a" [("src", ""), ("href", "\nfo\t\no\n"), ("title", "")] False] )
+      -- self close
       ,( "<br />",
          [TagOpen "br" [] True] )
+      ,( "<a alt=foo />",
+         [TagOpen "a" [("alt", "foo")] True] )
       ,( "</br/>",
          [TagClose "br/"] )
-      ,( "<\n/br/>",
-         [Text "<\n/br/>"] )
+      -- blanks
+      ,( "<a\tsrc\t\r\nhref\n=\n\"\nfo\t\no\n\" title\r\n\t=>",
+         [TagOpen "a" [("src", ""), ("href", "\nfo\t\no\n"), ("title", "")] False] )
       ,( "< asafasd>",
          [Text "< asafasd>"] )
       ,( "<a href=\"http://",
          [Text "<a href=\"http://"] )
+      ,( "<\n/br/>",
+         [Text "<\n/br/>"] )
+      ,( "</\ndiv>",
+         [TagClose "\ndiv"] )
       ,( "<>",
          [Text "<>"] )
       ,( "</>",
          [TagClose ""] )
-      ,( "</\ndiv>",
-         [TagClose "\ndiv"] )
+      -- comments
       ,( "<!--foo-->",
          [Comment "foo"] )
       ,( "<!--f--oo->-->",
@@ -117,10 +125,12 @@ testSpecialCases = mapM_ testOne testcases
          [Text "<!--fo--o->"] )
       ,( "<!--fo--o->",
          [Text "<!--fo--o->"] )
+      -- special tags
       ,( "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\">",
          [Special "DOCTYPE" "html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\""] )
       ,( "<!DOCTYPE/>",
          [Special "DOCTYPE/" ""] )
+      -- script link tags
       ,( "<script > var x=\"<a href=xx />\";</script>",
          [TagOpen "script" [] False
          ,Text " var x=\""
