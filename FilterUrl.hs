@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 import Control.Applicative
 import System.Environment (getArgs)
-import System.IO (openBinaryFile, IOMode(..))
+import System.IO (openBinaryFile, IOMode(..), stdout)
 import qualified Data.Enumerator.Binary as E
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S
@@ -9,6 +9,7 @@ import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import Data.Attoparsec.Char8
 import Text.HTML.TagStream
+import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 
 type Protocol = ByteString
 type Domain = ByteString
@@ -41,8 +42,9 @@ withUrl f = EL.map filter'
 main :: IO ()
 main = do
     [filename] <- getArgs
-    h <- openBinaryFile filename ReadMode
-    let bufSize = 2
-        enum = E.enumHandle bufSize h
-    tokens <- E.run_ $ ((enum E.$= tokenStream) E.$= withUrl changeUrl) E.$$ EL.consume
-    S.putStrLn $ S.concat $ map (showToken id) tokens
+    E.run_ $ E.enumFile filename
+             E.$= tokenStream
+             E.$= withUrl changeUrl
+             E.$= EL.map (showToken id)
+             E.$= builderToByteString
+             E.$$ E.iterHandle stdout

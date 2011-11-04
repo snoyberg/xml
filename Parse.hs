@@ -12,6 +12,7 @@ main :: IO ()
 main = do
     args <- getArgs
     filename <- maybe (fail "pass file path") return (listToMaybe args)
-    let enum = E.enumFile filename E.$= tokenStream
-    E.run_ $ enum E.$$ EL.consume
+    E.run_ $ E.enumFile filename
+             E.$= tokenStream
+             E.$$ EL.consume
     return ()
