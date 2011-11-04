@@ -1,0 +1,4 @@
+What's this
+===========
+
+Tag-stream is a library for parsing HTML/XML to a token stream. It can parse unstructured and malformed HTML from the web. It also provides an Enumeratee which can parse streamline html, which means it consumes constant memory. You can start from `tests/Tests.hs` to see what it can do.

@@ -1,7 +1,7 @@
 Name:                tag-stream
 Version:             0.1.0
 Synopsis:            streamlined html tag parser
--- Description:         
+Description:         Tag-stream is a library for parsing HTML/XML to a token stream. It can parse unstructured and malformed HTML from the web. It also provides an Enumeratee which can parse streamline html, which means it consumes constant memory. You can start from `tests/Tests.hs` to see what it can do.
 Homepage:            http://github.com/yihuang/tag-stream
 License:             BSD3
 License-file:        LICENSE
@@ -12,15 +12,17 @@ Build-type:          Simple
 Extra-source-files:  Test.hs
 Cabal-version:       >=1.2
 
+source-repository head
+  type:     git
+  location: git://github.com/yihuang/tag-stream.git
+
 Library
   GHC-Options:       -Wall -O2
   Exposed-modules:     Text.HTML.TagStream
                      , Text.HTML.TagStream.Parser
-  Other-modules:       Text.HTML.TagStream.Types
+                     , Text.HTML.TagStream.Types
                      , Text.HTML.TagStream.Stream
   Build-depends:       base
                      , bytestring
                      , attoparsec
                      , enumerator
-
-  -- Build-tools:         
