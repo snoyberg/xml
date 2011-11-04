@@ -22,10 +22,10 @@ showToken hl (TagOpen name as close) =
             ++ [hl (if close then "/>" else ">")]
   where
     showAttr :: Attr -> ByteString
-    showAttr (key, value) = S.concat [" ", key, hl "=\"", S.pack . concatMap escape . S.unpack $ value, hl "\""]
+    showAttr (key, value) = S.concat $ [" ", key, hl "=\""] ++ map escape (S.unpack value) ++ [hl "\""]
     escape '"' = "\\\""
     escape '\\' = "\\\\"
-    escape c = [c]
+    escape c = S.singleton c
 showToken hl (TagClose name) = S.concat [hl "</", name, hl ">"]
 showToken _ (Text s) = s
 showToken hl (Comment s) = S.concat [hl "<!--", s, hl "-->"]

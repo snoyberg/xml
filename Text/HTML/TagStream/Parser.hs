@@ -3,7 +3,7 @@ module Text.HTML.TagStream.Parser where
 
 import Prelude hiding (takeWhile)
 import Control.Applicative hiding (many)
-import Data.Attoparsec.Char8
+import Data.Attoparsec.Char8 hiding (inClass)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S
 import Text.HTML.TagStream.Types
@@ -11,6 +11,10 @@ import Text.HTML.TagStream.Types
 (||.) :: Applicative f => f Bool -> f Bool -> f Bool
 (||.) = liftA2 (||)
 -- (&&.) = liftA2 (&&)
+
+inClass :: Eq a => [a] -> a -> Bool
+inClass (b:c:[]) a = a==b || a==c
+inClass xs x = x `elem` xs
 
 value :: Parser ByteString
 value = (satisfy (inClass "'\"") >>= str)
@@ -25,7 +29,7 @@ value = (satisfy (inClass "'\"") >>= str)
 attr :: Parser Attr
 attr = do
     skipSpace
-    c <- satisfy (notInClass "/>")
+    c <- satisfy (not . inClass "/>")
     name' <- takeTill (inClass ">=" ||. isSpace)
     let name = S.cons c name'
     skipSpace
@@ -38,26 +42,25 @@ attrs :: Parser [Attr]
 attrs = many attr
 
 comment :: Parser ByteString
-comment = S.append <$>
-            takeTill (=='-') <*>
-            ( string "-->" *> return "" <|>
-              S.cons <$> anyChar <*> comment )
+comment = S.append
+          <$> takeTill (=='-')
+          <*> ( string "-->" *> return "" <|>
+                S.cons <$> anyChar <*> comment )
 
 special :: Parser Token
-special = Comment <$> ( string "--" *> comment )
+special = string "--" *> (Comment <$> comment)
       <|> Special
           <$> ( S.cons
                 <$> satisfy (not . ((=='-') ||. isSpace))
                 <*> takeTill ((=='>') ||. isSpace)
                 <* skipSpace )
-          <*> takeTill (=='>')
-          <*  char '>'
+          <*> takeTill (=='>') <*  char '>'
 
 tag :: Parser Token
-tag = string "<!" *> special
-  <|> string "</"
+tag = string "</"
       *> (TagClose <$> takeTill (=='>'))
       <* char '>'
+  <|> string "<!" *> special
   <|> char '<'
       *> ( TagOpen
            <$> ( S.cons
@@ -69,6 +72,18 @@ tag = string "<!" *> special
 
 tagClose :: ByteString -> Parser [Token]
 tagClose name = string (S.concat ["</", name, ">"]) *> return [TagClose name]
+
+scriptClose :: Parser [Token]
+scriptClose = string "</script>" *> return [TagClose "script"]
+
+styleClose :: Parser [Token]
+styleClose = string "</style>" *> return [TagClose "style"]
+
+fastTags :: [(ByteString, Parser [Token])]
+fastTags =
+  [ ("script", scriptClose)
+  , ("style", styleClose)
+  ]
 
 textTill :: Parser [Token] -> Parser [Token]
 textTill p = (:) <$> text <*> (p <|> textTill p)
@@ -87,10 +102,10 @@ html = html' <|> return []
             x <- token
             xs <- case x of
                     TagOpen name _ False
-                      | name `elem` ["script", "style"]
-                        -> ( (++) <$> (let p=tagClose name in p <|> textTill p)
-                                <*> html )
-                           <|> html
+                      | Just p <- lookup name fastTags
+                        -> ( (++) <$> (p <|> textTill p)
+                                  <*> html )
+                           <|> return []
                     _ -> html
             return (x:xs)
 

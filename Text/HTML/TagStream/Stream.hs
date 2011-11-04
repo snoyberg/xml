@@ -17,7 +17,9 @@ accumParse acc input = liftM splitAccum $
   where
     splitAccum :: [Token] -> (ByteString, [Token])
     splitAccum [] = (S.empty, [])
-    splitAccum (reverse -> (Text s : xs)) = (s, reverse xs)
+    splitAccum tokens@(reverse -> (Text s : xs))
+      | S.head s == '<' = (s, reverse xs)
+      | otherwise = (S.empty, tokens)
     splitAccum tokens = (S.empty, tokens)
 
 tokenStream :: Monad m => E.Enumeratee ByteString Token m b
