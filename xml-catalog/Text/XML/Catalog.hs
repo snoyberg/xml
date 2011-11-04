@@ -31,18 +31,14 @@ type Catalog = Map.Map PubSys URI
 loadCatalog :: MonadIO m => SchemeMap m -> URI -> m Catalog
 loadCatalog sm uri = do
     X.Document _ (X.Element _ _ ns) _ <- X.parseEnum_ X.def $ readURI sm uri
-    foldM addNode Map.empty ns
+    foldM (addNode Nothing) Map.empty ns
   where
-    addNode c (X.NodeElement (X.Element name as ns)) = do
+    addNode mbase0 c (X.NodeElement (X.Element name as ns)) = do
         c'' <- c'
-        foldM addNode c'' ns
+        foldM (addNode mbase) c'' ns
       where
-        -- FIXME handle hierarchies
-        base =
-            case lookup "{http://www.w3.org/XML/1998/namespace}base" as of
-                Nothing -> ""
-                Just x -> x
-        withBase = T.append base
+        mbase = maybe mbase0 Just $ lookup "{http://www.w3.org/XML/1998/namespace}base" as
+        withBase = maybe id T.append mbase
 
         c' =
             case name of
@@ -70,7 +66,7 @@ loadCatalog sm uri = do
                                 Nothing -> return c
                         Nothing -> return c
                 _ -> return c
-    addNode c _ = return c
+    addNode _ c _ = return c
 
 resolveURI :: Catalog
            -> Maybe URI -- ^ base URI for relative system identifiers
