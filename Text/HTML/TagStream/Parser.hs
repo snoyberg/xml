@@ -7,6 +7,7 @@ import Data.Attoparsec.Char8
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S
 import Text.HTML.TagStream.Types
+import Text.HTML.TagStream.Utils (cons, append)
 
 (||.) :: Applicative f => f Bool -> f Bool -> f Bool
 (||.) = liftA2 (||)
@@ -16,18 +17,18 @@ value :: Parser ByteString
 value = (satisfy (inClass "'\"") >>= str)
     <|> takeTill (inClass ">=" ||. isSpace)
   where
-    str q = S.append <$> takeTill ((=='\\') ||. (==q))
-                     <*> (end q <|> unescape q)
+    str q = append <$> takeTill ((=='\\') ||. (==q))
+                   <*> (end q <|> unescape q)
     end q = char q *> return ""
     unescape q = char '\\' *>
-                 (S.cons <$> anyChar <*> str q)
+                 (cons <$> anyChar <*> str q)
 
 attr :: Parser Attr
 attr = do
     skipSpace
     c <- satisfy (notInClass "/>")
     name' <- takeTill (inClass ">=" ||. isSpace)
-    let name = S.cons c name'
+    let name = cons c name'
     skipSpace
     option (name, S.empty) $ do
         _ <- char '='
@@ -38,15 +39,15 @@ attrs :: Parser [Attr]
 attrs = many attr
 
 comment :: Parser ByteString
-comment = S.append <$>
+comment = append <$>
             takeTill (=='-') <*>
             ( string "-->" *> return "" <|>
-              S.cons <$> anyChar <*> comment )
+              cons <$> anyChar <*> comment )
 
 special :: Parser Token
 special = Comment <$> ( string "--" *> comment )
       <|> Special
-          <$> ( S.cons
+          <$> ( cons
                 <$> satisfy (not . ((=='-') ||. isSpace))
                 <*> takeTill ((=='>') ||. isSpace)
                 <* skipSpace )
@@ -60,7 +61,7 @@ tag = string "<!" *> special
       <* char '>'
   <|> char '<'
       *> ( TagOpen
-           <$> ( S.cons
+           <$> ( cons
                  <$> satisfy (not . (isSpace ||. (inClass "!>")))
                  <*> takeTill (inClass "/>" ||. isSpace) )
            <*> attrs <* skipSpace
@@ -75,7 +76,7 @@ textTill p = (:) <$> text <*> (p <|> textTill p)
 
 text :: Parser Token
 text = Text <$> (
-         S.cons <$> anyChar <*> takeTill (=='<')
+         cons <$> anyChar <*> takeTill (=='<')
        )
 
 token :: Parser Token
@@ -89,8 +90,8 @@ html = html' <|> return []
                     TagOpen name _ False
                       | name `elem` ["script", "style"]
                         -> ( (++) <$> (let p=tagClose name in p <|> textTill p)
-                                <*> html )
-                           <|> html
+                                  <*> html )
+                           <|> return []
                     _ -> html
             return (x:xs)
 
