@@ -1,17 +1,19 @@
 module Text.HTML.TagStream.Utils where
 import Data.Word
-import Foreign.ForeignPtr       (ForeignPtr, withForeignPtr)
-import Foreign.Storable         (Storable(..))
+import Foreign.ForeignPtr (ForeignPtr, withForeignPtr)
+import Foreign.Storable (Storable(peekByteOff))
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Internal as S
 
-peekByte p i = S.inlinePerformIO $ withForeignPtr p $ \p' -> peekByteOff p' i
+peekByteOff' :: Storable a => ForeignPtr b -> Int -> a
+peekByteOff' p i = S.inlinePerformIO $ withForeignPtr p $ \p' -> peekByteOff p' i
 
 cons' :: Word8 -> S.ByteString -> S.ByteString
 cons' c bs@(S.PS p s l)
-  | s>0 && peekByte p (s-1)==c = S.PS p (s-1) (l+1)
+  | s>0 && peekByteOff' p (s-1)==c = S.PS p (s-1) (l+1)
   | otherwise = S.cons c bs
 
+cons :: Char -> S.ByteString -> S.ByteString
 cons = cons' . S.c2w
 
 append :: S.ByteString -> S.ByteString -> S.ByteString

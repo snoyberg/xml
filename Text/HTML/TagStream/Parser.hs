@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TupleSections #-}
+{-# LANGUAGE OverloadedStrings, TupleSections, PatternGuards #-}
 module Text.HTML.TagStream.Parser where
 
 import Prelude hiding (takeWhile)
@@ -11,7 +11,6 @@ import Text.HTML.TagStream.Utils (cons, append)
 
 (||.) :: Applicative f => f Bool -> f Bool -> f Bool
 (||.) = liftA2 (||)
--- (&&.) = liftA2 (&&)
 
 inClass :: Eq a => [a] -> a -> Bool
 inClass (b:c:[]) a = a==b || a==c

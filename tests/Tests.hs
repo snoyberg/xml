@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances, OverloadedStrings #-}
 module Main where
 
-import Debug.Trace
+--import Debug.Trace
 import Control.Applicative
 import Test.Framework (defaultMain, testGroup, Test)
 import Test.Framework.Providers.HUnit
@@ -37,7 +37,7 @@ instance Arbitrary (Token' ByteString) where
 
 tests :: [Test]
 tests = [ testGroup "Property"
-            [-- testProperty "revertiable" prop_revertiable1
+            [ testProperty "revertiable" prop_text_non_empty
             ]
         , testGroup "Special cases"
             [ testCase "special cases" testSpecialCases
@@ -50,6 +50,12 @@ prop_revertiable1 = either (const False) prop_revertiable . decode
 
 prop_revertiable :: [Token] -> Bool
 prop_revertiable tokens = either (const False) (==tokens) . decode . encode $ tokens
+
+prop_text_non_empty :: ByteString -> Bool
+prop_text_non_empty = either (const False) text_non_empty . decode
+  where text_non_empty = all non_empty
+        non_empty (Text s) = S.length s > 0
+        non_empty _ = True
 
 assertEither :: Either String a -> Assertion
 assertEither = either (assertFailure . ("Left:"++)) (const $ return ())
@@ -65,9 +71,9 @@ testSpecialCases :: Assertion
 testSpecialCases = mapM_ testOne testcases
   where
     testOne (str, tokens) =
-      trace (show' str tokens) $
+      --trace (show' str tokens) $
         assertDecode str >>= assertEqual "parse result incorrect" tokens
-    show' str tokens = S.unpack $ S.concat [str, "\n", S.pack (show tokens)]
+    --show' str tokens = S.unpack $ S.concat [str, "\n", S.pack (show tokens)]
     testcases =
       -- normal
       [( "<a readonly title=xxx href=\"f<o/>o\" class=\"foo bar\" style='display:none; color:red'>bar</a>",

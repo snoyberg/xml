@@ -8,6 +8,8 @@ import System.Console.ANSI
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.Binary as E
 import qualified Data.Enumerator.List as EL
+import Blaze.ByteString.Builder (Builder)
+import Blaze.ByteString.Builder.Enumerator (builderToByteString, unsafeBuilderToByteString, allocBuffer)
 
 color :: Color -> ByteString -> ByteString
 color c s = S.concat [ S.pack $ setSGRCode [SetColor Foreground Dull c]
@@ -15,12 +17,12 @@ color c s = S.concat [ S.pack $ setSGRCode [SetColor Foreground Dull c]
                      , S.pack $ setSGRCode [SetColor Foreground Dull White]
                      ]
 
-hightlightStream :: Monad m => E.Enumeratee Token ByteString m b
+hightlightStream :: Monad m => E.Enumeratee Token Builder m b
 hightlightStream = EL.map (showToken (color Red))
 
 main :: IO ()
 main = do
     args <- getArgs
     filename <- maybe (fail "pass file path") return (listToMaybe args)
-    let enum = (E.enumFile filename E.$= tokenStream) E.$= hightlightStream
+    let enum = ((E.enumFile filename E.$= tokenStream) E.$= hightlightStream) E.$= unsafeBuilderToByteString (allocBuffer 4096)
     E.run_ $ enum E.$$ E.iterHandle stdout

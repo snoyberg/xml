@@ -27,5 +27,6 @@ Library
   Other-modules:       Text.HTML.TagStream.Utils
   Build-depends:       base >= 4 && < 5
                      , bytestring
-                     , attoparsec
                      , enumerator
+                     , attoparsec
+                     , blaze-builder
