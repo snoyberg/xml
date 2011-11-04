@@ -86,10 +86,11 @@ html = html' <|> return []
   where html' = do
             x <- token
             xs <- case x of
-                    TagOpen name _ _
+                    TagOpen name _ False
                       | name `elem` ["script", "style"]
-                        -> (++) <$> textTill (tagClose name)
-                                <*> html
+                        -> ( (++) <$> (let p=tagClose name in p <|> textTill p)
+                                <*> html )
+                           <|> html
                     _ -> html
             return (x:xs)
 

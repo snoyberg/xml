@@ -127,6 +127,14 @@ testSpecialCases = mapM_ testOne testcases
          ,Text "<a href=xx />\";"
          ,TagClose "script"
          ] )
+      ,( "<script></script>",
+         [TagOpen "script" [] False
+         ,TagClose "script"
+         ] )
+      ,( "<script>",
+         [TagOpen "script" [] False] )
+      ,( "<script src='http://xx.js' >",
+         [TagOpen "script" [("src", "http://xx.js")] False] )
       ]
 
 testRealworldFiles :: Assertion
