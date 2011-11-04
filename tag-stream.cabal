@@ -9,15 +9,17 @@ Author:              yihuang
 Maintainer:          yi.codeplayer@gmail.com
 Category:            Web
 Build-type:          Simple
-Extra-source-files:  Test.hs
-Cabal-version:       >=1.2
+Extra-source-files:    tests/Tests.hs
+                     , Highlight.hs
+                     , FilterUrl.hs
+Cabal-version:       >=1.6
 
 source-repository head
   type:     git
   location: git://github.com/yihuang/tag-stream.git
 
 Library
-  GHC-Options:       -Wall -O2
+  GHC-Options:       -Wall
   Exposed-modules:     Text.HTML.TagStream
                      , Text.HTML.TagStream.Parser
                      , Text.HTML.TagStream.Types
