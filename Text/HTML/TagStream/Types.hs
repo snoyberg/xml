@@ -15,6 +15,10 @@ data Token' s = TagOpen s [Attr' s] Bool
               | Special s s
     deriving (Eq, Show)
 
+data TagType = TagTypeClose
+             | TagTypeSpecial
+             | TagTypeNormal
+
 type Token = Token' ByteString
 
 cc :: [ByteString] -> Builder

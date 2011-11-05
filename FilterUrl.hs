@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 import Control.Applicative
 import System.Environment (getArgs)
-import System.IO (openBinaryFile, IOMode(..), stdout)
+import System.IO (stdout)
 import qualified Data.Enumerator.Binary as E
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S

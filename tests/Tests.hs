@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances, OverloadedStrings #-}
 module Main where
 
---import Debug.Trace
+import Data.List (isPrefixOf)
 import Control.Applicative
 import Test.Framework (defaultMain, testGroup, Test)
 import Test.Framework.Providers.HUnit
@@ -11,16 +11,140 @@ import Test.QuickCheck
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S
 import Text.HTML.TagStream
+import qualified Data.Enumerator as E
+import qualified Data.Enumerator.List as EL
 
 main :: IO ()
-main = defaultMain tests
+main = defaultMain
+         [ testGroup "Property"
+             [ testProperty "Text nodes can't be empty" propTextNotEmpty
+             , testProperty "Parse results can't empty" propResultNotEmpty
+             ]
+         , testGroup "One pass parse" onePassTests
+         -- , testGroup "Streamline parse" streamlineTests
+         ]
+
+propTextNotEmpty :: ByteString -> Bool
+propTextNotEmpty = either (const False) text_not_empty . decode
+  where text_not_empty = all not_empty
+        not_empty (Text s) = S.length s > 0
+        not_empty _ = True
+
+propResultNotEmpty :: ByteString -> Bool
+propResultNotEmpty s = either (const False) not_empty . decode $ s
+  where not_empty tokens = (S.null s && null tokens)
+                        || (not (S.null s) && not (null tokens))
+
+onePassTests :: [Test]
+onePassTests = map one testcases
+  where
+    one (str, tokens) = testCase (S.unpack str) $ do
+        result <- combineText <$> assertDecode str
+        assertEqual "one-pass parse result incorrent" tokens result
+
+streamlineTests :: [Test]
+streamlineTests = map one testcases
+  where
+    one (str, tokens) = testCase (S.unpack str) $ do
+        result <- combineText <$> E.run_ (
+                      E.enumList 1 (map S.singleton (S.unpack str))
+                      E.$= tokenStream
+                      E.$$ EL.consume )
+        let msg = "expected prefix of:" ++ show tokens ++ "\n but got: " ++ show result
+        assertBool msg (result `isPrefixOf` tokens)
+        print $ (result, tokens)
+
+testcases :: [(ByteString, [Token])]
+testcases =
+  -- attributes {{{
+  [ ( "<span readonly title=foo class=\"foo bar\" style='display:none;'>"
+    , [TagOpen "span" [("readonly", ""), ("title", "foo"), ("class", "foo bar"), ("style", "display:none;")] False]
+    )
+  , ( "<span a = b = c = d>"
+    , [TagOpen "span" [("a", "b"), ("=", ""), ("c", "d")] False]
+    )
+  , ( "<span a = b = c>"
+    , [TagOpen "span" [("a", "b"), ("=", ""), ("c", "")] False]
+    )
+  , ( "<span /foo=bar>"
+    , [TagOpen "span" [("/foo", "bar")] False]
+    )
+  -- }}}
+  -- quoted string and escaping {{{
+  , ( "<span \"<p>xx \\\"'\\\\</p>\"=\"<p>xx \\\"'\\\\</p>\">"
+    , [TagOpen "span" [("<p>xx \"'\\</p>", "<p>xx \"'\\</p>")] False]
+    )
+  , ( "<span '<p>xx \\\"\\'\\\\</p>'='<p>xx \\\"\\'\\\\</p>'>"
+    , [TagOpen "span" [("<p>xx \"'\\</p>", "<p>xx \"'\\</p>")] False]
+    )
+  -- }}}
+  -- attribute and tag end {{{
+  , ( "<br/>"
+    , [TagOpen "br" [] True]
+    )
+  , ( "<img src=http://foo.bar.com/foo.jpg />"
+    , [TagOpen "img" [("src", "http://foo.bar.com/foo.jpg")] True]
+    )
+  , ( "<span foo>"
+    , [TagOpen "span" [("foo", "")] False]
+    )
+  , ( "<span foo/>"
+    , [TagOpen "span" [("foo", "")] True]
+    )
+  , ( "<span foo=/>"
+    , [TagOpen "span" [("foo", "/")] False]
+    )
+  -- }}}
+  -- normal tag {{{
+  , ( "<p>text</p>"
+    , [TagOpen "p" [] False, Text "text", TagClose "p"]
+    )
+  , ( "<>"
+    , [Text "<>"]
+    )
+  , ( "<a\ttitle\n=\r\"foo\nbar\" alt=\n/\r\t>"
+    , [TagOpen "a" [("title", "foo\nbar"), ("alt", "/")] False]
+    )
+  -- }}}
+  -- comment tag {{{
+  , ( "<!--foo-->"
+    , [Comment "foo"] )
+  , ( "<!--f--oo->-->"
+    , [Comment "f--oo->"] )
+  , ( "<!--foo-->bar-->"
+    , [Comment "foo", Text "bar-->"]
+    )
+  -- }}}
+  -- special tag {{{
+  , ( "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\">"
+    , [Special "DOCTYPE" "html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\""]
+    )
+  , ( "<!DOCTYPE html>"
+    , [Special "DOCTYPE" "html"]
+    )
+  -- }}}
+  -- close tag {{{
+  , ( "</\r\t\nbr>"
+    , [TagClose "\r\t\nbr"]
+    )
+  , ( "</br/>"
+    , [TagClose "br/"]
+    )
+  , ( "</>"
+    , [TagClose ""]
+    )
+  -- }}}
+  -- script tag TODO{{{
+  -- }}}
+  ]
+
 
 atLeast :: Arbitrary a => Int -> Gen [a]
 atLeast 0 = arbitrary
 atLeast n = (:) <$> arbitrary <*> atLeast (n-1)
 
 testChar :: Gen Char
-testChar = growingElements "<>=\"' \tabcde\\"
+testChar = growingElements "<>/=\"' \t\r\nabcde\\"
 testString :: Gen String
 testString = listOf testChar
 testBS :: Gen ByteString
@@ -35,28 +159,6 @@ instance Arbitrary (Token' ByteString) where
                       , Text <$> S.pack <$> atLeast 1
                       ]
 
-tests :: [Test]
-tests = [ testGroup "Property"
-            [ testProperty "revertiable" prop_text_non_empty
-            ]
-        , testGroup "Special cases"
-            [ testCase "special cases" testSpecialCases
-            --, testCase "parse real world file" testRealworldFiles
-            ]
-        ]
-
-prop_revertiable1 :: ByteString -> Bool
-prop_revertiable1 = either (const False) prop_revertiable . decode
-
-prop_revertiable :: [Token] -> Bool
-prop_revertiable tokens = either (const False) (==tokens) . decode . encode $ tokens
-
-prop_text_non_empty :: ByteString -> Bool
-prop_text_non_empty = either (const False) text_non_empty . decode
-  where text_non_empty = all non_empty
-        non_empty (Text s) = S.length s > 0
-        non_empty _ = True
-
 assertEither :: Either String a -> Assertion
 assertEither = either (assertFailure . ("Left:"++)) (const $ return ())
 
@@ -67,98 +169,17 @@ assertDecode s = do
     let (Right tokens) = result
     return tokens
 
-testSpecialCases :: Assertion
-testSpecialCases = mapM_ testOne testcases
-  where
-    testOne (str, tokens) =
-      --trace (show' str tokens) $
-        assertDecode str >>= assertEqual "parse result incorrect" tokens
-    --show' str tokens = S.unpack $ S.concat [str, "\n", S.pack (show tokens)]
-    testcases =
-      -- normal
-      [( "<a readonly title=xxx href=\"f<o/>o\" class=\"foo bar\" style='display:none; color:red'>bar</a>",
-         [TagOpen "a" [("readonly", ""), ("title", "xxx"), ("href", "f<o/>o"), ("class", "foo bar"), ("style", "display:none; color:red")] False,
-          Text "bar",
-          TagClose "a"] )
-      -- escape
-      ,( "<a href=\"f\\\"oo\" >",
-         [TagOpen "a" [("href", "f\"oo")] False] )
-      ,( "<a href='f\\'o\"o' >",
-         [TagOpen "a" [("href", "f'o\"o")] False] )
-      ,( "<a href=\"f\\\\\\\"oo\" >",
-         [TagOpen "a" [("href", "f\\\"oo")] False] )
-      -- attribute
-      ,( "<a href=fo\"o >",
-         [TagOpen "a" [("href", "fo\"o")] False] )
-      ,( "<a href=\"f\noo\" >",
-         [TagOpen "a" [("href", "f\noo")] False] )
-      ,( "<a href=>",
-         [TagOpen "a" [("href", "")] False] )
-      ,( "<a href=http://www.douban.com/>",
-         [TagOpen "a" [("href", "http://www.douban.com/")] False] )
-      ,( "<a href>",
-         [TagOpen "a" [("href", "")] False] )
-      ,( "<a href src=/>",
-         [TagOpen "a" [("href", ""), ("src", "/")] False] )
-      -- self close
-      ,( "<br />",
-         [TagOpen "br" [] True] )
-      ,( "<a alt=foo />",
-         [TagOpen "a" [("alt", "foo")] True] )
-      ,( "</br/>",
-         [TagClose "br/"] )
-      -- blanks
-      ,( "<a\tsrc\t\r\nhref\n=\n\"\nfo\t\no\n\" title\r\n\t=>",
-         [TagOpen "a" [("src", ""), ("href", "\nfo\t\no\n"), ("title", "")] False] )
-      ,( "< asafasd>",
-         [Text "< asafasd>"] )
-      ,( "<a href=\"http://",
-         [Text "<a href=\"http://"] )
-      ,( "<\n/br/>",
-         [Text "<\n/br/>"] )
-      ,( "</\ndiv>",
-         [TagClose "\ndiv"] )
-      ,( "<>",
-         [Text "<>"] )
-      ,( "</>",
-         [TagClose ""] )
-      -- comments
-      ,( "<!--foo-->",
-         [Comment "foo"] )
-      ,( "<!--f--oo->-->",
-         [Comment "f--oo->"] )
-      ,( "<!--fo--o->",
-         [Text "<!--fo--o->"] )
-      ,( "<!--fo--o->",
-         [Text "<!--fo--o->"] )
-      -- special tags
-      ,( "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\">",
-         [Special "DOCTYPE" "html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\""] )
-      ,( "<!DOCTYPE/>",
-         [Special "DOCTYPE/" ""] )
-      -- script link tags
-      ,( "<script > var x=\"<a href=xx />\";</script>",
-         [TagOpen "script" [] False
-         ,Text " var x=\""
-         ,Text "<a href=xx />\";"
-         ,TagClose "script"
-         ] )
-      ,( "<script></script>",
-         [TagOpen "script" [] False
-         ,TagClose "script"
-         ] )
-      ,( "<script>",
-         [TagOpen "script" [] False] )
-      ,( "<script src='http://xx.js' >",
-         [TagOpen "script" [("src", "http://xx.js")] False] )
-      ]
+combineText :: [Token] -> [Token]
+combineText [] = []
+combineText ((Text t1) : (Text t2) : xs) = combineText $ Text (S.append t1 t2) : xs
+combineText (x:xs) = x:combineText xs
 
 testRealworldFiles :: Assertion
 testRealworldFiles = mapM_ testFile files
   where
     testFile file = do
-        result <- decode <$> S.readFile file
-        assertEither result
-        assertEqual "not equal" result $ encode <$> result >>= decode
+        result <- S.readFile file >>= assertDecode
+        result' <- assertDecode $ encode result
+        assertEqual "not equal" result result'
     files = [ "qq.html"
             ]
