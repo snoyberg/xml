@@ -3,36 +3,18 @@ module Text.HTML.TagStream.Parser where
 
 import Prelude hiding (takeWhile)
 import Control.Applicative hiding (many)
-import Data.Attoparsec.Char8 hiding (inClass)
 import Data.ByteString (ByteString)
+import Data.Attoparsec.Char8
 import qualified Data.ByteString.Char8 as S
 import Text.HTML.TagStream.Types
 import Text.HTML.TagStream.Utils (cons, append)
-
-cond :: a -> a -> Bool -> a
-cond a1 a2 b = if b then a1 else a2
-
-(||.) :: Applicative f => f Bool -> f Bool -> f Bool
-(||.) = liftA2 (||)
-
-inClass :: Eq a => [a] -> a -> Bool
-inClass (b:c:[]) a = a==b || a==c
-inClass xs x = x `elem` xs
-
-takeTillN :: Int -> (Char -> Bool) -> Parser ByteString
-takeTillN 0 p = takeTill p
-takeTillN n p = S.cons <$> satisfy (not . p)
-                       <*> takeTillN (n-1) p
-
-boolP :: Parser a -> Parser Bool
-boolP p = p *> pure True <|> pure False
 
 {--
  - match quoted string, single or double quote, can fail.
  -}
 quoted :: Parser (Char, ByteString)
 quoted = do
-    q <- satisfy (inClass "'\"")
+    q <- satisfy (in2 ('\'','"'))
     s <- str q
     return (q, s)
   where
@@ -47,7 +29,7 @@ quoted = do
  -}
 attrValue :: Parser ByteString
 attrValue = snd <$> quoted
-    <|> takeTill (inClass ">" ||. isSpace)
+        <|> takeTill ((=='>') ||. isSpace)
 
 {--
  - attribute name, at least one char, can fail when meet tag end.
@@ -55,8 +37,8 @@ attrValue = snd <$> quoted
  -}
 attrName :: Parser ByteString
 attrName = snd <$> quoted
-   <|> cons <$> satisfy (not . inClass ">")
-            <*> takeTill (inClass "/>=" ||. isSpace)
+       <|> cons <$> satisfy (/='>')
+                <*> takeTill (in3 ('/','>','=') ||. isSpace)
 
 {--
  - tag end, return self-close or not, can fail.
@@ -69,12 +51,9 @@ tagEnd = char '>' *> pure False
  - attribute pair or tag end, can fail if tag end met.
  -}
 attr :: Parser Attr
-attr = do
-    n <- attrName
-    skipSpace
-    v <- char '=' *> skipSpace *> attrValue
-         <|> pure ""
-    return (n, v)
+attr = (,) <$> attrName <* skipSpace
+           <*> ( char '=' *> skipSpace *> attrValue
+                 <|> pure "" )
 
 {--
  - all attributes before tag end. can't fail.
@@ -122,8 +101,8 @@ tag = do
         TagTypeSpecial -> boolP (string "--") >>=
                           cond comment special
         TagTypeNormal -> do
-            name <- cons <$> satisfy (not . (isSpace ||. (inClass "<>")))
-                         <*> takeTill (inClass "/>" ||. isSpace)
+            name <- cons <$> satisfy (not . ((in2 ('<','>') ||. isSpace)))
+                         <*> takeTill (in2 ('/','>') ||. isSpace)
             (as, close) <- attrs
             skipSpace
             return $ TagOpen name as close
@@ -142,3 +121,28 @@ html = many token
 
 decode :: ByteString -> Either String [Token]
 decode = parseOnly html
+
+{--
+ - Utils {{{
+ -}
+
+cond :: a -> a -> Bool -> a
+cond a1 a2 b = if b then a1 else a2
+
+(||.) :: Applicative f => f Bool -> f Bool -> f Bool
+(||.) = liftA2 (||)
+
+in2 :: Eq a => (a,a) -> a -> Bool
+in2 (a1,a2) a = a==a1 || a==a2
+
+in3 :: Eq a => (a,a,a) -> a -> Bool
+in3 (a1,a2,a3) a = a==a1 || a==a2 || a==a3
+
+takeTillN :: Int -> (Char -> Bool) -> Parser ByteString
+takeTillN 0 p = takeTill p
+takeTillN n p = S.cons <$> satisfy (not . p)
+                       <*> takeTillN (n-1) p
+
+boolP :: Parser a -> Parser Bool
+boolP p = p *> pure True <|> pure False
+-- }}}
