@@ -13,6 +13,7 @@ data Token' s = TagOpen s [Attr' s] Bool
               | Text s
               | Comment s
               | Special s s
+              | Incomplete s
     deriving (Eq, Show)
 
 data TagType = TagTypeClose
@@ -39,9 +40,10 @@ showToken hl (TagClose name) = cc [hl "</", name, hl ">"]
 showToken _ (Text s) = fromByteString s
 showToken hl (Comment s) = cc [hl "<!--", s, hl "-->"]
 showToken hl (Special name s) = cc [hl "<!", name, " ", s, hl ">"]
+showToken _ (Incomplete s) = fromByteString s
 
 encode :: [Token] -> ByteString
 encode = encodeHL id
 
-encodeHL :: (ByteString -> ByteString) -> [Token] -> ByteString 
+encodeHL :: (ByteString -> ByteString) -> [Token] -> ByteString
 encodeHL hl = toByteString . mconcat . map (showToken hl)

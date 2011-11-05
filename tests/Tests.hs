@@ -21,7 +21,7 @@ main = defaultMain
              , testProperty "Parse results can't empty" propResultNotEmpty
              ]
          , testGroup "One pass parse" onePassTests
-         -- , testGroup "Streamline parse" streamlineTests
+         , testGroup "Streamline parse" streamlineTests
          ]
 
 propTextNotEmpty :: ByteString -> Bool
@@ -52,7 +52,7 @@ streamlineTests = map one testcases
                       E.$$ EL.consume )
         let msg = "expected prefix of:" ++ show tokens ++ "\n but got: " ++ show result
         assertBool msg (result `isPrefixOf` tokens)
-        print $ (result, tokens)
+        -- print $ (result, tokens)
 
 testcases :: [(ByteString, [Token])]
 testcases =
@@ -100,7 +100,7 @@ testcases =
     , [TagOpen "p" [] False, Text "text", TagClose "p"]
     )
   , ( "<>"
-    , [Text "<>"]
+    , [TagOpen "" [] False]
     )
   , ( "<a\ttitle\n=\r\"foo\nbar\" alt=\n/\r\t>"
     , [TagOpen "a" [("title", "foo\nbar"), ("alt", "/")] False]
@@ -134,10 +134,11 @@ testcases =
     , [TagClose ""]
     )
   -- }}}
+  -- incomplete test {{{
+  -- }}}
   -- script tag TODO{{{
   -- }}}
   ]
-
 
 atLeast :: Arbitrary a => Int -> Gen [a]
 atLeast 0 = arbitrary

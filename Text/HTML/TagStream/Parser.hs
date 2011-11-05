@@ -5,40 +5,34 @@ import Prelude hiding (takeWhile)
 import Control.Applicative hiding (many)
 import Data.ByteString (ByteString)
 import Data.Attoparsec.Char8
-import qualified Data.ByteString.Char8 as S
 import Text.HTML.TagStream.Types
 import Text.HTML.TagStream.Utils (cons, append)
 
 {--
- - match quoted string, single or double quote, can fail.
+ - match quoted string, can fail.
  -}
-quoted :: Parser (Char, ByteString)
-quoted = do
-    q <- satisfy (in2 ('\'','"'))
-    s <- str q
-    return (q, s)
-  where
-    str q = append <$> takeTill ((=='\\') ||. (==q))
-                   <*> (end q <|> unescape q)
-    end q = char q *> pure ""
-    unescape q = char '\\' *>
-                 (cons <$> anyChar <*> str q)
+quoted :: Char -> Parser ByteString
+quoted q = append <$> takeTill (in2 ('\\',q))
+                  <*> ( char q *> pure ""
+                        <|> char '\\' *> atLeast 1 (quoted q) )
+
+quotedOr :: Parser ByteString -> Parser ByteString
+quotedOr p = maybeP (satisfy (in2 ('"','\''))) >>=
+             maybe p quoted
 
 {--
  - attribute value, can't fail.
  -}
 attrValue :: Parser ByteString
-attrValue = snd <$> quoted
-        <|> takeTill ((=='>') ||. isSpace)
+attrValue = quotedOr $ takeTill ((=='>') ||. isSpace)
 
 {--
  - attribute name, at least one char, can fail when meet tag end.
  - might match self-close tag end "/>" , make sure match `tagEnd' first.
  -}
 attrName :: Parser ByteString
-attrName = snd <$> quoted
-       <|> cons <$> satisfy (/='>')
-                <*> takeTill (in3 ('/','>','=') ||. isSpace)
+attrName = quotedOr $ cons <$> satisfy (/='>')
+                           <*> takeTill (in3 ('/','>','=') ||. isSpace)
 
 {--
  - tag end, return self-close or not, can fail.
@@ -52,8 +46,10 @@ tagEnd = char '>' *> pure False
  -}
 attr :: Parser Attr
 attr = (,) <$> attrName <* skipSpace
-           <*> ( char '=' *> skipSpace *> attrValue
-                 <|> pure "" )
+           <*> ( boolP (char '=') >>=
+                 cond (skipSpace *> attrValue)
+                      (pure "")
+               )
 
 {--
  - all attributes before tag end. can't fail.
@@ -73,27 +69,26 @@ comment :: Parser Token
 comment = Comment <$> comment'
   where comment' = append <$> takeTill (=='-')
                           <*> ( string "-->" *> return ""
-                                <|> cons <$> anyChar <*> comment' )
+                                <|> atLeast 1 comment' )
 
 {--
  - tags begine with <! , e.g. <!DOCTYPE ...>
  -}
 special :: Parser Token
 special = Special
-          <$> ( cons
-                <$> satisfy (not . ((=='-') ||. isSpace))
-                <*> takeTill ((=='>') ||. isSpace)
-                <* skipSpace )
-          <*> takeTill (=='>') <*  char '>'
+          <$> ( cons <$> satisfy (not . ((=='-') ||. isSpace))
+                     <*> takeTill ((=='>') ||. isSpace)
+                     <* skipSpace )
+          <*> takeTill (=='>') <* char '>'
 
 {--
  - parse a tag, can fail.
  -}
 tag :: Parser Token
 tag = do
-    t <- string "</"     *> return TagTypeClose
-         <|> string "<!" *> return TagTypeSpecial
-         <|> char '<'    *> return TagTypeNormal
+    t <- string "/"     *> return TagTypeClose
+         <|> string "!" *> return TagTypeSpecial
+         <|> return TagTypeNormal
     case t of
         TagTypeClose ->
             TagClose <$> takeTill (=='>')
@@ -101,20 +96,26 @@ tag = do
         TagTypeSpecial -> boolP (string "--") >>=
                           cond comment special
         TagTypeNormal -> do
-            name <- cons <$> satisfy (not . ((in2 ('<','>') ||. isSpace)))
-                         <*> takeTill (in2 ('/','>') ||. isSpace)
+            name <- takeTill (in3 ('<','>','/') ||. isSpace)
             (as, close) <- attrs
             skipSpace
             return $ TagOpen name as close
 
 {--
+ - record incomplete tag for streamline processing.
+ -}
+incomplete :: Parser Token
+incomplete = Incomplete . cons '<' <$> takeByteString
+
+{--
  - parse text node. consume at least one char, to make sure progress.
  -}
 text :: Parser Token
-text = Text <$> ( cons <$> anyChar <*> takeTill (=='<') )
+text = Text <$> atLeast 1 (takeTill (=='<'))
 
 token :: Parser Token
-token = tag <|> text
+token = char '<' *> (tag <|> incomplete)
+        <|> text
 
 html :: Parser [Token]
 html = many token
@@ -125,6 +126,10 @@ decode = parseOnly html
 {--
  - Utils {{{
  -}
+
+atLeast :: Int -> Parser ByteString -> Parser ByteString
+atLeast 0 p = p
+atLeast n p = cons <$> anyChar <*> atLeast (n-1) p
 
 cond :: a -> a -> Bool -> a
 cond a1 a2 b = if b then a1 else a2
@@ -138,11 +143,9 @@ in2 (a1,a2) a = a==a1 || a==a2
 in3 :: Eq a => (a,a,a) -> a -> Bool
 in3 (a1,a2,a3) a = a==a1 || a==a2 || a==a3
 
-takeTillN :: Int -> (Char -> Bool) -> Parser ByteString
-takeTillN 0 p = takeTill p
-takeTillN n p = S.cons <$> satisfy (not . p)
-                       <*> takeTillN (n-1) p
-
 boolP :: Parser a -> Parser Bool
 boolP p = p *> pure True <|> pure False
+
+maybeP :: Parser a -> Parser (Maybe a)
+maybeP p = (p >>= return . Just) <|> return Nothing
 -- }}}
