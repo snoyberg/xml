@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TupleSections, PatternGuards #-}
+{-# LANGUAGE OverloadedStrings, TupleSections #-}
 module Text.HTML.TagStream.Parser where
 
 import Control.Applicative
@@ -127,12 +127,13 @@ tillScriptEnd t = reverse <$> loop [t]
               <|> (:[]) . Incomplete . append script <$> takeByteString
   where
     script = toByteString $ showToken id t
+    surround q s = S.concat [S.singleton q, s, S.singleton q]
     loop acc = do
         s <- takeTill (in3 ('<','\'','"'))
         let acc' = if S.null s then acc else Text s:acc
         mq <- maybeP (satisfy (in2 ('"','\'')))
         case mq of
-            Just q -> Text . (\s -> S.concat [S.singleton q, s, S.singleton q]) <$> quoted q >>=
+            Just q -> Text . surround q <$> quoted q >>=
                       loop . (:acc')
             Nothing -> (:acc') <$> scriptEnd
 
@@ -177,5 +178,5 @@ boolP :: Parser a -> Parser Bool
 boolP p = p *> pure True <|> pure False
 
 maybeP :: Parser a -> Parser (Maybe a)
-maybeP p = (p >>= return . Just) <|> return Nothing
+maybeP p = Just <$> p <|> return Nothing
 -- }}}

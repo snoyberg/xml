@@ -172,5 +172,5 @@ assertDecode s = do
 
 combineText :: [Token] -> [Token]
 combineText [] = []
-combineText ((Text t1) : (Text t2) : xs) = combineText $ Text (S.append t1 t2) : xs
-combineText (x:xs) = x:combineText xs
+combineText (Text t1 : Text t2 : xs) = combineText $ Text (S.append t1 t2) : xs
+combineText (x:xs) = x : combineText xs
