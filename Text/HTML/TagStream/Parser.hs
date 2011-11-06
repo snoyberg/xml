@@ -120,7 +120,7 @@ token = char '<' *> (tag <|> incomplete)
         <|> text
 
 {--
- - treat script tag specially, can fail.
+ - treat script tag specially, can't fail.
  -}
 tillScriptEnd :: Token -> Parser [Token]
 tillScriptEnd t = reverse <$> loop [t]
