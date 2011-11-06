@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleInstances, OverloadedStrings #-}
 module Main where
 
-import Data.List (isPrefixOf)
 import Control.Applicative
 import Test.Framework (defaultMain, testGroup, Test)
 import Test.Framework.Providers.HUnit
@@ -10,9 +9,9 @@ import Test.HUnit hiding (Test)
 import Test.QuickCheck
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S
-import Text.HTML.TagStream
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
+import Text.HTML.TagStream
 
 main :: IO ()
 main = defaultMain
@@ -40,19 +39,21 @@ onePassTests = map one testcases
   where
     one (str, tokens) = testCase (S.unpack str) $ do
         result <- combineText <$> assertDecode str
-        assertEqual "one-pass parse result incorrent" tokens result
+        assertEqual "one-pass parse result incorrect" tokens result
 
 streamlineTests :: [Test]
 streamlineTests = map one testcases
   where
+    isIncomplete (Incomplete _) = True
+    isIncomplete _ = False
     one (str, tokens) = testCase (S.unpack str) $ do
+        -- streamline parse result don't contain the trailing Incomplete token.
+        let tokens' = reverse . dropWhile isIncomplete  . reverse $ tokens
         result <- combineText <$> E.run_ (
                       E.enumList 1 (map S.singleton (S.unpack str))
                       E.$= tokenStream
                       E.$$ EL.consume )
-        let msg = "expected prefix of:" ++ show tokens ++ "\n but got: " ++ show result
-        assertBool msg (result `isPrefixOf` tokens)
-        -- print $ (result, tokens)
+        assertEqual "streamline parse result incorrect" tokens' result
 
 testcases :: [(ByteString, [Token])]
 testcases =
@@ -137,12 +138,17 @@ testcases =
   -- incomplete test {{{
   -- }}}
   -- script tag TODO{{{
+  , ( "<script></script>"
+    , [TagOpen "script" [] False, TagClose "script"]
+    )
+  , ( "<script>var x=\"</script>\";"
+    , [Incomplete "<script>var x=\"</script>\";"]
+    )
+  , ( "<script>var x=\"</script>\";</script>"
+    , [TagOpen "script" [] False, Text "var x=\"</script>\";", TagClose "script"]
+    )
   -- }}}
   ]
-
-atLeast :: Arbitrary a => Int -> Gen [a]
-atLeast 0 = arbitrary
-atLeast n = (:) <$> arbitrary <*> atLeast (n-1)
 
 testChar :: Gen Char
 testChar = growingElements "<>/=\"' \t\r\nabcde\\"
@@ -153,12 +159,6 @@ testBS = S.pack <$> testString
 
 instance Arbitrary ByteString where
     arbitrary = testBS
-
-instance Arbitrary (Token' ByteString) where
-    arbitrary = oneof [ TagOpen <$> arbitrary <*> arbitrary <*> arbitrary
-                      , TagClose <$> arbitrary
-                      , Text <$> S.pack <$> atLeast 1
-                      ]
 
 assertEither :: Either String a -> Assertion
 assertEither = either (assertFailure . ("Left:"++)) (const $ return ())
@@ -174,13 +174,3 @@ combineText :: [Token] -> [Token]
 combineText [] = []
 combineText ((Text t1) : (Text t2) : xs) = combineText $ Text (S.append t1 t2) : xs
 combineText (x:xs) = x:combineText xs
-
-testRealworldFiles :: Assertion
-testRealworldFiles = mapM_ testFile files
-  where
-    testFile file = do
-        result <- S.readFile file >>= assertDecode
-        result' <- assertDecode $ encode result
-        assertEqual "not equal" result result'
-    files = [ "qq.html"
-            ]

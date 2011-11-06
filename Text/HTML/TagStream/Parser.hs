@@ -1,10 +1,11 @@
 {-# LANGUAGE OverloadedStrings, TupleSections, PatternGuards #-}
 module Text.HTML.TagStream.Parser where
 
-import Prelude hiding (takeWhile)
-import Control.Applicative hiding (many)
+import Control.Applicative
 import Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as S
 import Data.Attoparsec.Char8
+import Blaze.ByteString.Builder (toByteString)
 import Text.HTML.TagStream.Types
 import Text.HTML.TagStream.Utils (cons, append)
 
@@ -31,8 +32,9 @@ attrValue = quotedOr $ takeTill ((=='>') ||. isSpace)
  - might match self-close tag end "/>" , make sure match `tagEnd' first.
  -}
 attrName :: Parser ByteString
-attrName = quotedOr $ cons <$> satisfy (/='>')
-                           <*> takeTill (in3 ('/','>','=') ||. isSpace)
+attrName = quotedOr $
+             cons <$> satisfy (/='>')
+                  <*> takeTill (in3 ('/','>','=') ||. isSpace)
 
 {--
  - tag end, return self-close or not, can fail.
@@ -117,8 +119,36 @@ token :: Parser Token
 token = char '<' *> (tag <|> incomplete)
         <|> text
 
+{--
+ - treat script tag specially, can fail.
+ -}
+tillScriptEnd :: Token -> Parser [Token]
+tillScriptEnd t = reverse <$> loop [t]
+              <|> (:[]) . Incomplete . append script <$> takeByteString
+  where
+    script = toByteString $ showToken id t
+    loop acc = do
+        s <- takeTill (in3 ('<','\'','"'))
+        let acc' = if S.null s then acc else Text s:acc
+        mq <- maybeP (satisfy (in2 ('"','\'')))
+        case mq of
+            Just q -> Text . (\s -> S.concat [S.singleton q, s, S.singleton q]) <$> quoted q >>=
+                      loop . (:acc')
+            Nothing -> (:acc') <$> scriptEnd
+
+    scriptEnd = string "</script>" *> return (TagClose "script")
+
 html :: Parser [Token]
-html = many token
+html = tokens <|> pure []
+  where
+    tokens :: Parser [Token]
+    tokens = do
+        t <- token
+        case t of
+            (TagOpen name _ close)
+              | not close && name=="script"
+                -> (++) <$> tillScriptEnd t <*> html
+            _ -> (t:) <$> html
 
 decode :: ByteString -> Either String [Token]
 decode = parseOnly html
