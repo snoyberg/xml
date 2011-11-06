@@ -103,8 +103,8 @@ testcases =
   , ( "<>"
     , [TagOpen "" [] False]
     )
-  , ( "<a\ttitle\n=\r\"foo\nbar\" alt=\n/\r\t>"
-    , [TagOpen "a" [("title", "foo\nbar"), ("alt", "/")] False]
+  , ( "<a\ttitle\n=\r\"foo bar\" alt=\n/\r\t>"
+    , [TagOpen "a" [("title", "foo bar"), ("alt", "/")] False]
     )
   -- }}}
   -- comment tag {{{
@@ -141,11 +141,14 @@ testcases =
   , ( "<script></script>"
     , [TagOpen "script" [] False, TagClose "script"]
     )
-  , ( "<script>var x=\"</script>\";"
-    , [Incomplete "<script>var x=\"</script>\";"]
+  , ( "<script>var x=\"</script>"
+    , [TagOpen "script" [] False, Text "var x=\"", TagClose "script"]
     )
-  , ( "<script>var x=\"</script>\";</script>"
-    , [TagOpen "script" [] False, Text "var x=\"</script>\";", TagClose "script"]
+  --, ( "<script>var x=\"</script>\";</script>"
+  --  , [TagOpen "script" [] False, Text "var x=\"</script>\";", TagClose "script"]
+  --  )
+  , ( "<script>// '\r\n</script>"
+    , [TagOpen "script" [] False, Text "// '\r\n", TagClose "script"]
     )
   -- }}}
   ]

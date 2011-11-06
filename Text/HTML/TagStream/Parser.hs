@@ -3,7 +3,6 @@ module Text.HTML.TagStream.Parser where
 
 import Control.Applicative
 import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as S
 import Data.Attoparsec.Char8
 import Blaze.ByteString.Builder (toByteString)
 import Text.HTML.TagStream.Types
@@ -127,16 +126,8 @@ tillScriptEnd t = reverse <$> loop [t]
               <|> (:[]) . Incomplete . append script <$> takeByteString
   where
     script = toByteString $ showToken id t
-    surround q s = S.concat [S.singleton q, s, S.singleton q]
-    loop acc = do
-        s <- takeTill (in3 ('<','\'','"'))
-        let acc' = if S.null s then acc else Text s:acc
-        mq <- maybeP (satisfy (in2 ('"','\'')))
-        case mq of
-            Just q -> Text . surround q <$> quoted q >>=
-                      loop . (:acc')
-            Nothing -> (:acc') <$> scriptEnd
-
+    loop acc = (:acc) <$> scriptEnd
+           <|> (text >>= loop . (:acc))
     scriptEnd = string "</script>" *> return (TagClose "script")
 
 html :: Parser [Token]
