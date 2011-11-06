@@ -1,5 +1,5 @@
 Name:                tag-stream
-Version:             0.1.0
+Version:             0.2.0
 Synopsis:            streamlined html tag parser
 Description:
     Tag-stream is a library for parsing HTML//XML to a token stream.
