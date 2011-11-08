@@ -16,8 +16,8 @@
 -- Then this code:
 --
 -- > {-# LANGUAGE OverloadedStrings #-}
--- > import Text.XML.Enumerator.Parse
--- > import Data.Text.Lazy (Text, unpack)
+-- > import Text.XML.Stream.Parse
+-- > import Data.Text (Text, unpack)
 -- > 
 -- > data Person = Person { age :: Int, name :: Text }
 -- >     deriving Show
@@ -28,7 +28,7 @@
 -- > 
 -- > parsePeople = tagNoAttr "people" $ many parsePerson
 -- > 
--- > main = parseFile_ "people.xml" decodeEntities $ force "people required" parsePeople
+-- > main = parseFile_ def "people.xml" $ force "people required" parsePeople
 --
 -- will produce:
 --
