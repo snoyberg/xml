@@ -27,9 +27,8 @@ Library
                      , uri-enumerator-file      >= 0.1        && < 0.2
                      , transformers             >= 0.2        && < 0.3
                      , xml-types                >= 0.3        && < 0.4
-                     , attoparsec               >= 0.9        && < 0.10
-                     , attoparsec-text          >= 0.8.5      && < 0.9
-                     , attoparsec-text-enumerator >= 0.2      && < 0.3
+                     , attoparsec               >= 0.10       && < 0.11
+                     , attoparsec-enumerator    >= 0.3        && < 0.4
                      , monad-control            >= 0.2        && < 0.3
                      , enumerator               >= 0.4.14     && < 0.5
                      , xml-catalog              >= 0.3        && < 0.4

@@ -29,7 +29,7 @@ import Network.URI.Enumerator (URI, SchemeMap, readURI, toNetworkURI, toSchemeMa
 import Network.URI.Enumerator.File (decodeString, fileScheme)
 import qualified Data.Enumerator as E
 import Text.XML.Stream.Parse (detectUtf)
-import Data.Attoparsec.Text.Enumerator (iterParser)
+import Data.Attoparsec.Enumerator (iterParser)
 import Control.Applicative ((*>), (<*), (<|>), (<$>))
 import qualified Data.IORef as I
 import Control.Monad.IO.Control (MonadControlIO)

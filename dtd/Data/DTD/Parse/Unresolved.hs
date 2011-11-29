@@ -65,15 +65,22 @@ import Data.DTD.Types.Unresolved
 import Data.XML.Types (ExternalID(PublicID, SystemID),
   Instruction(Instruction))
 import Data.Attoparsec.Text (Parser, try, satisfy, takeTill,
-  anyChar, char, digit, (<*.), (.*>))
+  anyChar, char, digit)
 import qualified Data.Attoparsec.Text as A -- for takeWhile
-import Data.Attoparsec.Combinator (many, manyTill, choice, sepBy1)
+import Data.Attoparsec.Combinator (manyTill, choice, sepBy1)
 import Data.Functor ((<$>))
-import Control.Applicative (pure, optional, (<*>), (<*), (*>), (<|>))
+import Control.Applicative (pure, optional, (<*>), (<*), (*>), (<|>),
+    Applicative, many)
 import Control.Monad (guard)
 import Data.Text (Text)
 import Data.Char (isSpace)
 import qualified Data.Text as T
+
+(<*.) :: Parser a -> T.Text -> Parser a
+a <*. b = a <* A.string b
+
+(.*>) :: T.Text -> Parser a -> Parser a
+a .*> b = A.string a *> b
 
 -- | A pre-parsed component of the DTD. Pre-parsing separates
 -- components that need parameter entity replacement from those that
@@ -101,15 +108,17 @@ dtd = DTD <$> (skipWS *> optional (textDecl <* skipWS)) <*>
 -- | Parse an @?xml@ text declaration at the beginning of a 'DTD'.
 textDecl :: Parser DTDTextDecl
 textDecl = do
-    "<?" .*> xml .*> ws *> skipWS
+    "<?" .*> xml *> ws *> skipWS
     enc1 <- optional $ try encoding
     ver  <- optional $ try (maybeSpace version enc1)
     enc  <- maybe (maybeSpace encoding ver) return enc1
     skipWS *> "?>" .*> pure (DTDTextDecl ver enc)
   where
-    xml = ("X" <|> "x") .*> ("M" <|> "m") .*> ("L" <|> "l")
+    xml = (A.string "X" <|> A.string "x") *>
+          (A.string "M" <|> A.string "m") *>
+          (A.string "L" <|> A.string "l")
     version = attr "version" $ const versionNum
-    versionNum = T.append <$> "1." <*> (T.singleton <$> digit)
+    versionNum = T.append <$> A.string "1." <*> (T.singleton <$> digit)
     encoding = attr "encoding" $ takeTill . (==)
     attr name' val = try (attrQ '"' name' val) <|> attrQ '\'' name' val
     attrQ q name' val = name' .*> skipWS *> "=" .*> skipWS *>
@@ -138,7 +147,7 @@ instruction = Instruction <$> ("<?" .*> skipWS *> nameSS) <*>
     -- Break the content into chunks beginning with '?' so we
     -- can find the '?>' at the end. The first chunk might not
     -- begin with '?'.
-    idata = T.concat . concat <$> manyTillS chunk "?>"
+    idata = T.concat . concat <$> manyTillS chunk (A.string "?>")
     chunk = list2 . T.singleton <$> anyChar <*> takeTill (== '?')
 
 -- | Parse an entity declaration.
@@ -319,7 +328,7 @@ externalID = try system <|> public
 
 -- | Parse a comment
 comment :: Parser Text
-comment = "<!--" .*> (T.concat . concat <$> manyTillS chunk "--") <*. ">"
+comment = "<!--" .*> (T.concat . concat <$> manyTillS chunk (A.string "--")) <*. ">"
   where
     chunk = list2 . T.singleton <$> anyChar <*> takeTill (== '-')
 

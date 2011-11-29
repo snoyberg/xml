@@ -70,6 +70,7 @@ import Data.List (intersperse)
 import System.IO (nativeNewline, Newline(CRLF))
 -- No instance Semigroup Builder yet, so <> defined here manually.
 --import Data.Semigroup ((<>))
+(<>) :: Monoid m => m -> m -> m
 (<>) = mappend
 
 -- | Build an optional item.
@@ -108,6 +109,7 @@ buildChoice :: (a -> Builder) -> [a] -> Builder
 buildChoice = buildList " | "
 
 -- | A 'Builder' for a 'DTD'.
+buildDTD :: DTD -> Builder
 buildDTD (DTD decl cmps) = buildMaybe buildDTDTextDecl decl <>
   mconcat (map ((<> newline) . buildDTDComponent) cmps)
 
