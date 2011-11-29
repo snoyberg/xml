@@ -36,8 +36,8 @@ library
                    , text                      >= 0.7      && < 0.12
                    , containers                >= 0.2      && < 0.5
                    , xml-types                 >= 0.3      && < 0.4
-                   , attoparsec-text-enumerator >= 0.2     && < 0.3
-                   , attoparsec-text           >= 0.8.2    && < 0.9
+                   , attoparsec-enumerator     >= 0.3
+                   , attoparsec                >= 0.10
                    , blaze-builder             >= 0.2      && < 0.4
                    , blaze-builder-enumerator  >= 0.2      && < 0.3
                    , transformers              >= 0.2      && < 0.3

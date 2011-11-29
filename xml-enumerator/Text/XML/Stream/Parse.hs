@@ -78,8 +78,8 @@ import Data.Attoparsec.Text
     ( char, Parser, takeWhile1, skipWhile, string
     , manyTill, takeWhile, try, anyChar, endOfInput
     )
-import qualified Data.Attoparsec.Text as A
-import Data.Attoparsec.Text.Enumerator (iterParser)
+import qualified Control.Applicative as A
+import Data.Attoparsec.Enumerator (iterParser)
 import Data.XML.Types
     ( Name (..), Event (..), Content (..)
     , Instruction (..), ExternalID (..)
