@@ -1,5 +1,5 @@
 Name:                uri-enumerator
-Version:             0.1.0
+Version:             0.2.0
 Synopsis:            Read and write URIs
 Homepage:            http://github.com/snoyberg/xml
 License:             BSD3
@@ -21,3 +21,4 @@ Library
                      , network                  >= 2.2        && < 2.4
                      , containers               >= 0.2        && < 0.5
                      , failure                  >= 0.1        && < 0.2
+                     , monad-control            >= 0.3        && < 0.4

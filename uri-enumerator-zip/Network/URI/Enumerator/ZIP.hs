@@ -19,10 +19,9 @@ data ZipException = FileNotFound Text
     deriving (Show, Typeable)
 instance Exception ZipException
 
-zipScheme :: Monad m
-          => Text -- ^ scheme name
+zipScheme :: Text -- ^ scheme name
           -> Archive
-          -> Scheme m
+          -> Scheme
 zipScheme name archive = Scheme
     { schemeNames = Set.singleton $ snoc name ':'
     , schemeReader = Just $ \uri step ->

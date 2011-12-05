@@ -37,6 +37,8 @@ import qualified Data.Set as Set
 import Control.Failure (Failure (..))
 import Control.Exception (Exception)
 import Data.Typeable (Typeable)
+import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.Trans.Control (MonadBaseControl)
 
 data URI = URI
     { uriScheme :: Text
@@ -66,15 +68,15 @@ parseRelativeReference t = maybe (failure $ InvalidRelativeReference t) (return 
 hasExtension :: URI -> Text -> Bool
 hasExtension URI { uriPath = p } t = (cons '.' t) `isSuffixOf` p
 
-data Scheme m = Scheme
+data Scheme = Scheme
     { schemeNames :: Set.Set Text
-    , schemeReader :: forall b. Maybe (URI -> Enumerator ByteString m b)
-    , schemeWriter :: Maybe (URI -> Enumerator ByteString m () -> m ())
+    , schemeReader :: forall b m. (MonadIO m, MonadBaseControl IO m) => Maybe (URI -> Enumerator ByteString m b)
+    , schemeWriter :: forall m. (MonadIO m, MonadBaseControl IO m) => Maybe (URI -> Enumerator ByteString m () -> m ())
     }
 
-type SchemeMap m = Map.Map Text (Scheme m)
+type SchemeMap = Map.Map Text Scheme
 
-toSchemeMap :: [Scheme m] -> SchemeMap m
+toSchemeMap :: [Scheme] -> SchemeMap
 toSchemeMap =
     Map.unions . map go
   where
@@ -90,13 +92,15 @@ data URIException = UnknownReadScheme URI
   deriving (Show, Typeable)
 instance Exception URIException
 
-readURI :: Monad m => SchemeMap m -> URI -> Enumerator ByteString m b
+readURI :: (MonadIO m, MonadBaseControl IO m)
+        => SchemeMap -> URI -> Enumerator ByteString m b
 readURI sm uri step =
     case Map.lookup (uriScheme uri) sm >>= schemeReader of
         Nothing -> throwError $ UnknownReadScheme uri
         Just f -> f uri step
 
-writeURI :: Failure URIException m => SchemeMap m -> URI -> Enumerator ByteString m () -> m ()
+writeURI :: (Failure URIException m, MonadIO m, MonadBaseControl IO m)
+         => SchemeMap -> URI -> Enumerator ByteString m () -> m ()
 writeURI sm uri enum =
     case Map.lookup (uriScheme uri) sm >>= schemeWriter of
         Nothing -> failure $ UnknownWriteScheme uri
@@ -138,5 +142,6 @@ relativeTo a b = fmap fromNetworkURI $ toNetworkURI a `N.relativeTo` toNetworkUR
 nullURI :: URI
 nullURI = fromNetworkURI N.nullURI
 
-copyURI :: Failure URIException m => SchemeMap m -> URI -> URI -> m ()
+copyURI :: (Failure URIException m, MonadIO m, MonadBaseControl IO m)
+        => SchemeMap -> URI -> URI -> m ()
 copyURI sm src dst = writeURI sm dst $ readURI sm src

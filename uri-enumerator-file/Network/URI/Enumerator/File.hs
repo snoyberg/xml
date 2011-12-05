@@ -36,7 +36,7 @@ decodeString s =
     fixSlash '\\' = '/'
     fixSlash c = c
 
-fileScheme :: (MonadIO m, MonadBaseControl IO m) => Scheme m
+fileScheme :: Scheme
 fileScheme = Scheme
     { schemeNames = Set.singleton "file:"
     , schemeReader = Just $ \uri step -> do

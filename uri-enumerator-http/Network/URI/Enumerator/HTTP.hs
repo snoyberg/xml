@@ -14,18 +14,18 @@ import Control.Exception (Exception)
 import Data.Typeable (Typeable)
 import qualified Data.Set as Set
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.IO.Class (liftIO)
 import Control.Failure (Failure)
 
 data HTTPURIException = NotOKResponse Status
     deriving (Show, Typeable)
 instance Exception HTTPURIException
 
-httpScheme :: (MonadIO m, Failure HttpException m) => Manager -> Scheme m
+httpScheme :: Manager -> Scheme
 httpScheme m = Scheme
     { schemeNames = Set.fromList ["http:", "https:"]
     , schemeReader = Just $ \uri step -> do
-        req <- lift $ parseUrl $ show $ toNetworkURI uri
+        req <- liftIO $ parseUrl $ show $ toNetworkURI uri
         flip (httpRedirect req) m $ \status _ ->
             if status == status200
                 then returnI step
