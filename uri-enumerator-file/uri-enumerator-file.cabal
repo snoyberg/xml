@@ -1,5 +1,5 @@
 Name:                uri-enumerator-file
-Version:             0.1.0
+Version:             0.1.1
 Synopsis:            uri-enumerator backend for the file scheme
 Homepage:            http://github.com/snoyberg/xml
 License:             BSD3
@@ -22,5 +22,6 @@ Library
                      , bytestring               >= 0.9        && < 0.10
                      , network                  >= 2.2        && < 2.4
                      , containers               >= 0.2        && < 0.5
-                     , monad-control            >= 0.2.0.3    && < 0.3
+                     , monad-control            >= 0.3        && < 0.4
+                     , lifted-base              >= 0.1        && < 0.2
                      , uri-enumerator           >= 0.1        && < 0.2

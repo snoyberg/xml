@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Network.URI.Enumerator.File
     ( decodeString
     , fileScheme
@@ -14,11 +15,11 @@ import qualified Data.Text as T
 import qualified Data.Set as Set
 import Data.Enumerator (run_, ($$), Enumerator, tryIO, Iteratee (..))
 import Data.Enumerator.Binary (iterHandle, enumHandle)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified System.IO as SIO
 import Data.ByteString (ByteString)
-import Control.Exception.Control (bracket, finally)
-import Control.Monad.IO.Control (MonadControlIO)
+import Control.Exception.Lifted (bracket, finally)
+import Control.Monad.Trans.Control (MonadBaseControl)
 
 -- | Converts a string, such as a command-line argument, into a URI. First
 -- tries to parse as an absolute URI. If this fails, it interprets as a
@@ -35,7 +36,7 @@ decodeString s =
     fixSlash '\\' = '/'
     fixSlash c = c
 
-fileScheme :: MonadControlIO m => Scheme m
+fileScheme :: (MonadIO m, MonadBaseControl IO m) => Scheme m
 fileScheme = Scheme
     { schemeNames = Set.singleton "file:"
     , schemeReader = Just $ \uri step -> do
@@ -47,10 +48,10 @@ fileScheme = Scheme
         withFile fp F.WriteMode $ \h -> run_ $ enum $$ iterHandle h
     }
 
-withFile :: MonadControlIO m => FP.FilePath -> F.IOMode -> (SIO.Handle -> m a) -> m a
+withFile :: (MonadIO m, MonadBaseControl IO m) => FP.FilePath -> F.IOMode -> (SIO.Handle -> m a) -> m a
 withFile fp mode = bracket (liftIO $ SIO.openBinaryFile (FP.encodeString fp) mode) $ liftIO . SIO.hClose
 
-enumFile :: MonadControlIO m => FP.FilePath -> Enumerator ByteString m a
+enumFile :: (MonadIO m, MonadBaseControl IO m) => FP.FilePath -> Enumerator ByteString m a
 enumFile fp step = do
     h <- tryIO $ SIO.openBinaryFile (FP.encodeString fp) SIO.ReadMode
     let iter = enumHandle 4096 h step
