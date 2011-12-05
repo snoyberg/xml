@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Data.DTD.Cache
     ( DTDCache
     , applyDTD
@@ -28,7 +29,7 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import qualified Data.IORef as I
 import Control.Exception (Exception, throwIO, SomeException)
 import Data.Typeable (Typeable)
-import Control.Monad.IO.Control (MonadControlIO)
+import Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Network.URI as NU
 
 toMaps :: [D.DTDComponent] -> (EntityMap, AttrMap)
@@ -51,21 +52,21 @@ toMaps =
 data DTDCache = DTDCache
     { _dcCache :: I.IORef (Map.Map PubSys (EntityMap, AttrMap))
     , _dcCatalog :: Catalog
-    , _dcSchemeMap :: forall m. MonadControlIO m => SchemeMap m
+    , _dcSchemeMap :: forall m. (MonadBaseControl IO m, MonadIO m) => SchemeMap m
     }
 
-newDTDCache :: MonadIO m' => Catalog -> (forall m. MonadControlIO m => SchemeMap m) -> m' DTDCache
+newDTDCache :: MonadIO m' => Catalog -> (forall m. (MonadBaseControl IO m, MonadIO m) => SchemeMap m) -> m' DTDCache
 newDTDCache c sm = do
     x <- liftIO $ I.newIORef Map.empty
     return $ DTDCache x c sm
 
-newDTDCacheFile :: MonadControlIO m => FilePath -> m DTDCache
+newDTDCacheFile :: (MonadBaseControl IO m, MonadIO m) => FilePath -> m DTDCache
 newDTDCacheFile fp = do
     uri <- liftIO $ decodeString fp
     c <- loadCatalog (toSchemeMap [fileScheme]) uri
     newDTDCache c (toSchemeMap [fileScheme])
 
-loadAttrMap :: MonadControlIO m => DTDCache -> X.ExternalID -> m (EntityMap, AttrMap)
+loadAttrMap :: (MonadBaseControl IO m, MonadIO m) => DTDCache -> X.ExternalID -> m (EntityMap, AttrMap)
 loadAttrMap (DTDCache icache catalog sm) ext = do
     res <- liftIO $ fmap (Map.lookup pubsys) $ I.readIORef icache
     case res of
@@ -95,11 +96,11 @@ data UnresolvedEntity = UnresolvedEntity Text
     deriving (Show, Typeable)
 instance Exception UnresolvedEntity
 
-applyDTD_ :: MonadControlIO m
+applyDTD_ :: (MonadBaseControl IO m, MonadIO m)
           => DTDCache -> XU.Document -> m X.Document
 applyDTD_ dc doc = applyDTD dc doc >>= either (liftIO . throwIO) return
 
-applyDTD :: MonadControlIO m
+applyDTD :: (MonadBaseControl IO m, MonadIO m)
          => DTDCache -> XU.Document -> m (Either UnresolvedEntity X.Document)
 applyDTD dc doc@(XU.Document pro@(X.Prologue _ mdoctype _) root epi) =
     case mdoctype of
@@ -154,5 +155,5 @@ getEntity ents t = maybe (Left $ UnresolvedEntity t) Right $ do
         Left{} -> Nothing
   where
     toContent = fmap T.concat . mapM toContent'
-    toContent' (X.NodeContent t) = Just t
+    toContent' (X.NodeContent t') = Just t'
     toContent' _ = Nothing

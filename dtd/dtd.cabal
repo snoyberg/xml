@@ -1,5 +1,5 @@
 Name:                dtd
-Version:             0.1.0
+Version:             0.1.1
 Synopsis:            Parse and render DTD files
 Homepage:            http://github.com/snoyberg/xml
 License:             BSD3
@@ -29,7 +29,7 @@ Library
                      , xml-types                >= 0.3        && < 0.4
                      , attoparsec               >= 0.10       && < 0.11
                      , attoparsec-enumerator    >= 0.3        && < 0.4
-                     , monad-control            >= 0.2        && < 0.3
+                     , monad-control            >= 0.3        && < 0.4
                      , enumerator               >= 0.4.14     && < 0.5
                      , xml-catalog              >= 0.3        && < 0.4
                      , blaze-builder            >= 0.3        && < 0.4

@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Data.DTD.Parse
     ( readFile_
     , enumFile
@@ -32,16 +33,16 @@ import Text.XML.Stream.Parse (detectUtf)
 import Data.Attoparsec.Enumerator (iterParser)
 import Control.Applicative ((*>), (<*), (<|>), (<$>))
 import qualified Data.IORef as I
-import Control.Monad.IO.Control (MonadControlIO)
+import Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Data.Attoparsec.Text as A
 import Control.Monad (liftM)
 
 type ResolveMonad m = ErrorT ResolveException (ReaderT ResolveReader m)
 
-readEID :: MonadControlIO m
+readEID :: (MonadBaseControl IO m, MonadIO m)
         => Catalog
         -> ExternalID
-        -> (forall m1. MonadControlIO m1 => SchemeMap m1)
+        -> (forall m1. (MonadBaseControl IO m1, MonadIO m1) => SchemeMap m1)
         -> E.Enumerator DTDComponent m a
 readEID catalog eid sm step = do
     case resolveURI catalog Nothing eid of
@@ -51,7 +52,7 @@ readEID catalog eid sm step = do
             let rr = ResolveReader catalog uri istate sm
             readerToEnum rr step
 
-readerToEnum :: MonadControlIO m => ResolveReader -> E.Enumerator DTDComponent m a
+readerToEnum :: (MonadBaseControl IO m, MonadIO m) => ResolveReader -> E.Enumerator DTDComponent m a
 readerToEnum rr step =
     (((((readURI (rrSchemeMap rr) (rrBase rr)
                 E.$= detectUtf)
@@ -69,7 +70,7 @@ singleChunk = E.sequence $ T.concat <$> EL.consume
 readFile_ :: FilePath -> IO [DTDComponent]
 readFile_ fp = E.run_ $ enumFile fp E.$$ EL.consume
 
-enumFile :: MonadControlIO m => FilePath -> E.Enumerator DTDComponent m a
+enumFile :: (MonadBaseControl IO m, MonadIO m) => FilePath -> E.Enumerator DTDComponent m a
 enumFile fp step = do
     eid <- filePathToEID fp
     readEID Map.empty eid (toSchemeMap [fileScheme]) step
@@ -88,7 +89,7 @@ streamUnresolved =
         (UP.textDecl >> return []) <|>
         (UP.dtdComponent >>= return . return)
 
-resolveEnum :: MonadControlIO m
+resolveEnum :: (MonadBaseControl IO m, MonadIO m)
             => ResolveReader
             -> Enumeratee U.DTDComponent DTDComponent m a
 resolveEnum rr =
@@ -114,7 +115,7 @@ data ResolveReader = ResolveReader
     { rrCatalog :: Catalog
     , rrBase :: URI
     , rrState :: I.IORef ResolveState
-    , rrSchemeMap :: forall m. MonadControlIO m => SchemeMap m
+    , rrSchemeMap :: forall m. (MonadBaseControl IO m, MonadIO m) => SchemeMap m
     }
 
 get :: MonadIO m => ReaderT ResolveReader m ResolveState
@@ -133,7 +134,7 @@ modify f = get >>= put . f
 initState :: ResolveState
 initState = ResolveState Map.empty Map.empty
 
-resolvef :: MonadControlIO m
+resolvef :: (MonadBaseControl IO m, MonadIO m)
          => U.DTDComponent
          -> ResolveMonad m [DTDComponent]
 
@@ -204,7 +205,7 @@ resolvef (U.DTDAttList (U.AttList name' xs)) = do
     ys <- mapM resolveAttDeclPERef xs
     return [DTDAttList $ AttList name $ concat ys]
 
-resolveAttDeclPERef :: MonadControlIO m => U.AttDeclPERef -> ResolveMonad m [AttDecl]
+resolveAttDeclPERef :: (MonadIO m, MonadBaseControl IO m) => U.AttDeclPERef -> ResolveMonad m [AttDecl]
 resolveAttDeclPERef (U.ADPDecl d) = return [d]
 resolveAttDeclPERef (U.ADPPERef p) = do
     t <- resolvePERefText p
