@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts #-}
 -- | Used for loading a catalog file, caching DTDs and applying DTDs to
 -- documents.
 module Text.XML.Catalog
@@ -18,7 +19,7 @@ import qualified Text.XML as X
 import Control.Monad (foldM)
 import Network.URI.Enumerator
 import qualified Data.Text as T
-import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 
 -- | Either a public or system identifier.
 data PubSys = Public Text | System Text
@@ -28,8 +29,8 @@ data PubSys = Public Text | System Text
 type Catalog = Map.Map PubSys URI
 
 -- | Load a 'Catalog' from the given path.
-loadCatalog :: MonadIO m => SchemeMap m -> URI -> m Catalog
-loadCatalog sm uri = do
+loadCatalog :: MonadIO m => SchemeMap -> URI -> m Catalog
+loadCatalog sm uri = liftIO $ do
     X.Document _ (X.Element _ _ ns) _ <- X.parseEnum_ X.def $ readURI sm uri
     foldM (addNode Nothing) Map.empty ns
   where
