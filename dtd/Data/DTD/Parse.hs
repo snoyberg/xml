@@ -31,7 +31,7 @@ import Network.URI.Enumerator.File (decodeString, fileScheme)
 import qualified Data.Enumerator as E
 import Text.XML.Stream.Parse (detectUtf)
 import Data.Attoparsec.Enumerator (iterParser)
-import Control.Applicative ((*>), (<*), (<|>), (<$>))
+import Control.Applicative ((*>), (<*), (<|>), (<$>), many)
 import qualified Data.IORef as I
 import Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Data.Attoparsec.Text as A
@@ -209,7 +209,7 @@ resolveAttDeclPERef :: (MonadIO m, MonadBaseControl IO m) => U.AttDeclPERef -> R
 resolveAttDeclPERef (U.ADPDecl d) = return [d]
 resolveAttDeclPERef (U.ADPPERef p) = do
     t <- resolvePERefText p
-    case runPartial $ A.parse (A.many1 UP.attDecl) $ T.strip t of
+    case runPartial $ A.parse (many UP.attDecl) $ T.strip t of
         A.Done "" x -> return x
         x -> throwError' $ InvalidAttDecl p t x
 
