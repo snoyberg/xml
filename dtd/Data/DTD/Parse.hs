@@ -149,7 +149,7 @@ resolvef (U.DTDEntityDecl (U.ExternalGeneralEntityDecl a b c)) =
 resolvef (U.DTDEntityDecl (U.InternalGeneralEntityDecl a b)) = do
     rs <- lift get
     case resolveEntityValue rs b of
-        Left e -> throwError e
+        Left e -> throwError' e
         Right t -> return [DTDEntityDecl $ InternalGeneralEntityDecl a t]
 
 -- store external entities
@@ -160,7 +160,7 @@ resolvef (U.DTDEntityDecl (U.ExternalParameterEntityDecl name eid)) = do
 -- store internal entities
 resolvef (U.DTDEntityDecl (U.InternalParameterEntityDecl name vals)) = do
     rs <- lift get
-    t <- either throwError return $ resolveEntityValue rs vals
+    t <- either throwError' return $ resolveEntityValue rs vals
     lift $ put $ rs { rsRefText = insertNoReplace name t $ rsRefText rs }
     return []
 
@@ -168,11 +168,11 @@ resolvef (U.DTDEntityDecl (U.InternalParameterEntityDecl name vals)) = do
 resolvef (U.DTDPERef p) = do
     rs <- lift get
     case Map.lookup p $ rsRefEid rs of
-        Nothing -> throwError $ UnknownPERef p
+        Nothing -> throwError' $ UnknownPERef p
         Just eid -> do
             rr <- lift ask
             case resolveURI (rrCatalog rr) (Just $ rrBase rr) eid of
-                Nothing -> throwError $ CannotResolveExternalID eid
+                Nothing -> throwError' $ CannotResolveExternalID eid
                 Just uri -> do
                     let rr' = rr { rrBase = uri }
                     E.run_ $ readerToEnum rr' E.$$ EL.consume
@@ -191,12 +191,12 @@ resolvef (U.DTDElementDecl (U.ElementDecl name' c)) = do
                 case runPartial $ A.parse (UP.skipWS *> UP.contentDecl <* UP.skipWS) t of
                     A.Done "" x ->
                         case x of
-                            U.ContentPERef{} -> throwError $ RecursiveContentDeclPERef p
+                            U.ContentPERef{} -> throwError' $ RecursiveContentDeclPERef p
                             U.ContentEmpty -> return ContentEmpty
                             U.ContentAny -> return ContentAny
                             U.ContentElement cm -> resolveContentModel cm
                             U.ContentMixed cm -> return $ ContentMixed cm
-                    x -> throwError $ InvalidContentDecl p t x
+                    x -> throwError' $ InvalidContentDecl p t x
     return [DTDElementDecl $ ElementDecl name c']
 
 -- attribute list
@@ -211,7 +211,12 @@ resolveAttDeclPERef (U.ADPPERef p) = do
     t <- resolvePERefText p
     case runPartial $ A.parse (A.many1 UP.attDecl) $ T.strip t of
         A.Done "" x -> return x
-        x -> throwError $ InvalidAttDecl p t x
+        x -> throwError' $ InvalidAttDecl p t x
+
+throwError' :: Monad m => ResolveException' -> ResolveMonad m a
+throwError' e = do
+    uri <- liftM rrBase $ lift ask
+    throwError $ OccuredAt (show $ toNetworkURI uri) e
 
 runPartial :: A.Result t -> A.Result t
 runPartial (A.Partial f) = f ""
@@ -220,9 +225,9 @@ runPartial r = r
 resolvePERefText :: MonadIO m => U.PERef -> ResolveMonad m T.Text
 resolvePERefText p = do
     rs <- lift get
-    maybe (throwError $ UnknownPERefText p) return $ Map.lookup p $ rsRefText rs
+    maybe (throwError' $ UnknownPERefText p) return $ Map.lookup p $ rsRefText rs
 
-resolveEntityValue :: ResolveState -> [U.EntityValue] -> Either ResolveException T.Text
+resolveEntityValue :: ResolveState -> [U.EntityValue] -> Either ResolveException' T.Text
 resolveEntityValue rs evs =
     fmap T.concat $ mapM go evs
   where
@@ -235,12 +240,17 @@ resolveEntityValue rs evs =
 resolveContentModel :: MonadIO m => [U.EntityValue] -> ResolveMonad m ContentDecl
 resolveContentModel ev = do
     rs <- lift get
-    text <- either throwError return $ resolveEntityValue rs ev
+    text <- either throwError' return $ resolveEntityValue rs ev
     case runPartial $ A.parse UP.contentModel $ T.strip text of
         A.Done "" x -> return $ ContentElement x
-        x -> throwError $ InvalidContentModel text x
+        x -> throwError' $ InvalidContentModel text x
 
-data ResolveException
+data ResolveException = OccuredAt String ResolveException'
+  deriving (Show, Typeable)
+instance Exception ResolveException
+instance Error ResolveException
+
+data ResolveException'
     = UnknownPERef U.PERef
     | UnknownPERefValue U.PERef
     | UnknownPERefText U.PERef
@@ -250,8 +260,8 @@ data ResolveException
     | InvalidAttDecl U.PERef T.Text (A.Result [U.AttDecl])
     | RecursiveContentDeclPERef U.PERef
   deriving (Show, Typeable)
-instance Exception ResolveException
-instance Error ResolveException
+instance Exception ResolveException'
+instance Error ResolveException'
 
 insertNoReplace :: Ord k => k -> v -> Map.Map k v -> Map.Map k v
 insertNoReplace k v m =
