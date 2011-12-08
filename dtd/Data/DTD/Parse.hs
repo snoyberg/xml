@@ -42,7 +42,7 @@ type ResolveMonad m = ErrorT ResolveException (ReaderT ResolveReader m)
 readEID :: (MonadBaseControl IO m, MonadIO m)
         => Catalog
         -> ExternalID
-        -> (forall m1. (MonadBaseControl IO m1, MonadIO m1) => SchemeMap m1)
+        -> SchemeMap
         -> E.Enumerator DTDComponent m a
 readEID catalog eid sm step = do
     case resolveURI catalog Nothing eid of
@@ -115,7 +115,7 @@ data ResolveReader = ResolveReader
     { rrCatalog :: Catalog
     , rrBase :: URI
     , rrState :: I.IORef ResolveState
-    , rrSchemeMap :: forall m. (MonadBaseControl IO m, MonadIO m) => SchemeMap m
+    , rrSchemeMap :: SchemeMap
     }
 
 get :: MonadIO m => ReaderT ResolveReader m ResolveState

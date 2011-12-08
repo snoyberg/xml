@@ -4,6 +4,7 @@ module Network.URI.Enumerator.File
     ( decodeString
     , fileScheme
     , toFilePath
+    , enumFile
     ) where
 
 import Prelude hiding (catch)
@@ -55,6 +56,7 @@ enumFile :: (MonadIO m, MonadBaseControl IO m) => FP.FilePath -> Enumerator Byte
 enumFile fp step = do
     h <- tryIO $ SIO.openBinaryFile (FP.encodeString fp) SIO.ReadMode
     let iter = enumHandle 4096 h step
+    -- FIXME this isn't truly safe
     Iteratee (finally (runIteratee iter) (liftIO $ SIO.hClose h))
 
 toFilePath :: URI -> FP.FilePath

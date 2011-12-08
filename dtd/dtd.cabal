@@ -31,7 +31,7 @@ Library
                      , attoparsec-enumerator    >= 0.3        && < 0.4
                      , monad-control            >= 0.3        && < 0.4
                      , enumerator               >= 0.4.14     && < 0.5
-                     , xml-catalog              >= 0.3        && < 0.4
+                     , xml-catalog              >= 0.4        && < 0.5
                      , blaze-builder            >= 0.3        && < 0.4
                      , network                  >= 2.2        && < 2.4
   Ghc-options: -Wall

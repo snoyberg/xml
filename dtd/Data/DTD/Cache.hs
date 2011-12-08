@@ -52,10 +52,10 @@ toMaps =
 data DTDCache = DTDCache
     { _dcCache :: I.IORef (Map.Map PubSys (EntityMap, AttrMap))
     , _dcCatalog :: Catalog
-    , _dcSchemeMap :: forall m. (MonadBaseControl IO m, MonadIO m) => SchemeMap m
+    , _dcSchemeMap :: SchemeMap
     }
 
-newDTDCache :: MonadIO m' => Catalog -> (forall m. (MonadBaseControl IO m, MonadIO m) => SchemeMap m) -> m' DTDCache
+newDTDCache :: MonadIO m' => Catalog -> SchemeMap -> m' DTDCache
 newDTDCache c sm = do
     x <- liftIO $ I.newIORef Map.empty
     return $ DTDCache x c sm
