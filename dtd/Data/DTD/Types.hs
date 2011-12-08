@@ -16,7 +16,7 @@ module Data.DTD.Types
 
     -- * Attribute declarations
   , AttList (..)
-  , AttDecl (..) -- FIXME redefine a new one here without PERef
+  , AttDecl (..)
   , AttType (..)
   , AttDefault (..)
 
@@ -30,7 +30,6 @@ import Data.DTD.Types.Unresolved
     ( DTDTextDecl (..)
     , ContentModel (..)
     , Repeat (..)
-    , AttDecl (..)
     , AttType (..)
     , AttDefault (..)
     , Notation (..)
@@ -97,3 +96,12 @@ data DTD = DTD
              , dtdComponents :: [DTDComponent]
              }
   deriving (Show, Eq, Typeable)
+
+-- | A declaration of an attribute that can occur in an element.
+data AttDecl =
+     AttDecl
+       { attDeclName :: Text           -- ^ The name of the attribute
+       , attDeclType :: AttType   -- ^ The type of the attribute
+       , attDeclDefault :: AttDefault  -- ^ The default value specification
+       }
+  deriving (Show, Eq)

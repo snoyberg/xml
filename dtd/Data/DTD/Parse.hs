@@ -209,11 +209,20 @@ resolvef (U.DTDAttList (U.AttList name' xs)) = do
     return [DTDAttList $ AttList name $ concat ys]
 
 resolveAttDeclPERef :: (MonadIO m, MonadBaseControl IO m) => U.AttDeclPERef -> ResolveMonad m [AttDecl]
-resolveAttDeclPERef (U.ADPDecl d) = return [d]
+resolveAttDeclPERef (U.ADPDecl (U.AttDecl name typ def)) = do
+    typ' <-
+        case typ of
+            U.ATPType t -> return t
+            U.ATPPERef p -> do
+                t <- resolvePERefText p
+                case runPartial $ A.parse UP.attType $ T.strip t `T.append` " " of
+                    A.Done "" x -> return x
+                    x -> throwError' $ InvalidAttType p t x
+    return [AttDecl name typ' def]
 resolveAttDeclPERef (U.ADPPERef p) = do
     t <- resolvePERefText p
     case runPartial $ A.parse (many UP.attDecl) $ T.strip t of
-        A.Done "" x -> return x
+        A.Done "" x -> fmap concat $ mapM (resolveAttDeclPERef . U.ADPDecl) x
         x -> throwError' $ InvalidAttDecl p t x
 
 throwError' :: Monad m => ResolveException' -> ResolveMonad m a
@@ -261,6 +270,7 @@ data ResolveException'
     | InvalidContentDecl U.PERef T.Text (A.Result U.ContentDecl)
     | InvalidContentModel T.Text (A.Result U.ContentModel)
     | InvalidAttDecl U.PERef T.Text (A.Result [U.AttDecl])
+    | InvalidAttType U.PERef T.Text (A.Result U.AttType)
     | RecursiveContentDeclPERef U.PERef
     | ResolveOther SomeException
   deriving (Show, Typeable)

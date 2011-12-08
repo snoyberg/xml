@@ -23,8 +23,8 @@ Library
                      , text                     >= 0.11       && < 1.0
                      , containers               >= 0.2        && < 0.5
                      , xml-enumerator           >= 0.4        && < 0.5
-                     , uri-enumerator           >= 0.1        && < 0.2
-                     , uri-enumerator-file      >= 0.1        && < 0.2
+                     , uri-enumerator           >= 0.2        && < 0.3
+                     , uri-enumerator-file      >= 0.2        && < 0.3
                      , transformers             >= 0.2        && < 0.3
                      , xml-types                >= 0.3        && < 0.4
                      , attoparsec               >= 0.10       && < 0.11
