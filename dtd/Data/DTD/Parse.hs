@@ -54,12 +54,15 @@ readEID catalog eid sm step = do
 
 readerToEnum :: (MonadBaseControl IO m, MonadIO m) => ResolveReader -> E.Enumerator DTDComponent m a
 readerToEnum rr step =
-    (((((readURI (rrSchemeMap rr) (rrBase rr)
-                E.$= detectUtf)
-                E.$= singleChunk) -- FIXME this is working around an apparent bug in attoparsec-text
-                E.$= streamUnresolved)
-                E.$= EL.concatMap id)
-                E.$= resolveEnum rr) step
+    E.catchError
+    ((readURI (rrSchemeMap rr) (rrBase rr)
+                E.$= detectUtf
+                E.$= singleChunk -- FIXME this is working around an apparent bug in attoparsec-text
+                E.$= streamUnresolved
+                E.$= EL.concatMap id
+                E.$= resolveEnum rr) step) addMSG
+  where
+    addMSG se = E.throwError $ OccuredAt (show $ toNetworkURI $ rrBase rr) (ResolveOther se)
 
 -- | For some reason, attoparsec-text seems to be dropping bits of text when
 -- being served chunks. This occurred in both streaming and lazy. See
@@ -259,6 +262,7 @@ data ResolveException'
     | InvalidContentModel T.Text (A.Result U.ContentModel)
     | InvalidAttDecl U.PERef T.Text (A.Result [U.AttDecl])
     | RecursiveContentDeclPERef U.PERef
+    | ResolveOther SomeException
   deriving (Show, Typeable)
 instance Exception ResolveException'
 instance Error ResolveException'
