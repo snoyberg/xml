@@ -258,7 +258,10 @@ attDeclPERef = (ADPPERef <$> pERef <* skipWS) <|> (ADPDecl <$> attDecl)
 -- | Parse the three-part declaration of an attribute.
 attDecl :: Parser AttDecl
 attDecl = AttDecl <$>
-           nameSS <*> attType <* skipWS <*> attDefault <* skipWS
+           nameSS <*> attTypePERef <* skipWS <*> attDefault <* skipWS
+
+attTypePERef :: Parser AttTypePERef
+attTypePERef = (ATPPERef <$> pERef) <|> (ATPType <$> attType)
 
 -- | Parse the type of an attribute.
 attType :: Parser AttType

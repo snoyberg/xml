@@ -16,7 +16,7 @@ module Data.DTD.Types
 
     -- * Attribute declarations
   , AttList (..)
-  , AttDecl (..)
+  , AttDecl (..) -- FIXME redefine a new one here without PERef
   , AttType (..)
   , AttDefault (..)
 

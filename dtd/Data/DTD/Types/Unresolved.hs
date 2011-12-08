@@ -60,6 +60,7 @@ module Data.DTD.Types.Unresolved
   , AttDecl (..)
   , AttDeclPERef (..)
   , AttType (..)
+  , AttTypePERef (..)
   , AttDefault (..)
 
     -- * Notation declarations
@@ -218,13 +219,16 @@ data AttDeclPERef = ADPDecl AttDecl | ADPPERef PERef
 data AttDecl =
      AttDecl
        { attDeclName :: Text           -- ^ The name of the attribute
-       , attDeclType :: AttType        -- ^ The type of the attribute
+       , attDeclType :: AttTypePERef   -- ^ The type of the attribute
        , attDeclDefault :: AttDefault  -- ^ The default value specification
        }
   deriving (Show, Eq)
 
 instance Typeable AttDecl where
   typeOf = typeString "AttDecl"
+
+data AttTypePERef = ATPType AttType | ATPPERef PERef
+    deriving (Show, Eq)
 
 -- | The type of value that an attribute can take.
 data AttType =
