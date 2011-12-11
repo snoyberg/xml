@@ -1,6 +1,6 @@
-Name:                uri-enumerator-file
+Name:                uri-conduit
 Version:             0.2.0
-Synopsis:            uri-enumerator backend for the file scheme
+Synopsis:            Read and write URIs
 Homepage:            http://github.com/snoyberg/xml
 License:             BSD3
 License-file:        LICENSE
@@ -9,19 +9,19 @@ Maintainer:          michaels@suite-sol.com
 Category:            Text
 Build-type:          Simple
 Cabal-version:       >=1.6
-Description:         uri-enumerator backend for the file scheme
+Description:         Read and write URIs
 
 Library
-  Exposed-modules:     Network.URI.Enumerator.File
+  Exposed-modules:     Network.URI.Conduit
+                       Network.URI.Conduit.File
   Build-depends:       base                     >= 4          && < 5
-                     , enumerator               >= 0.4.14     && < 0.5
+                     , conduit                  >= 0.0        && < 0.1
                      , text                     >= 0.5        && < 1.0
-                     , system-filepath          >= 0.4        && < 0.5
-                     , system-fileio            >= 0.3        && < 0.4
                      , transformers             >= 0.2        && < 0.3
                      , bytestring               >= 0.9        && < 0.10
                      , network                  >= 2.2        && < 2.4
                      , containers               >= 0.2        && < 0.5
+                     , failure                  >= 0.1        && < 0.2
                      , monad-control            >= 0.3        && < 0.4
-                     , lifted-base              >= 0.1        && < 0.2
-                     , uri-enumerator           >= 0.2        && < 0.3
+                     , system-filepath          >= 0.4.3      && < 0.5
+                     , system-fileio            >= 0.3.3      && < 0.4

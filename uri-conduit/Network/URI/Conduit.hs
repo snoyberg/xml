@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
-module Network.URI.Enumerator
+module Network.URI.Conduit
     ( -- * Base datatypes
       URI (..)
     , URIAuth (..)
@@ -30,14 +30,13 @@ module Network.URI.Enumerator
 
 import qualified Network.URI as N
 import Data.Text (Text, cons, isSuffixOf, pack, unpack)
-import Data.Enumerator (Enumerator, throwError)
+import qualified Data.Conduit as C
 import Data.ByteString (ByteString)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Control.Failure (Failure (..))
-import Control.Exception (Exception)
+import Control.Exception (Exception, throwIO)
 import Data.Typeable (Typeable)
-import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Trans.Control (MonadBaseControl)
 
 data URI = URI
@@ -70,8 +69,8 @@ hasExtension URI { uriPath = p } t = (cons '.' t) `isSuffixOf` p
 
 data Scheme = Scheme
     { schemeNames :: Set.Set Text
-    , schemeReader :: forall b m. (MonadIO m, MonadBaseControl IO m) => Maybe (URI -> Enumerator ByteString m b)
-    , schemeWriter :: forall m. (MonadIO m, MonadBaseControl IO m) => Maybe (URI -> Enumerator ByteString m () -> m ())
+    , schemeReader :: forall m. MonadBaseControl IO m => Maybe (URI -> C.SourceM m ByteString)
+    , schemeWriter :: forall m. MonadBaseControl IO m => Maybe (URI -> C.SinkM ByteString m ())
     }
 
 type SchemeMap = Map.Map Text Scheme
@@ -92,19 +91,23 @@ data URIException = UnknownReadScheme URI
   deriving (Show, Typeable)
 instance Exception URIException
 
-readURI :: (MonadIO m, MonadBaseControl IO m)
-        => SchemeMap -> URI -> Enumerator ByteString m b
-readURI sm uri step =
+readURI :: MonadBaseControl IO m
+        => SchemeMap
+        -> URI
+        -> C.SourceM m ByteString
+readURI sm uri = C.SourceM $ do
     case Map.lookup (uriScheme uri) sm >>= schemeReader of
-        Nothing -> throwError $ UnknownReadScheme uri
-        Just f -> f uri step
+        Nothing -> C.liftBase $ throwIO $ UnknownReadScheme uri
+        Just f -> C.genSource $ f uri
 
-writeURI :: (Failure URIException m, MonadIO m, MonadBaseControl IO m)
-         => SchemeMap -> URI -> Enumerator ByteString m () -> m ()
-writeURI sm uri enum =
+writeURI :: MonadBaseControl IO m
+         => SchemeMap
+         -> URI
+         -> C.SinkM ByteString m ()
+writeURI sm uri =
     case Map.lookup (uriScheme uri) sm >>= schemeWriter of
-        Nothing -> failure $ UnknownWriteScheme uri
-        Just f -> f uri enum
+        Nothing -> C.liftBase $ throwIO $ UnknownWriteScheme uri
+        Just f -> f uri
 
 toNetworkURI :: URI -> N.URI
 toNetworkURI u = N.URI
@@ -142,6 +145,9 @@ relativeTo a b = fmap fromNetworkURI $ toNetworkURI a `N.relativeTo` toNetworkUR
 nullURI :: URI
 nullURI = fromNetworkURI N.nullURI
 
-copyURI :: (Failure URIException m, MonadIO m, MonadBaseControl IO m)
-        => SchemeMap -> URI -> URI -> m ()
-copyURI sm src dst = writeURI sm dst $ readURI sm src
+copyURI :: MonadBaseControl IO m
+        => SchemeMap
+        -> URI
+        -> URI
+        -> m ()
+copyURI sm src dst = C.runResourceT $ readURI sm src C.<$$> writeURI sm dst
