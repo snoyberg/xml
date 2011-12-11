@@ -1,5 +1,5 @@
 Name:                xml-catalog
-Version:             0.4.0
+Version:             0.5.0
 Synopsis:            Parse XML catalog files
 Homepage:            http://github.com/snoyberg/xml
 License:             BSD3
@@ -17,6 +17,8 @@ Library
                      , text                     >= 0.11       && < 1.0
                      , containers               >= 0.2        && < 0.5
                      , xml-enumerator           >= 0.4        && < 0.5
-                     , uri-enumerator           >= 0.2        && < 0.3
+                     , uri-conduit              >= 0.2        && < 0.3
+                     , conduit                  >= 0.0        && < 0.1
                      , transformers             >= 0.2        && < 0.3
+                     , bytestring
   Ghc-options: -Wall
