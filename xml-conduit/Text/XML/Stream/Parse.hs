@@ -253,6 +253,7 @@ parseText :: C.MonadBaseControl IO m
           -> C.ConduitM TS.Text m Event
 parseText de =
     dropBOM C.<=$=> C.sequence (sinkToken de)
+            C.<=$=> CL.mapM (\x -> C.liftBase (print x) >> return x) -- FIXME remove
             C.<=$=> toEventC
             C.<=$=> addBeginEnd
   where

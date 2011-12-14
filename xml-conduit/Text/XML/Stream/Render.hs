@@ -30,6 +30,7 @@ import Data.List (foldl')
 import qualified Data.Conduit as C
 import qualified Data.Conduit.Text as CT
 import Data.Monoid (mconcat)
+import Control.Exception (assert)
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder' and 'builderToByteString', so it produces
@@ -94,25 +95,6 @@ renderBuilder' = C.conduitMState
         return $ C.ConduitCloseResult leftover ts
       where
         (_, leftover, ts) = go stack True es id
-{-
-    loop []
-  where
-    loop stack = E.checkDone $ step stack
-    step stack k = do
-        x <- EL.head
-        case x of
-            Nothing -> E.yield (E.Continue k) E.EOF
-            Just (EventBeginElement name as) -> do
-                x' <- E.peek
-                if x' == Just (EventEndElement name)
-                    then do
-                        EL.drop 1
-                        go $ mkBeginToken False True stack name as
-                    else go $ mkBeginToken False False stack name as
-            Just e -> go $ eventToToken stack e
-      where
-        go (ts, stack') = k (E.Chunks $ map tokenToBuilder $ ts []) >>== loop stack'
--}
 
 eventToToken :: Stack -> Event -> ([Token] -> [Token], [NSLevel])
 eventToToken s EventBeginDocument =
@@ -214,63 +196,52 @@ prettify :: C.MonadBaseControl IO m => C.ConduitM Event m Event
 prettify = prettify' 0 []
 
 prettify' :: C.MonadBaseControl IO m => Int -> [Name] -> C.ConduitM Event m Event
-prettify' level names = error "prettify'" {-(Continue k) = do
-    mx <- eventHead
-    case mx of
-        Nothing -> return $ Continue k
-        Just x -> do
-            y <- E.peek
-            (chunks, level', names') <-
-                case (x, y) of
-                    (Left contents, _) -> do
-                        let es = map EventContent $ cleanWhite contents
-                        let es' = if null es
-                                    then []
-                                    else before level : es ++ [after]
-                        return (es', level, names)
-                    (Right (EventBeginElement name attrs), Just (EventEndElement _)) -> do
-                        EL.drop 1
-                        return ([before level, EventBeginElement name attrs, EventEndElement name, after], level, names)
-                    (Right (EventBeginElement name attrs), _) ->
-                        return ([before level, EventBeginElement name attrs, after], level + 1, name : names)
-                    (Right (EventEndElement _), _) -> do
-                        let newLevel = level - 1
-                        return ([before newLevel, EventEndElement $ head names, after], newLevel, tail names)
-                    (Right EventBeginDocument, _) -> do
-                        return ([EventBeginDocument], level, names)
-                    (Right EventEndDocument, _) -> do
-                        return ([EventEndDocument, after], level, names)
-                    (Right (EventComment t), _) -> do
-                        return ([before level, EventComment $ T.map normalSpace t, after], level, names)
-                    (Right e, _) -> do
-                        return ([before level, e, after], level, names)
-            k (E.Chunks chunks) >>== prettify' level' names'
+prettify' level0 names0 = C.conduitMState
+    (level0, names0)
+    push
+    close
   where
+    push a b = do
+        let (a', leftover, es) = go False a b id
+        return (a', C.ConduitResult C.StreamOpen leftover es)
+    close a b = do
+        let (a', leftover, es) = go True a b id
+        assert (null leftover) $ return $ C.ConduitCloseResult leftover es
+
+    go _ state [] front = (state, [], front [])
+    go atEnd state@(level, _) es@(EventContent t:xs) front =
+        case takeContents (t:) xs of
+            Nothing
+                | not atEnd -> (state, es, front [])
+            Just (ts, xs') ->
+                let ts' = map EventContent $ cleanWhite ts
+                    ts'' = if null ts' then [] else before level : es ++ [after]
+                 in go atEnd state xs' (front . (ts'' ++))
+    go atEnd (level, names) (x:xs) front = do
+        go atEnd (level', names') xs' (front . chunks)
+      where
+        (chunks, level', names', xs') =
+            case (x, xs) of
+                (EventBeginElement name attrs, EventEndElement _:rest) ->
+                    (\a -> before level : EventBeginElement name attrs : EventEndElement name : after : a, level, names, rest)
+                (EventBeginElement name attrs, _) ->
+                    (\a -> before level : EventBeginElement name attrs : after : a, level + 1, name : names, xs)
+                (EventEndElement _, _) ->
+                    let newLevel = level - 1
+                        n:ns = names
+                     in (\a -> before newLevel : EventEndElement n : after : a, newLevel, ns, xs)
+                (EventBeginDocument, _) -> ((EventBeginDocument:), level, names, xs)
+                (EventEndDocument, _) -> (\a -> EventEndDocument : a, level, names, xs)
+                (EventComment t, _) -> (\a -> before level : EventComment (T.map normalSpace t) : after : a, level, names, xs)
+                (e, _) -> (\a -> before level : e : after : a, level, names, xs)
+
     before l = EventContent $ ContentText $ T.replicate l "    "
     after = EventContent $ ContentText "\n"
-prettify' _ _ step = return step
--}
 
-eventHead :: C.MonadBaseControl IO m => C.SinkM Event m (Maybe (Either [Content] Event))
-eventHead = error "eventHead" {-do
-    x <- EL.head
-    case x of
-        Just (EventContent e) -> do
-            es <- takeContents id
-            return $ Just $ Left $ e : es
-        Nothing -> return Nothing
-        Just e -> return $ Just $ Right e
-        -}
-
-takeContents :: C.MonadBaseControl IO m => ([Content] -> [Content]) -> C.SinkM Event m [Content]
-takeContents front = error "takeContents" {-do
-    x <- E.peek
-    case x of
-        Just (EventContent e) -> do
-            EL.drop 1
-            takeContents $ front . (:) e
-        _ -> return $ front []
-        -}
+takeContents :: ([Content] -> [Content]) -> [Event] -> Maybe ([Content], [Event])
+takeContents _ [] = Nothing
+takeContents front (EventContent t:es) = takeContents (front . (t:)) es
+takeContents front es = Just (front [], es)
 
 normalSpace :: Char -> Char
 normalSpace c
