@@ -19,18 +19,19 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import Text.XML.Catalog
-import Network.URI.Enumerator
-import Network.URI.Enumerator.File
+import Network.URI.Conduit
+import Network.URI.Conduit.File
 import qualified Data.DTD.Types as D
 import Data.DTD.Parse (readEID, uriToEID)
-import qualified Data.Enumerator as E
-import qualified Data.Enumerator.List as EL
+import qualified Data.Conduit as C
+import qualified Data.Conduit.List as CL
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import qualified Data.IORef as I
 import Control.Exception (Exception, throwIO, SomeException)
 import Data.Typeable (Typeable)
 import Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Network.URI as NU
+import Control.Exception.Lifted (try)
 
 toMaps :: [D.DTDComponent] -> (EntityMap, AttrMap)
 toMaps =
@@ -75,7 +76,7 @@ loadAttrMap (DTDCache icache catalog sm) ext = do
             case Map.lookup pubsys catalog of
                 Nothing -> liftIO $ throwIO $ UnknownExternalID ext
                 Just uri -> do
-                    ecomps <- E.run $ readEID catalog (uriToEID uri) sm E.$$ EL.consume
+                    ecomps <- try $ C.runResourceT $ readEID catalog (uriToEID uri) sm C.<$$> CL.consume
                     comps <- either (liftIO . throwIO . CannotLoadDTD (toNetworkURI uri)) return ecomps
                     let maps = toMaps comps
                     liftIO $ I.atomicModifyIORef icache $ \m ->

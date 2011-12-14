@@ -14,99 +14,99 @@ import Data.DTD.Types
 import Data.XML.Types (ExternalID (SystemID))
 import qualified Data.DTD.Types.Unresolved as U
 import qualified Data.DTD.Parse.Unresolved as UP
-import Control.Exception (Exception, SomeException)
-import Data.Enumerator (Enumeratee)
-import qualified Data.Enumerator.List as EL
+import Control.Exception (Exception, SomeException, toException, throwIO)
+import qualified Control.Exception.Lifted as Lifted
+import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Class (MonadTrans, lift)
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Text as T
 import qualified Data.Map as Map
 import Data.Typeable (Typeable)
 import Control.Monad.Trans.Reader (ReaderT, runReaderT, ask)
-import Control.Monad.Trans.Error (ErrorT, runErrorT, throwError, Error)
-import Data.Enumerator.Unwrap (unwrapEnumeratee)
 import Text.XML.Catalog (resolveURI, Catalog)
-import Network.URI.Enumerator (URI, SchemeMap, readURI, toNetworkURI, toSchemeMap)
-import Network.URI.Enumerator.File (decodeString, fileScheme)
-import qualified Data.Enumerator as E
+import Network.URI.Conduit (URI, SchemeMap, readURI, toNetworkURI, toSchemeMap)
+import Network.URI.Conduit.File (decodeString, fileScheme)
+import qualified Data.Conduit as C
 import Text.XML.Stream.Parse (detectUtf)
-import Data.Attoparsec.Enumerator (iterParser)
+import Data.Conduit.Attoparsec (sinkParser)
 import Control.Applicative ((*>), (<*), (<|>), (<$>), many)
 import qualified Data.IORef as I
 import Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Data.Attoparsec.Text as A
 import Control.Monad (liftM)
 
-type ResolveMonad m = ErrorT ResolveException (ReaderT ResolveReader m)
+type ResolveMonad m = ReaderT ResolveReader m
 
-readEID :: (MonadBaseControl IO m, MonadIO m)
+readEID :: MonadBaseControl IO m
         => Catalog
         -> ExternalID
         -> SchemeMap
-        -> E.Enumerator DTDComponent m a
-readEID catalog eid sm step = do
+        -> C.SourceM m DTDComponent
+readEID catalog eid sm = C.SourceM $ do
     case resolveURI catalog Nothing eid of
-        Nothing -> E.throwError $ CannotResolveExternalID eid
+        Nothing -> C.liftBase $ throwIO $ CannotResolveExternalID eid
         Just uri -> do
-            istate <- liftIO $ I.newIORef initState
+            istate <- C.liftBase $ I.newIORef initState
             let rr = ResolveReader catalog uri istate sm
-            readerToEnum rr step
+            C.genSource $ readerToEnum rr
 
-readerToEnum :: (MonadBaseControl IO m, MonadIO m) => ResolveReader -> E.Enumerator DTDComponent m a
-readerToEnum rr step =
-    E.catchError
-    ((readURI (rrSchemeMap rr) (rrBase rr)
-                E.$= detectUtf
-                E.$= singleChunk -- FIXME this is working around an apparent bug in attoparsec-text
-                E.$= streamUnresolved
-                E.$= EL.concatMap id
-                E.$= resolveEnum rr) step) addMSG
-  where
-    addMSG se = E.throwError $ OccuredAt (show $ toNetworkURI $ rrBase rr) (ResolveOther se)
+readerToEnum :: MonadBaseControl IO m => ResolveReader -> C.SourceM m DTDComponent
+readerToEnum rr = C.SourceM $ do
+    C.Source pull close <- C.genSource $
+        readURI (rrSchemeMap rr) (rrBase rr)
+                C.<$=> detectUtf
+                C.<$=> singleChunk -- FIXME this is working around an apparent bug in attoparsec-text
+                C.<$=> streamUnresolved
+                C.<$=> CL.concatMap id
+                C.<$=> resolveEnum rr
+    return $ C.Source (pull `Lifted.catch` throw rr) close
+
+
+throw :: MonadBaseControl IO m => ResolveReader -> SomeException -> m a
+throw rr e =
+    C.liftBase $ throwIO $ OccuredAt (show $ toNetworkURI $ rrBase rr) (ResolveOther e)
 
 -- | For some reason, attoparsec-text seems to be dropping bits of text when
 -- being served chunks. This occurred in both streaming and lazy. See
 -- lazy-bug.hs for a demonstration.
-singleChunk :: Monad m => E.Enumeratee T.Text T.Text m a
-singleChunk = E.sequence $ T.concat <$> EL.consume
+singleChunk :: MonadBaseControl IO m => C.ConduitM T.Text m T.Text
+singleChunk = C.sequence $ T.concat <$> CL.consume
 
 readFile_ :: FilePath -> IO [DTDComponent]
-readFile_ fp = E.run_ $ enumFile fp E.$$ EL.consume
+readFile_ fp = C.runResourceT $ enumFile fp C.<$$> CL.consume
 
-enumFile :: (MonadBaseControl IO m, MonadIO m) => FilePath -> E.Enumerator DTDComponent m a
-enumFile fp step = do
+enumFile :: MonadBaseControl IO m => FilePath -> C.SourceM m DTDComponent
+enumFile fp = C.SourceM $ do
     eid <- filePathToEID fp
-    readEID Map.empty eid (toSchemeMap [fileScheme]) step
+    C.genSource $ readEID Map.empty eid $ toSchemeMap [fileScheme]
 
-filePathToEID :: MonadIO m => FilePath -> m ExternalID
-filePathToEID = liftM uriToEID . liftIO . decodeString
+filePathToEID :: MonadBaseControl IO m => FilePath -> m ExternalID
+filePathToEID = liftM uriToEID . C.liftBase . decodeString
 
 uriToEID :: URI -> ExternalID
 uriToEID = SystemID . T.pack . show . toNetworkURI
 
-streamUnresolved :: Monad m => E.Enumeratee T.Text [U.DTDComponent] m a
+streamUnresolved :: MonadBaseControl IO m => C.ConduitM T.Text m [U.DTDComponent]
 streamUnresolved =
-    E.sequence $ iterParser p
+    C.sequence $ sinkParser p
   where
     p = (UP.ws >> UP.skipWS >> return []) <|>
         (UP.textDecl >> return []) <|>
         (UP.dtdComponent >>= return . return)
 
-resolveEnum :: (MonadBaseControl IO m, MonadIO m)
+resolveEnum :: MonadBaseControl IO m
             => ResolveReader
-            -> Enumeratee U.DTDComponent DTDComponent m a
+            -> C.ConduitM U.DTDComponent m DTDComponent
 resolveEnum rr =
-      unwrapEnumeratee (evalStateT' rr)
-    $ unwrapEnumeratee runErrorT
-    $ EL.concatMapM resolvef
+      C.transConduitM (evalStateT' rr)
+    $ CL.concatMapM resolvef
 
-evalStateT' :: MonadIO m
+evalStateT' :: MonadBaseControl IO m
             => ResolveReader
             -> ReaderT ResolveReader m a
-            -> m (Either SomeException a)
+            -> m a
 evalStateT' rr m = do
     a <- runReaderT m rr
-    return $ Right a
+    return a
 
 data ResolveState = ResolveState
     { rsRefText :: Map.Map U.PERef T.Text
@@ -121,23 +121,23 @@ data ResolveReader = ResolveReader
     , rrSchemeMap :: SchemeMap
     }
 
-get :: MonadIO m => ReaderT ResolveReader m ResolveState
+get :: MonadBaseControl IO m => ReaderT ResolveReader m ResolveState
 get = do
     rr <- ask
-    liftIO $ I.readIORef $ rrState rr
+    C.liftBase $ I.readIORef $ rrState rr
 
-put :: MonadIO m => ResolveState -> ReaderT ResolveReader m ()
+put :: MonadBaseControl IO m => ResolveState -> ReaderT ResolveReader m ()
 put rs = do
     rr <- ask
-    liftIO $ I.writeIORef (rrState rr) rs
+    C.liftBase $ I.writeIORef (rrState rr) rs
 
-modify :: MonadIO m => (ResolveState -> ResolveState) -> ReaderT ResolveReader m ()
+modify :: MonadBaseControl IO m => (ResolveState -> ResolveState) -> ReaderT ResolveReader m ()
 modify f = get >>= put . f
 
 initState :: ResolveState
 initState = ResolveState Map.empty Map.empty
 
-resolvef :: (MonadBaseControl IO m, MonadIO m)
+resolvef :: MonadBaseControl IO m
          => U.DTDComponent
          -> ResolveMonad m [DTDComponent]
 
@@ -150,35 +150,35 @@ resolvef (U.DTDEntityDecl (U.ExternalGeneralEntityDecl a b c)) =
 
 -- look up the EntityValues
 resolvef (U.DTDEntityDecl (U.InternalGeneralEntityDecl a b)) = do
-    rs <- lift get
+    rs <- get
     case resolveEntityValue rs b of
         Left e -> throwError' e
         Right t -> return [DTDEntityDecl $ InternalGeneralEntityDecl a t]
 
 -- store external entities
 resolvef (U.DTDEntityDecl (U.ExternalParameterEntityDecl name eid)) = do
-    lift $ modify $ \rs -> rs { rsRefEid = insertNoReplace name eid $ rsRefEid rs }
+    modify $ \rs -> rs { rsRefEid = insertNoReplace name eid $ rsRefEid rs }
     return []
 
 -- store internal entities
 resolvef (U.DTDEntityDecl (U.InternalParameterEntityDecl name vals)) = do
-    rs <- lift get
+    rs <- get
     t <- either throwError' return $ resolveEntityValue rs vals
-    lift $ put $ rs { rsRefText = insertNoReplace name t $ rsRefText rs }
+    put $ rs { rsRefText = insertNoReplace name t $ rsRefText rs }
     return []
 
 -- pull in perefs
 resolvef (U.DTDPERef p) = do
-    rs <- lift get
+    rs <- get
     case Map.lookup p $ rsRefEid rs of
         Nothing -> throwError' $ UnknownPERef p
         Just eid -> do
-            rr <- lift ask
+            rr <- ask
             case resolveURI (rrCatalog rr) (Just $ rrBase rr) eid of
                 Nothing -> throwError' $ CannotResolveExternalID eid
                 Just uri -> do
                     let rr' = rr { rrBase = uri }
-                    E.run_ $ readerToEnum rr' E.$$ EL.consume
+                    C.runResourceT $ readerToEnum rr' C.<$$> CL.consume
 
 -- element declarations
 resolvef (U.DTDElementDecl (U.ElementDecl name' c)) = do
@@ -208,7 +208,7 @@ resolvef (U.DTDAttList (U.AttList name' xs)) = do
     ys <- mapM resolveAttDeclPERef xs
     return [DTDAttList $ AttList name $ concat ys]
 
-resolveAttDeclPERef :: (MonadIO m, MonadBaseControl IO m) => U.AttDeclPERef -> ResolveMonad m [AttDecl]
+resolveAttDeclPERef :: (MonadBaseControl IO m, MonadBaseControl IO m) => U.AttDeclPERef -> ResolveMonad m [AttDecl]
 resolveAttDeclPERef (U.ADPDecl (U.AttDecl name typ def)) = do
     typ' <-
         case typ of
@@ -225,18 +225,18 @@ resolveAttDeclPERef (U.ADPPERef p) = do
         A.Done "" x -> fmap concat $ mapM (resolveAttDeclPERef . U.ADPDecl) x
         x -> throwError' $ InvalidAttDecl p t x
 
-throwError' :: Monad m => ResolveException' -> ResolveMonad m a
+throwError' :: MonadBaseControl IO m => ResolveException' -> ResolveMonad m a
 throwError' e = do
-    uri <- liftM rrBase $ lift ask
-    throwError $ OccuredAt (show $ toNetworkURI uri) e
+    uri <- liftM rrBase ask
+    C.liftBase $ throwIO $ OccuredAt (show $ toNetworkURI uri) e
 
 runPartial :: A.Result t -> A.Result t
 runPartial (A.Partial f) = f ""
 runPartial r = r
 
-resolvePERefText :: MonadIO m => U.PERef -> ResolveMonad m T.Text
+resolvePERefText :: MonadBaseControl IO m => U.PERef -> ResolveMonad m T.Text
 resolvePERefText p = do
-    rs <- lift get
+    rs <- get
     maybe (throwError' $ UnknownPERefText p) return $ Map.lookup p $ rsRefText rs
 
 resolveEntityValue :: ResolveState -> [U.EntityValue] -> Either ResolveException' T.Text
@@ -249,9 +249,9 @@ resolveEntityValue rs evs =
             Nothing -> Left $ UnknownPERefValue p
             Just t -> Right t
 
-resolveContentModel :: MonadIO m => [U.EntityValue] -> ResolveMonad m ContentDecl
+resolveContentModel :: MonadBaseControl IO m => [U.EntityValue] -> ResolveMonad m ContentDecl
 resolveContentModel ev = do
-    rs <- lift get
+    rs <- get
     text <- either throwError' return $ resolveEntityValue rs ev
     case runPartial $ A.parse UP.contentModel $ T.strip text of
         A.Done "" x -> return $ ContentElement x
@@ -260,7 +260,6 @@ resolveContentModel ev = do
 data ResolveException = OccuredAt String ResolveException'
   deriving (Show, Typeable)
 instance Exception ResolveException
-instance Error ResolveException
 
 data ResolveException'
     = UnknownPERef U.PERef
@@ -275,7 +274,6 @@ data ResolveException'
     | ResolveOther SomeException
   deriving (Show, Typeable)
 instance Exception ResolveException'
-instance Error ResolveException'
 
 insertNoReplace :: Ord k => k -> v -> Map.Map k v -> Map.Map k v
 insertNoReplace k v m =
