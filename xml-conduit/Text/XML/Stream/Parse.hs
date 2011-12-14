@@ -459,12 +459,12 @@ data ContentType =
 -- comments and instructions and concatenates all content until the next start
 -- or end tag.
 contentMaybe :: C.MonadBaseControl IO m => C.SinkM Event m (Maybe Text)
-contentMaybe = error "contentMaybe" {-do
-    x <- E.peek
+contentMaybe = do
+    x <- CL.peek
     case pc' x of
-        Ignore -> EL.drop 1 >> contentMaybe
-        IsContent t -> EL.drop 1 >> fmap Just (takeContents (t:))
-        IsError e -> throwError $ XmlException e x
+        Ignore -> CL.drop 1 >> contentMaybe
+        IsContent t -> CL.drop 1 >> fmap Just (takeContents (t:))
+        IsError e -> C.liftBase $ throwIO $ XmlException e x
         NotContent -> return Nothing
   where
     pc' Nothing = NotContent
@@ -481,13 +481,12 @@ contentMaybe = error "contentMaybe" {-do
     pc EventInstruction{} = Ignore
     pc EventComment{} = Ignore
     takeContents front = do
-        x <- E.peek
+        x <- CL.peek
         case pc' x of
-            Ignore -> EL.drop 1 >> takeContents front
-            IsContent t -> EL.drop 1 >> takeContents (front . (:) t)
-            IsError e -> throwError $ XmlException e x
+            Ignore -> CL.drop 1 >> takeContents front
+            IsContent t -> CL.drop 1 >> takeContents (front . (:) t)
+            IsError e -> C.liftBase $ throwIO $ XmlException e x
             NotContent -> return $ T.concat $ front []
-            -}
 
 -- | Grabs the next piece of content. If none if available, returns 'T.empty'.
 -- This is simply a wrapper around 'contentMaybe'.
