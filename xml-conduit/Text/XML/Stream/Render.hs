@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
 -- | 'Enumeratee's to render XML 'Event's. Unlike libxml-enumerator and
 -- expat-enumerator, this module does not provide IO and ST variants, since the
 -- underlying rendering operations are pure functions.
@@ -14,59 +15,35 @@ module Text.XML.Stream.Render
 
 import Data.XML.Types (Event (..), Content (..), Name (..))
 import Text.XML.Stream.Token
-import qualified Data.Enumerator as E
-import qualified Data.Enumerator.List as EL
-import qualified Data.Enumerator.Text as ET
-import Data.Enumerator ((>>==), ($$), Iteratee, Step (..))
 import qualified Data.Text as T
 import Data.Text (Text)
 import Blaze.ByteString.Builder
-import Blaze.ByteString.Builder.Enumerator (builderToByteString)
+import Data.Conduit.Blaze (builderToByteString)
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
 import Data.ByteString (ByteString)
-import Control.Monad.IO.Class (MonadIO)
 import Data.Char (isSpace)
 import Data.Default (Default (def))
 import qualified Data.Set as Set
 import Data.List (foldl')
-
--- | Pretty prints a stream of 'Event's into a stream of 'Builder's. This
--- changes the meaning of some documents, by inserting/modifying whitespace.
-prettyBuilder :: Monad m => E.Enumeratee Event Builder m b
-prettyBuilder step0 =
-    E.joinI $ prettify $$ loop [] step0
-  where
-    loop stack = E.checkDone $ step stack
-    step stack k = do
-        x <- EL.head
-        case x of
-            Nothing -> E.yield (E.Continue k) E.EOF
-            Just (EventBeginElement name as) -> do
-                x' <- E.peek
-                if x' == Just (EventEndElement name)
-                    then do
-                        EL.drop 1
-                        go $ mkBeginToken True True stack name as
-                    else go $ mkBeginToken True False stack name as
-            Just e -> go $ eventToToken stack e
-      where
-        go (ts, stack') = k (E.Chunks $ map tokenToBuilder $ ts []) >>== loop stack'
+import qualified Data.Conduit as C
+import qualified Data.Conduit.Text as CT
+import Data.Monoid (mconcat)
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder' and 'builderToByteString', so it produces
 -- optimally sized 'ByteString's with minimal buffer copying.
 --
 -- The output is UTF8 encoded.
-renderBytes :: MonadIO m => RenderSettings -> E.Enumeratee Event ByteString m b
-renderBytes rs s = E.joinI $ renderBuilder rs $$ builderToByteString s
+renderBytes :: C.MonadBaseControl IO m => RenderSettings -> C.ConduitM Event m ByteString
+renderBytes rs = renderBuilder rs C.<=$=> builderToByteString
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder', 'builderToByteString' and 'renderBytes', so it
 -- produces optimally sized 'ByteString's with minimal buffer copying.
-renderText :: MonadIO m => RenderSettings -> E.Enumeratee Event Text m b
-renderText rs s = E.joinI $ renderBytes rs $$ ET.decode ET.utf8 s
+renderText :: C.MonadBaseControl IO m => RenderSettings -> C.ConduitM Event m Text
+renderText rs = renderBytes rs C.<=$=> CT.decode CT.utf8
 
 data RenderSettings = RenderSettings
     { rsPretty :: Bool
@@ -80,9 +57,44 @@ instance Default RenderSettings where
 -- | Render a stream of 'Event's into a stream of 'Builder's. Builders are from
 -- the blaze-builder package, and allow the create of optimally sized
 -- 'ByteString's with minimal buffer copying.
-renderBuilder :: Monad m => RenderSettings -> E.Enumeratee Event Builder m b
-renderBuilder RenderSettings { rsPretty = True } = prettyBuilder
-renderBuilder RenderSettings { rsPretty = False } =
+renderBuilder :: C.MonadBaseControl IO m => RenderSettings -> C.ConduitM Event m Builder
+renderBuilder RenderSettings { rsPretty = True } = prettify C.<=$=> renderBuilder'
+renderBuilder RenderSettings { rsPretty = False } = renderBuilder'
+
+renderBuilder' :: C.MonadBaseControl IO m => C.ConduitM Event m Builder
+renderBuilder' = C.conduitMState
+    []
+    push
+    close
+  where
+    go' front = map tokenToBuilder $ front []
+    go stack _ [] front = (stack, [], go' front)
+    -- we want to wait and see if the next event is the matching end
+    go stack False [e@EventBeginElement{}] front = (stack, [e], go' front)
+    go stack atEnd
+        ( EventBeginElement n1 as
+        : EventEndElement n2
+        : rest
+        ) front | n1 == n2 =
+            let (token, stack') = mkBeginToken False True stack n1 as
+             in go stack' atEnd rest (front . token)
+    go stack atEnd (EventBeginElement name as:rest) front =
+        let (token, stack') = mkBeginToken False False stack name as
+         in go stack' atEnd rest (front . token)
+    go stack atEnd (e:rest) front =
+        let (token, stack') = eventToToken stack e
+         in go stack' atEnd rest (front . token)
+
+    push stack es =
+        return (stack', C.ConduitResult C.StreamOpen leftover ts)
+      where
+        (stack', leftover, ts) = go stack False es id
+
+    close stack es =
+        return $ C.ConduitCloseResult leftover ts
+      where
+        (_, leftover, ts) = go stack True es id
+{-
     loop []
   where
     loop stack = E.checkDone $ step stack
@@ -100,6 +112,7 @@ renderBuilder RenderSettings { rsPretty = False } =
             Just e -> go $ eventToToken stack e
       where
         go (ts, stack') = k (E.Chunks $ map tokenToBuilder $ ts []) >>== loop stack'
+-}
 
 eventToToken :: Stack -> Event -> ([Token] -> [Token], [NSLevel])
 eventToToken s EventBeginDocument =
@@ -197,11 +210,11 @@ getPrefix ppref nsmap ns =
 
 -- | Convert a stream of 'Event's into a prettified one, adding extra
 -- whitespace. Note that this can change the meaning of your XML.
-prettify :: Monad m => E.Enumeratee Event Event m a
+prettify :: C.MonadBaseControl IO m => C.ConduitM Event m Event
 prettify = prettify' 0 []
 
-prettify' :: Monad m => Int -> [Name] -> E.Enumeratee Event Event m a
-prettify' level names (Continue k) = do
+prettify' :: C.MonadBaseControl IO m => Int -> [Name] -> C.ConduitM Event m Event
+prettify' level names = error "prettify'" {-(Continue k) = do
     mx <- eventHead
     case mx of
         Nothing -> return $ Continue k
@@ -236,9 +249,10 @@ prettify' level names (Continue k) = do
     before l = EventContent $ ContentText $ T.replicate l "    "
     after = EventContent $ ContentText "\n"
 prettify' _ _ step = return step
+-}
 
-eventHead :: Monad m => Iteratee Event m (Maybe (Either [Content] Event))
-eventHead = do
+eventHead :: C.MonadBaseControl IO m => C.SinkM Event m (Maybe (Either [Content] Event))
+eventHead = error "eventHead" {-do
     x <- EL.head
     case x of
         Just (EventContent e) -> do
@@ -246,15 +260,17 @@ eventHead = do
             return $ Just $ Left $ e : es
         Nothing -> return Nothing
         Just e -> return $ Just $ Right e
+        -}
 
-takeContents :: Monad m => ([Content] -> [Content]) -> Iteratee Event m [Content]
-takeContents front = do
+takeContents :: C.MonadBaseControl IO m => ([Content] -> [Content]) -> C.SinkM Event m [Content]
+takeContents front = error "takeContents" {-do
     x <- E.peek
     case x of
         Just (EventContent e) -> do
             EL.drop 1
             takeContents $ front . (:) e
         _ -> return $ front []
+        -}
 
 normalSpace :: Char -> Char
 normalSpace c

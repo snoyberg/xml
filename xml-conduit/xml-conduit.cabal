@@ -1,10 +1,10 @@
-name:            xml-enumerator
-version:         0.4.4
+name:            xml-conduit
+version:         0.5.0
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michaels@suite-sol.com>, Aristid Breitkreuz <aristidb@googlemail.com>
 maintainer:      Michael Snoyman <michaels@suite-sol.com>
-synopsis:        Pure-Haskell utilities for dealing with XML with the enumerator package.
+synopsis:        Pure-Haskell utilities for dealing with XML with the conduit package.
 description:
     This package provides parsing and rendering functions for XML. It is based on the datatypes found in the xml-types package. This package is broken up into the following modules:
     .
@@ -19,7 +19,7 @@ description:
     * Text.XML.Stream.Render: Streaming renderer.
     .
     Additionally, the xml-hamlet package <http://hackage.haskell.org/package/xml-hamlet> provides a more convenient syntax for creating XML documents. For a more thorough tutorial on this library, please see <http://www.yesodweb.com/book/xml-enumerator>.
-category:        XML, Enumerator
+category:        XML, Conduit
 stability:       Stable
 cabal-version:   >= 1.8
 build-type:      Simple
@@ -31,18 +31,17 @@ flag test
 
 library
     build-depends:   base                      >= 4        && < 5
-                   , enumerator                >= 0.4.5    && < 0.5
+                   , conduit                   >= 0.0      && < 0.1
                    , bytestring                >= 0.9      && < 0.10
                    , text                      >= 0.7      && < 0.12
                    , containers                >= 0.2      && < 0.5
                    , xml-types                 >= 0.3      && < 0.4
-                   , attoparsec-enumerator     >= 0.3
                    , attoparsec                >= 0.10
                    , blaze-builder             >= 0.2      && < 0.4
-                   , blaze-builder-enumerator  >= 0.2      && < 0.3
                    , transformers              >= 0.2      && < 0.3
                    , failure                   >= 0.1      && < 0.2
                    , data-default              >= 0.2      && < 0.4
+                   , system-filepath           >= 0.4      && < 0.5
     exposed-modules: Text.XML.Stream.Parse
                      Text.XML.Stream.Render
                      Text.XML.Unresolved
@@ -56,16 +55,16 @@ test-suite runtests
     type: exitcode-stdio-1.0
     main-is: main.hs
     hs-source-dirs: test
-    build-depends:          base                         >= 4               && < 5
-                          , containers                   >= 0.2             && < 0.5
-                          , text                                               < 1
-                          , transformers                 >= 0.2             && < 0.3
-                          , enumerator                   >= 0.4.14          && < 0.5
-                          , bytestring                   >= 0.9             && < 0.10
-                          , xml-enumerator               >= 0.4             && < 0.5
-                          , hspec                        >= 0.6.1           && < 0.10
-                          , HUnit                        >= 1.2             && < 1.3
-                          , xml-types                    >= 0.3             && < 0.4
+    build-depends:          base
+                          , containers
+                          , text
+                          , transformers
+                          , bytestring
+                          , xml-conduit
+                          , hspec
+                          , HUnit
+                          , xml-types
+                          , conduit
 
 source-repository head
   type:     git

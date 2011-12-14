@@ -21,6 +21,8 @@ import qualified Data.Set as Set
 import Control.Exception (toException)
 import Test.Hspec.HUnit ()
 
+import qualified Data.Conduit as C
+
 main :: IO ()
 main = hspecX $ do
     describe "XML parsing and rendering" $ do
@@ -102,7 +104,7 @@ documentParsePrettyRender =
         ]
 
 combinators :: Assertion
-combinators = P.parseLBS_ def input $ do
+combinators = C.runResourceT $ P.parseLBS def input C.<$$> do
     P.force "need hello" $ P.tagName "hello" (P.requireAttr "world") $ \world -> do
         liftIO $ world @?= "true"
         P.force "need child1" $ P.tagNoAttr "{mynamespace}child1" $ return ()
@@ -124,7 +126,7 @@ combinators = P.parseLBS_ def input $ do
         ]
 
 testChoose :: Assertion
-testChoose = P.parseLBS_ def input $ do
+testChoose = C.runResourceT $ P.parseLBS def input C.<$$> do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.tagNoAttr "failure" $ return 1
@@ -141,7 +143,7 @@ testChoose = P.parseLBS_ def input $ do
         ]
 
 testMany :: Assertion
-testMany = P.parseLBS_ def input $ do
+testMany = C.runResourceT $ P.parseLBS def input C.<$$> do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.many $ P.tagNoAttr "success" $ return ()
         liftIO $ length x @?= 5
@@ -159,7 +161,7 @@ testMany = P.parseLBS_ def input $ do
         ]
 
 testOrE :: IO ()
-testOrE = P.parseLBS_ def input $ do
+testOrE = C.runResourceT $ P.parseLBS def input C.<$$> do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.tagNoAttr "failure" (return 1) `P.orE`
              P.tagNoAttr "success" (return 2)

@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts #-}
 -- | DOM-based parsing and rendering.
 --
 -- This module requires that all entities be resolved at parsing. If you need
@@ -26,17 +27,14 @@ module Text.XML
       -- * Parsing
       -- ** Files
     , readFile
-    , readFile_
       -- ** Bytes
     , parseLBS
     , parseLBS_
-    , parseEnum
-    , parseEnum_
+    , sinkDoc
       -- ** Text
     , parseText
     , parseText_
-    , parseTextEnum
-    , parseTextEnum_
+    , sinkTextDoc
       -- ** Other
     , fromEvents
     , UnresolvedEntityException (..)
@@ -78,26 +76,23 @@ import qualified Text.XML.Unresolved as D
 import qualified Text.XML.Stream.Render as R
 import qualified Data.Text as T
 import Data.Either (partitionEithers)
-import Prelude hiding (readFile, writeFile)
+import Prelude hiding (readFile, writeFile, FilePath)
+import Filesystem.Path.CurrentOS (FilePath)
 import Control.Exception (SomeException, Exception)
-import Data.Enumerator.Binary (enumFile, iterHandle)
-import Control.Monad.IO.Class (MonadIO)
 import Text.XML.Stream.Parse (ParseSettings, def, psDecodeEntities)
-import Data.Enumerator
-    ( Enumerator, Iteratee, throwError, ($$), run, run_, joinI, enumList
-    , joinE
-    )
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as L
-import Data.Functor.Identity (runIdentity)
-import qualified System.IO as SIO
 import System.IO.Unsafe (unsafePerformIO)
-import Text.XML.Unresolved (lazyConsume)
 import qualified Data.Set as Set
 import Data.Set (Set)
 
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
+import qualified Data.Conduit as C
+import qualified Data.Conduit.List as CL
+import qualified Data.Conduit.Binary as CB
+import Data.Conduit.Lazy (lazyConsume)
+import Control.Exception (try, throw, throwIO)
 
 data Document = Document
     { documentPrologue :: Prologue
@@ -176,73 +171,64 @@ fromXMLNode (X.NodeContent (X.ContentEntity t)) = Left $ Set.singleton t
 fromXMLNode (X.NodeComment c) = Right $ NodeComment c
 fromXMLNode (X.NodeInstruction i) = Right $ NodeInstruction i
 
-readFile :: ParseSettings -> FilePath -> IO (Either SomeException Document)
-readFile ps fn = parseEnum ps $ enumFile fn
-
-readFile_ :: ParseSettings -> FilePath -> IO Document
-readFile_ ps fn = parseEnum_ ps $ enumFile fn
-
-lbsEnum :: Monad m => L.ByteString -> Enumerator ByteString m a
-lbsEnum = enumList 8 . L.toChunks
-
-textEnum :: Monad m => TL.Text -> Enumerator Text m a
-textEnum = enumList 8 . TL.toChunks
+readFile :: ParseSettings -> FilePath -> IO Document
+readFile ps fp = C.runResourceT $ CB.sourceFile fp C.<$$> sinkDoc ps
 
 parseLBS :: ParseSettings -> L.ByteString -> Either SomeException Document
-parseLBS ps = runIdentity . parseEnum ps . lbsEnum
+parseLBS ps lbs = unsafePerformIO
+                $ try
+                $ C.runResourceT
+                $ CL.fromList (L.toChunks lbs)
+           C.<$$> sinkDoc ps
 
 parseLBS_ :: ParseSettings -> L.ByteString -> Document
-parseLBS_ ps = runIdentity . parseEnum_ ps . lbsEnum
+parseLBS_ ps = either throw id . parseLBS ps
 
-parseEnum :: Monad m
-          => ParseSettings
-          -> Enumerator ByteString m Document
-          -> m (Either SomeException Document)
-parseEnum de enum = run $ enum $$ joinI $ P.parseBytes de $$ fromEvents
-
-parseEnum_ :: Monad m
-           => ParseSettings
-           -> Enumerator ByteString m Document
-           -> m Document
-parseEnum_ de enum = run_ $ enum $$ joinI $ P.parseBytes de $$ fromEvents
+sinkDoc :: C.MonadBaseControl IO m
+        => ParseSettings
+        -> C.SinkM ByteString m Document
+sinkDoc ps = P.parseBytes ps C.<=$> fromEvents
 
 parseText :: ParseSettings -> TL.Text -> Either SomeException Document
-parseText ps = runIdentity . parseTextEnum ps . textEnum
+parseText ps tl = unsafePerformIO
+                $ try
+                $ C.runResourceT
+                $ CL.fromList (TL.toChunks tl)
+           C.<$$> sinkTextDoc ps
 
 parseText_ :: ParseSettings -> TL.Text -> Document
-parseText_ ps = runIdentity . parseTextEnum_ ps . textEnum
+parseText_ ps = either throw id . parseText ps
 
-parseTextEnum :: Monad m
-              => ParseSettings
-              -> Enumerator Text m Document
-              -> m (Either SomeException Document)
-parseTextEnum de enum = run $ enum $$ joinI $ P.parseText de $$ fromEvents
+sinkTextDoc :: C.MonadBaseControl IO m
+            => ParseSettings
+            -> C.SinkM Text m Document
+sinkTextDoc ps = P.parseText ps C.<=$> fromEvents
 
-parseTextEnum_ :: Monad m
-               => ParseSettings
-               -> Enumerator Text m Document
-               -> m Document
-parseTextEnum_ de enum = run_ $ enum $$ joinI $ P.parseText de $$ fromEvents
-
-fromEvents :: Monad m => Iteratee X.Event m Document
+fromEvents :: C.MonadBaseControl IO m => C.SinkM X.Event m Document
 fromEvents = do
     d <- D.fromEvents
-    either (throwError . UnresolvedEntityException) return $ fromXMLDocument d
+    either (C.liftBase . throwIO . UnresolvedEntityException) return $ fromXMLDocument d
 
 data UnresolvedEntityException = UnresolvedEntityException (Set Text)
     deriving (Show, Typeable)
 instance Exception UnresolvedEntityException
 
-renderBytes :: MonadIO m => R.RenderSettings -> Document -> Enumerator ByteString m a
-renderBytes rs doc = enumList 8 (D.toEvents $ toXMLDocument doc) `joinE` R.renderBytes rs
+renderBytes :: C.MonadBaseControl IO m => R.RenderSettings -> Document -> C.SourceM m ByteString
+renderBytes rs doc = D.renderBytes rs $ toXMLDocument doc
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
-writeFile rs fn doc = SIO.withBinaryFile fn SIO.WriteMode $ \h ->
-    run_ $ renderBytes rs doc $$ iterHandle h
+writeFile rs fp doc =
+    C.runResourceT $ renderBytes rs doc C.<$$> CB.sinkFile fp
 
 renderLBS :: R.RenderSettings -> Document -> L.ByteString
 renderLBS rs doc =
-    L.fromChunks $ unsafePerformIO $ lazyConsume $ renderBytes rs doc
+    L.fromChunks $ unsafePerformIO
+                 -- not generally safe, but we know that runResourceT
+                 -- will not deallocate any of the resources being used
+                 -- by the process
+                 $ C.runResourceT
+                 $ lazyConsume
+                 $ renderBytes rs doc
 
 renderText :: R.RenderSettings -> Document -> TL.Text
 renderText rs = TLE.decodeUtf8 . renderLBS rs
