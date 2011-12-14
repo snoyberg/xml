@@ -215,7 +215,7 @@ prettify' level0 names0 = C.conduitMState
                 | not atEnd -> (state, es, front [])
             Just (ts, xs') ->
                 let ts' = map EventContent $ cleanWhite ts
-                    ts'' = if null ts' then [] else before level : es ++ [after]
+                    ts'' = if null ts' then [] else before level : ts' ++ [after]
                  in go atEnd state xs' (front . (ts'' ++))
     go atEnd (level, names) (x:xs) front = do
         go atEnd (level', names') xs' (front . chunks)

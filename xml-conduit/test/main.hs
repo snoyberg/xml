@@ -100,7 +100,6 @@ documentParsePrettyRender =
             else "    text     "
         , "    <?bin bin?>"
         , "</foo>"
-        , ""
         ]
 
 combinators :: Assertion
