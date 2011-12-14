@@ -19,10 +19,7 @@ import qualified Text.XML as X
 import Control.Monad (foldM)
 import Network.URI.Conduit
 import qualified Data.Text as T
-import Control.Exception (throwIO)
-import Data.Conduit.Lazy (lazyConsume)
 import qualified Data.Conduit as C
-import qualified Data.ByteString.Lazy as L
 
 -- | Either a public or system identifier.
 data PubSys = Public Text | System Text
@@ -34,9 +31,8 @@ type Catalog = Map.Map PubSys URI
 -- | Load a 'Catalog' from the given path.
 loadCatalog :: C.MonadBaseControl IO m => SchemeMap -> URI -> m Catalog
 loadCatalog sm uri = do
-    X.Document _ (X.Element _ _ ns) _ <- C.liftBase $ C.runResourceT $ do
-        lbs <- lazyConsume $ readURI sm uri
-        either (C.liftBase . throwIO) return $ X.parseLBS X.def $ L.fromChunks lbs
+    X.Document _ (X.Element _ _ ns) _ <- C.liftBase $ C.runResourceT $
+        readURI sm uri C.<$$> X.sinkDoc X.def
     foldM (addNode Nothing) Map.empty ns
   where
     addNode mbase0 c (X.NodeElement (X.Element name as ns)) = do
