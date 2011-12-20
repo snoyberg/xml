@@ -32,6 +32,7 @@ import Data.Typeable (Typeable)
 import Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Network.URI as NU
 import Control.Exception.Lifted (try)
+import Control.Monad.Trans.Resource (ResourceIO)
 
 toMaps :: [D.DTDComponent] -> (EntityMap, AttrMap)
 toMaps =
@@ -67,16 +68,16 @@ newDTDCacheFile fp = do
     c <- loadCatalog (toSchemeMap [fileScheme]) uri
     newDTDCache c (toSchemeMap [fileScheme])
 
-loadAttrMap :: (MonadBaseControl IO m, MonadIO m) => DTDCache -> X.ExternalID -> m (EntityMap, AttrMap)
+loadAttrMap :: (ResourceIO m, MonadBaseControl IO m, MonadIO m) => DTDCache -> X.ExternalID -> m (EntityMap, AttrMap)
 loadAttrMap (DTDCache icache catalog sm) ext = do
     res <- liftIO $ fmap (Map.lookup pubsys) $ I.readIORef icache
     case res of
         Just dtd -> return dtd
         Nothing ->
             case Map.lookup pubsys catalog of
-                Nothing -> liftIO $ throwIO $ UnknownExternalID ext
+                Nothing -> C.resourceThrow $ UnknownExternalID ext
                 Just uri -> do
-                    ecomps <- try $ C.runResourceT $ readEID catalog (uriToEID uri) sm C.<$$> CL.consume
+                    ecomps <- try $ C.runResourceT $ readEID catalog (uriToEID uri) sm C.$$ CL.consume
                     comps <- either (liftIO . throwIO . CannotLoadDTD (toNetworkURI uri)) return ecomps
                     let maps = toMaps comps
                     liftIO $ I.atomicModifyIORef icache $ \m ->
@@ -97,11 +98,11 @@ data UnresolvedEntity = UnresolvedEntity Text
     deriving (Show, Typeable)
 instance Exception UnresolvedEntity
 
-applyDTD_ :: (MonadBaseControl IO m, MonadIO m)
+applyDTD_ :: (MonadBaseControl IO m, MonadIO m, ResourceIO m)
           => DTDCache -> XU.Document -> m X.Document
 applyDTD_ dc doc = applyDTD dc doc >>= either (liftIO . throwIO) return
 
-applyDTD :: (MonadBaseControl IO m, MonadIO m)
+applyDTD :: (MonadBaseControl IO m, MonadIO m, ResourceIO m)
          => DTDCache -> XU.Document -> m (Either UnresolvedEntity X.Document)
 applyDTD dc doc@(XU.Document pro@(X.Prologue _ mdoctype _) root epi) =
     case mdoctype of
