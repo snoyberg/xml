@@ -38,6 +38,8 @@ import Control.Failure (Failure (..))
 import Control.Exception (Exception, throwIO)
 import Data.Typeable (Typeable)
 import Control.Monad.Trans.Control (MonadBaseControl)
+import Control.Monad.Trans.Resource (ResourceIO)
+import Control.Monad.Trans.Class (lift)
 
 data URI = URI
     { uriScheme :: Text
@@ -69,8 +71,8 @@ hasExtension URI { uriPath = p } t = (cons '.' t) `isSuffixOf` p
 
 data Scheme = Scheme
     { schemeNames :: Set.Set Text
-    , schemeReader :: forall m. MonadBaseControl IO m => Maybe (URI -> C.SourceM m ByteString)
-    , schemeWriter :: forall m. MonadBaseControl IO m => Maybe (URI -> C.SinkM ByteString m ())
+    , schemeReader :: forall m. ResourceIO m => Maybe (URI -> C.SourceM m ByteString)
+    , schemeWriter :: forall m. ResourceIO m => Maybe (URI -> C.SinkM ByteString m ())
     }
 
 type SchemeMap = Map.Map Text Scheme
@@ -91,22 +93,22 @@ data URIException = UnknownReadScheme URI
   deriving (Show, Typeable)
 instance Exception URIException
 
-readURI :: MonadBaseControl IO m
+readURI :: ResourceIO m
         => SchemeMap
         -> URI
         -> C.SourceM m ByteString
 readURI sm uri = C.SourceM $ do
     case Map.lookup (uriScheme uri) sm >>= schemeReader of
-        Nothing -> C.liftBase $ throwIO $ UnknownReadScheme uri
+        Nothing -> lift $ C.resourceThrow $ UnknownReadScheme uri
         Just f -> C.genSource $ f uri
 
-writeURI :: MonadBaseControl IO m
+writeURI :: ResourceIO m
          => SchemeMap
          -> URI
          -> C.SinkM ByteString m ()
 writeURI sm uri =
     case Map.lookup (uriScheme uri) sm >>= schemeWriter of
-        Nothing -> C.liftBase $ throwIO $ UnknownWriteScheme uri
+        Nothing -> lift $ C.resourceThrow $ UnknownWriteScheme uri
         Just f -> f uri
 
 toNetworkURI :: URI -> N.URI
@@ -145,9 +147,9 @@ relativeTo a b = fmap fromNetworkURI $ toNetworkURI a `N.relativeTo` toNetworkUR
 nullURI :: URI
 nullURI = fromNetworkURI N.nullURI
 
-copyURI :: MonadBaseControl IO m
+copyURI :: ResourceIO m
         => SchemeMap
         -> URI
         -> URI
         -> m ()
-copyURI sm src dst = C.runResourceT $ readURI sm src C.<$$> writeURI sm dst
+copyURI sm src dst = C.runResourceT $ readURI sm src C.$$ writeURI sm dst

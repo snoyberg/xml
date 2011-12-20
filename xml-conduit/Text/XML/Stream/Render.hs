@@ -29,22 +29,23 @@ import qualified Data.Set as Set
 import Data.List (foldl')
 import qualified Data.Conduit as C
 import qualified Data.Conduit.Text as CT
-import Data.Monoid (mconcat)
 import Control.Exception (assert)
+import Control.Monad.Trans.Resource (ResourceUnsafeIO)
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder' and 'builderToByteString', so it produces
 -- optimally sized 'ByteString's with minimal buffer copying.
 --
 -- The output is UTF8 encoded.
-renderBytes :: C.MonadBaseControl IO m => RenderSettings -> C.ConduitM Event m ByteString
-renderBytes rs = renderBuilder rs C.<=$=> builderToByteString
+renderBytes :: ResourceUnsafeIO m => RenderSettings -> C.ConduitM Event m ByteString
+renderBytes rs = renderBuilder rs C.=$= builderToByteString
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder', 'builderToByteString' and 'renderBytes', so it
 -- produces optimally sized 'ByteString's with minimal buffer copying.
-renderText :: C.MonadBaseControl IO m => RenderSettings -> C.ConduitM Event m Text
-renderText rs = renderBytes rs C.<=$=> CT.decode CT.utf8
+renderText :: (C.ResourceThrow m, ResourceUnsafeIO m)
+           => RenderSettings -> C.ConduitM Event m Text
+renderText rs = renderBytes rs C.=$= CT.decode CT.utf8
 
 data RenderSettings = RenderSettings
     { rsPretty :: Bool
@@ -58,20 +59,21 @@ instance Default RenderSettings where
 -- | Render a stream of 'Event's into a stream of 'Builder's. Builders are from
 -- the blaze-builder package, and allow the create of optimally sized
 -- 'ByteString's with minimal buffer copying.
-renderBuilder :: C.MonadBaseControl IO m => RenderSettings -> C.ConduitM Event m Builder
-renderBuilder RenderSettings { rsPretty = True } = prettify C.<=$=> renderBuilder'
+renderBuilder :: C.Resource m => RenderSettings -> C.ConduitM Event m Builder
+renderBuilder RenderSettings { rsPretty = True } = prettify C.=$= renderBuilder'
 renderBuilder RenderSettings { rsPretty = False } = renderBuilder'
 
-renderBuilder' :: C.MonadBaseControl IO m => C.ConduitM Event m Builder
+renderBuilder' :: C.Resource m => C.ConduitM Event m Builder
 renderBuilder' = C.conduitMState
-    []
+    (id, [])
     push
     close
   where
     go' front = map tokenToBuilder $ front []
-    go stack _ [] front = (stack, [], go' front)
+    go stack _ [] front = (stack, id, go' front)
     -- we want to wait and see if the next event is the matching end
-    go stack False [e@EventBeginElement{}] front = (stack, [e], go' front)
+    go stack False [e@EventBeginElement{}] front =
+        (stack, (e:), go' front)
     go stack atEnd
         ( EventBeginElement n1 as
         : EventEndElement n2
@@ -86,15 +88,15 @@ renderBuilder' = C.conduitMState
         let (token, stack') = eventToToken stack e
          in go stack' atEnd rest (front . token)
 
-    push stack es =
-        return (stack', C.ConduitResult C.StreamOpen leftover ts)
+    push (front, stack) es =
+        return ((leftover, stack'), C.ConduitResult C.Processing ts)
       where
-        (stack', leftover, ts) = go stack False es id
+        (stack', leftover, ts) = go stack False (front es) id
 
-    close stack es =
-        return $ C.ConduitCloseResult leftover ts
+    close (front, stack) es =
+        return $ C.ConduitResult (leftover []) ts
       where
-        (_, leftover, ts) = go stack True es id
+        (_, leftover, ts) = go stack True (front es) id
 
 eventToToken :: Stack -> Event -> ([Token] -> [Token], [NSLevel])
 eventToToken s EventBeginDocument =
@@ -192,27 +194,29 @@ getPrefix ppref nsmap ns =
 
 -- | Convert a stream of 'Event's into a prettified one, adding extra
 -- whitespace. Note that this can change the meaning of your XML.
-prettify :: C.MonadBaseControl IO m => C.ConduitM Event m Event
+prettify :: C.Resource m => C.ConduitM Event m Event
 prettify = prettify' 0 []
 
-prettify' :: C.MonadBaseControl IO m => Int -> [Name] -> C.ConduitM Event m Event
+prettify' :: C.Resource m => Int -> [Name] -> C.ConduitM Event m Event
 prettify' level0 names0 = C.conduitMState
-    (level0, names0)
+    (id, (level0, names0))
     push
     close
   where
-    push a b = do
-        let (a', leftover, es) = go False a b id
-        return (a', C.ConduitResult C.StreamOpen leftover es)
-    close a b = do
-        let (a', leftover, es) = go True a b id
-        assert (null leftover) $ return $ C.ConduitCloseResult leftover es
+    push (front, a) b = do
+        let (a', es) = go False a (front b) id
+        return (a', C.ConduitResult C.Processing es)
+    close (front, a) b = do
+        let ((front', _), es) = go True a (front b) id
+        assert (null $ front' [])
+            $ return $ C.ConduitResult [] es
 
-    go _ state [] front = (state, [], front [])
+    go _ state [] front = ((id, state), front [])
     go atEnd state@(level, _) es@(EventContent t:xs) front =
         case takeContents (t:) xs of
             Nothing
-                | not atEnd -> (state, es, front [])
+                | not atEnd -> (((es++), state), front [])
+                | otherwise -> assert False $ error "Text.XML.Stream.Redner.prettify'"
             Just (ts, xs') ->
                 let ts' = map EventContent $ cleanWhite ts
                     ts'' = if null ts' then [] else before level : ts' ++ [after]

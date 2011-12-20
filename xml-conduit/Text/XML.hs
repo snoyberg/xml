@@ -82,7 +82,7 @@ import Control.Exception (SomeException, Exception)
 import Text.XML.Stream.Parse (ParseSettings, def, psDecodeEntities)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as L
-import System.IO.Unsafe (unsafePerformIO)
+import Control.Monad.ST (runST)
 import qualified Data.Set as Set
 import Data.Set (Set)
 
@@ -92,7 +92,10 @@ import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
 import Data.Conduit.Lazy (lazyConsume)
-import Control.Exception (try, throw, throwIO)
+import System.IO.Unsafe (unsafePerformIO)
+import Control.Exception (throw)
+import Control.Monad.Trans.Resource (ResourceUnsafeIO, runExceptionT)
+import Control.Monad.Trans.Class (lift)
 
 data Document = Document
     { documentPrologue :: Prologue
@@ -172,53 +175,53 @@ fromXMLNode (X.NodeComment c) = Right $ NodeComment c
 fromXMLNode (X.NodeInstruction i) = Right $ NodeInstruction i
 
 readFile :: ParseSettings -> FilePath -> IO Document
-readFile ps fp = C.runResourceT $ CB.sourceFile fp C.<$$> sinkDoc ps
+readFile ps fp = C.runResourceT $ CB.sourceFile fp C.$$ sinkDoc ps
 
 parseLBS :: ParseSettings -> L.ByteString -> Either SomeException Document
-parseLBS ps lbs = unsafePerformIO
-                $ try
+parseLBS ps lbs = runST
+                $ runExceptionT
                 $ C.runResourceT
                 $ CL.fromList (L.toChunks lbs)
-           C.<$$> sinkDoc ps
+           C.$$ sinkDoc ps
 
 parseLBS_ :: ParseSettings -> L.ByteString -> Document
 parseLBS_ ps = either throw id . parseLBS ps
 
-sinkDoc :: C.MonadBaseControl IO m
+sinkDoc :: C.ResourceThrow m
         => ParseSettings
         -> C.SinkM ByteString m Document
-sinkDoc ps = P.parseBytes ps C.<=$> fromEvents
+sinkDoc ps = P.parseBytes ps C.=$ fromEvents
 
 parseText :: ParseSettings -> TL.Text -> Either SomeException Document
-parseText ps tl = unsafePerformIO
-                $ try
+parseText ps tl = runST
+                $ runExceptionT
                 $ C.runResourceT
                 $ CL.fromList (TL.toChunks tl)
-           C.<$$> sinkTextDoc ps
+           C.$$ sinkTextDoc ps
 
 parseText_ :: ParseSettings -> TL.Text -> Document
 parseText_ ps = either throw id . parseText ps
 
-sinkTextDoc :: C.MonadBaseControl IO m
+sinkTextDoc :: C.ResourceThrow m
             => ParseSettings
             -> C.SinkM Text m Document
-sinkTextDoc ps = P.parseText ps C.<=$> fromEvents
+sinkTextDoc ps = P.parseText ps C.=$ fromEvents
 
-fromEvents :: C.MonadBaseControl IO m => C.SinkM X.Event m Document
+fromEvents :: C.ResourceThrow m => C.SinkM X.Event m Document
 fromEvents = do
     d <- D.fromEvents
-    either (C.liftBase . throwIO . UnresolvedEntityException) return $ fromXMLDocument d
+    either (lift . C.resourceThrow . UnresolvedEntityException) return $ fromXMLDocument d
 
 data UnresolvedEntityException = UnresolvedEntityException (Set Text)
     deriving (Show, Typeable)
 instance Exception UnresolvedEntityException
 
-renderBytes :: C.MonadBaseControl IO m => R.RenderSettings -> Document -> C.SourceM m ByteString
+renderBytes :: ResourceUnsafeIO m => R.RenderSettings -> Document -> C.SourceM m ByteString
 renderBytes rs doc = D.renderBytes rs $ toXMLDocument doc
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
 writeFile rs fp doc =
-    C.runResourceT $ renderBytes rs doc C.<$$> CB.sinkFile fp
+    C.runResourceT $ renderBytes rs doc C.$$ CB.sinkFile fp
 
 renderLBS :: R.RenderSettings -> Document -> L.ByteString
 renderLBS rs doc =

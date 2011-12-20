@@ -99,21 +99,20 @@ import Prelude hiding (takeWhile, FilePath)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Map as Map
-import Control.Monad (when)
 import qualified Data.Conduit as C
 import qualified Data.Conduit.Text as CT
 import qualified Data.Conduit.List as CL
-import Control.Monad (unless, ap, liftM)
+import Control.Monad (ap, liftM)
 import qualified Data.Text as TS
 import Data.List (foldl')
 import Data.Typeable (Typeable)
-import Control.Exception (Exception, throwIO, SomeException)
+import Control.Exception (Exception)
 import Data.Conduit.Binary (sourceFile)
-import Control.Monad.IO.Class (liftIO)
 import Data.Char (isSpace)
 import Data.Default (Default (..))
-import Data.Conduit.Attoparsec (sinkParser)
 import Data.Maybe (catMaybes)
+import Control.Monad.Trans.Resource (ResourceIO, resourceThrow)
+import Control.Monad.Trans.Class (lift)
 
 tokenToEvent :: [NSLevel] -> Token -> ([NSLevel], [Event])
 tokenToEvent n (TokenBeginDocument _) = (n, [])
@@ -166,7 +165,7 @@ tnameToName _ (NSLevel _ m) (TName (Just pref) name) =
 -- first checks for BOMs, removing them as necessary, and then check for the
 -- equivalent of <?xml for each of UTF-8, UTF-16LE/BE, and UTF-32LE/BE. It
 -- defaults to assuming UTF-8.
-detectUtf :: C.MonadBaseControl IO m => C.ConduitM S.ByteString m TS.Text
+detectUtf :: C.ResourceThrow m => C.ConduitM S.ByteString m TS.Text
 detectUtf = C.conduitMState
     (Left id)
     push
@@ -175,7 +174,7 @@ detectUtf = C.conduitMState
     push (Left front) bss = do
         e <- getEncoding front bss
         case e of
-            Left x -> return (Left x, C.ConduitResult C.StreamOpen [] [])
+            Left x -> return (Left x, C.ConduitResult C.Processing [])
             Right (bss', decode) -> push (Right decode) bss'
     push (Right decode) bss = do
         t <- C.conduitPush decode bss
@@ -184,7 +183,7 @@ detectUtf = C.conduitMState
     close (Left front) bss = do
         e <- getEncoding front bss
         case e of
-            Left x -> return $ C.ConduitCloseResult (x []) []
+            Left x -> return $ C.ConduitResult (x []) []
             Right (bss', decode) -> close (Right decode) bss'
     close (Right decode) bss = C.conduitClose decode bss
 
@@ -219,10 +218,11 @@ detectUtf = C.conduitMState
 --
 -- This relies on 'detectUtf' to determine character encoding, and 'parseText'
 -- to do the actual parsing.
-parseBytes :: C.MonadBaseControl IO m => ParseSettings -> C.ConduitM S.ByteString m Event
-parseBytes ps = detectUtf C.<=$=> parseText ps
+parseBytes :: C.ResourceThrow m
+           => ParseSettings -> C.ConduitM S.ByteString m Event
+parseBytes ps = detectUtf C.=$= parseText ps
 
-dropBOM :: C.MonadBaseControl IO m => C.ConduitM TS.Text m TS.Text
+dropBOM :: C.Resource m => C.ConduitM TS.Text m TS.Text
 dropBOM = C.conduitMState
     False
     push
@@ -230,10 +230,10 @@ dropBOM = C.conduitMState
   where
     push a b = do
         let (a', b') = go a b
-        return (a', C.ConduitResult C.StreamOpen [] b')
+        return (a', C.ConduitResult C.Processing b')
     close a b = do
         let (_, b') = go a b
-        return $ C.ConduitCloseResult [] b'
+        return $ C.ConduitResult [] b'
     go True b = (True, b)
     go False b =
         case TL.uncons tl of
@@ -248,14 +248,13 @@ dropBOM = C.conduitMState
 -- messages do not give line/column information, so you may prefer to stick
 -- with the parser provided by libxml-enumerator. However, this has the
 -- advantage of not relying on any C libraries.
-parseText :: C.MonadBaseControl IO m
+parseText :: C.ResourceThrow m
           => ParseSettings
           -> C.ConduitM TS.Text m Event
 parseText de =
-    dropBOM C.<=$=> C.sequence (sinkToken de)
-            C.<=$=> CL.mapM (\x -> C.liftBase (print x) >> return x) -- FIXME remove
-            C.<=$=> toEventC
-            C.<=$=> addBeginEnd
+    dropBOM C.=$= C.sequence (sinkToken de)
+            C.=$= toEventC
+            C.=$= addBeginEnd
   where
     addBeginEnd = C.conduitMState
         False
@@ -265,10 +264,10 @@ parseText de =
         go False es = EventBeginDocument : es
         go True es = es
 
-        push x es = return (True, C.ConduitResult C.StreamOpen [] $ go x es)
-        close x es = return $ C.ConduitCloseResult [] $ go x es ++ [EventEndDocument]
+        push x es = return (True, C.ConduitResult C.Processing $ go x es)
+        close x es = return $ C.ConduitResult [] $ go x es ++ [EventEndDocument]
 
-toEventC :: C.MonadBaseControl IO m => C.ConduitM (Maybe Token) m Event
+toEventC :: C.Resource m => C.ConduitM (Maybe Token) m Event
 toEventC = C.conduitMState
     []
     push
@@ -280,12 +279,12 @@ toEventC = C.conduitMState
          in go levels' ts (front . (events ++))
 
     push levels tokens =
-        return (levels', C.ConduitResult C.StreamOpen [] events)
+        return (levels', C.ConduitResult C.Processing events)
       where
         (levels', events) = go levels (catMaybes tokens) id
 
     close levels tokens =
-        return $ C.ConduitCloseResult [] events
+        return $ C.ConduitResult [] events
       where
         (_, events) = go levels (catMaybes tokens) id
 
@@ -298,7 +297,7 @@ instance Default ParseSettings where
         { psDecodeEntities = decodeEntities
         }
 
-sinkToken :: C.MonadBaseControl IO m => ParseSettings -> C.SinkM TS.Text m (Maybe Token)
+sinkToken :: C.ResourceThrow m => ParseSettings -> C.SinkM TS.Text m (Maybe Token)
 sinkToken de = sinkParser ((endOfInput >> return Nothing) <|> fmap Just (parseToken $ psDecodeEntities de))
 
 parseToken :: DecodeEntities -> Parser Token
@@ -458,13 +457,13 @@ data ContentType =
 -- | Grabs the next piece of content if available. This function skips over any
 -- comments and instructions and concatenates all content until the next start
 -- or end tag.
-contentMaybe :: C.MonadBaseControl IO m => C.SinkM Event m (Maybe Text)
+contentMaybe :: C.ResourceThrow m => C.SinkM Event m (Maybe Text)
 contentMaybe = do
     x <- CL.peek
     case pc' x of
         Ignore -> CL.drop 1 >> contentMaybe
         IsContent t -> CL.drop 1 >> fmap Just (takeContents (t:))
-        IsError e -> C.liftBase $ throwIO $ XmlException e x
+        IsError e -> lift $ C.resourceThrow $ XmlException e x
         NotContent -> return Nothing
   where
     pc' Nothing = NotContent
@@ -485,12 +484,12 @@ contentMaybe = do
         case pc' x of
             Ignore -> CL.drop 1 >> takeContents front
             IsContent t -> CL.drop 1 >> takeContents (front . (:) t)
-            IsError e -> C.liftBase $ throwIO $ XmlException e x
+            IsError e -> lift $ C.resourceThrow $ XmlException e x
             NotContent -> return $ T.concat $ front []
 
 -- | Grabs the next piece of content. If none if available, returns 'T.empty'.
 -- This is simply a wrapper around 'contentMaybe'.
-content :: C.MonadBaseControl IO m => C.SinkM Event m Text
+content :: C.ResourceThrow m => C.SinkM Event m Text
 content = do
     x <- contentMaybe
     case x of
@@ -506,7 +505,7 @@ content = do
 -- consumed. If you want to allow extra attributes, see 'ignoreAttrs'.
 --
 -- This function automatically ignores comments, instructions and whitespace.
-tag :: C.MonadBaseControl IO m
+tag :: C.ResourceThrow m
     => (Name -> Maybe a)
     -> (a -> AttrParser b)
     -> (b -> C.SinkM Event m c)
@@ -518,7 +517,7 @@ tag checkName attrParser f = do
             case checkName name of
                 Just y ->
                     case runAttrParser' (attrParser y) as of
-                        Left e -> C.liftBase $ throwIO e
+                        Left e -> lift $ C.resourceThrow e
                         Right z -> do
                             CL.drop 1
                             z' <- f z
@@ -526,7 +525,7 @@ tag checkName attrParser f = do
                             case a of
                                 Just (EventEndElement name')
                                     | name == name' -> CL.drop 1 >> return (Just z')
-                                _ -> C.liftBase $ throwIO $ XmlException ("Expected end tag for: " ++ show name) a
+                                _ -> lift $ C.resourceThrow $ XmlException ("Expected end tag for: " ++ show name) a
                 Nothing -> return Nothing
         _ -> return Nothing
   where
@@ -556,7 +555,7 @@ tag checkName attrParser f = do
             Right (attr, _) -> Left $ UnparsedAttributes attr
 
 -- | A simplified version of 'tag' which matches against boolean predicates.
-tagPredicate :: C.MonadBaseControl IO m
+tagPredicate :: C.ResourceThrow m
              => (Name -> Bool)
              -> AttrParser a
              -> (a -> C.SinkM Event m b)
@@ -567,7 +566,7 @@ tagPredicate p attrParser = tag (\x -> if p x then Just () else Nothing) (const 
 -- of taking a predicate function. This is often sufficient, and when combined
 -- with OverloadedStrings and the IsString instance of 'Name', can prove to be
 -- very concise.
-tagName :: C.MonadBaseControl IO m
+tagName :: C.ResourceThrow m
      => Name
      -> AttrParser a
      -> (a -> C.SinkM Event m b)
@@ -575,14 +574,14 @@ tagName :: C.MonadBaseControl IO m
 tagName name = tagPredicate (== name)
 
 -- | A further simplified tag parser, which requires that no attributes exist.
-tagNoAttr :: C.MonadBaseControl IO m => Name -> C.SinkM Event m a -> C.SinkM Event m (Maybe a)
+tagNoAttr :: C.ResourceThrow m => Name -> C.SinkM Event m a -> C.SinkM Event m (Maybe a)
 tagNoAttr name f = tagName name (return ()) $ const f
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
 --
 -- > orE a b = choose [a, b]
-orE :: C.MonadBaseControl IO m => C.SinkM Event m (Maybe a) -> C.SinkM Event m (Maybe a) -> C.SinkM Event m (Maybe a)
+orE :: C.Resource m => C.SinkM Event m (Maybe a) -> C.SinkM Event m (Maybe a) -> C.SinkM Event m (Maybe a)
 orE a b = do
   x <- a
   case x of
@@ -591,7 +590,7 @@ orE a b = do
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
-choose :: C.MonadBaseControl IO m
+choose :: C.Resource m
        => [C.SinkM Event m (Maybe a)]
        -> C.SinkM Event m (Maybe a)
 choose [] = return Nothing
@@ -604,31 +603,31 @@ choose (i:is) = do
 -- | Force an optional parser into a required parser. All of the 'tag'
 -- functions, 'choose' and 'many' deal with 'Maybe' parsers. Use this when you
 -- want to finally force something to happen.
-force :: C.MonadBaseControl IO m
+force :: C.ResourceThrow m
       => String -- ^ Error message
       -> C.SinkM Event m (Maybe a)
       -> C.SinkM Event m a
 force msg i = do
     x <- i
     case x of
-        Nothing -> C.liftBase $ throwIO $ XmlException msg Nothing
+        Nothing -> lift $ resourceThrow $ XmlException msg Nothing
         Just a -> return a
 
 -- | A helper function which reads a file from disk using 'enumFile', detects
 -- character encoding using 'detectUtf', parses the XML using 'parseBytes', and
 -- then hands off control to your supplied parser.
-parseFile :: C.MonadBaseControl IO m
+parseFile :: (ResourceIO m, C.ResourceThrow m)
           => ParseSettings
           -> FilePath
           -> C.SourceM m Event
-parseFile ps fp = sourceFile fp C.<$=> parseBytes ps
+parseFile ps fp = sourceFile fp C.$= parseBytes ps
 
 -- | Parse an event stream from a lazy 'L.ByteString'.
-parseLBS :: C.MonadBaseControl IO m
+parseLBS :: C.ResourceThrow m
          => ParseSettings
          -> L.ByteString
          -> C.SourceM m Event
-parseLBS ps lbs = CL.fromList (L.toChunks lbs) C.<$=> parseBytes ps
+parseLBS ps lbs = CL.fromList (L.toChunks lbs) C.$= parseBytes ps
 
 data XmlException = XmlException
     { xmlErrorMessage :: String
@@ -710,7 +709,7 @@ ignoreAttrs :: AttrParser ()
 ignoreAttrs = AttrParser $ \_ -> Right ([], ())
 
 -- | Keep parsing elements as long as the parser returns 'Just'.
-many :: C.MonadBaseControl IO m => C.SinkM Event m (Maybe a) -> C.SinkM Event m [a]
+many :: C.Resource m => C.SinkM Event m (Maybe a) -> C.SinkM Event m [a]
 many i =
     go id
   where

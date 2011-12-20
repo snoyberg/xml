@@ -103,7 +103,7 @@ documentParsePrettyRender =
         ]
 
 combinators :: Assertion
-combinators = C.runResourceT $ P.parseLBS def input C.<$$> do
+combinators = C.runResourceT $ P.parseLBS def input C.$$ do
     P.force "need hello" $ P.tagName "hello" (P.requireAttr "world") $ \world -> do
         liftIO $ world @?= "true"
         P.force "need child1" $ P.tagNoAttr "{mynamespace}child1" $ return ()
@@ -125,7 +125,7 @@ combinators = C.runResourceT $ P.parseLBS def input C.<$$> do
         ]
 
 testChoose :: Assertion
-testChoose = C.runResourceT $ P.parseLBS def input C.<$$> do
+testChoose = C.runResourceT $ P.parseLBS def input C.$$ do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.tagNoAttr "failure" $ return 1
@@ -142,7 +142,7 @@ testChoose = C.runResourceT $ P.parseLBS def input C.<$$> do
         ]
 
 testMany :: Assertion
-testMany = C.runResourceT $ P.parseLBS def input C.<$$> do
+testMany = C.runResourceT $ P.parseLBS def input C.$$ do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.many $ P.tagNoAttr "success" $ return ()
         liftIO $ length x @?= 5
@@ -160,7 +160,7 @@ testMany = C.runResourceT $ P.parseLBS def input C.<$$> do
         ]
 
 testOrE :: IO ()
-testOrE = C.runResourceT $ P.parseLBS def input C.<$$> do
+testOrE = C.runResourceT $ P.parseLBS def input C.$$ do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.tagNoAttr "failure" (return 1) `P.orE`
              P.tagNoAttr "success" (return 2)

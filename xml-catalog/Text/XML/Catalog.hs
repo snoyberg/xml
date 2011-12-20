@@ -32,7 +32,7 @@ type Catalog = Map.Map PubSys URI
 loadCatalog :: C.MonadBaseControl IO m => SchemeMap -> URI -> m Catalog
 loadCatalog sm uri = do
     X.Document _ (X.Element _ _ ns) _ <- C.liftBase $ C.runResourceT $
-        readURI sm uri C.<$$> X.sinkDoc X.def
+        readURI sm uri C.$$ X.sinkDoc X.def
     foldM (addNode Nothing) Map.empty ns
   where
     addNode mbase0 c (X.NodeElement (X.Element name as ns)) = do
