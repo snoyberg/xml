@@ -15,8 +15,7 @@ import qualified Data.Set as Set
 import qualified Data.Conduit as C
 import qualified Data.Conduit.Binary as CB
 import qualified Filesystem as F
-import Control.Monad.Trans.Resource (safeFromIO)
-import Control.Monad.Trans.Class (lift)
+import Control.Monad.IO.Class (liftIO)
 
 -- | Converts a string, such as a command-line argument, into a URI. First
 -- tries to parse as an absolute URI. If this fails, it interprets as a
@@ -39,7 +38,7 @@ fileScheme = Scheme
     , schemeReader = Just $ CB.sourceFile . toFilePath
     , schemeWriter = Just $ \uri -> C.SinkM $ do
         let fp = toFilePath uri
-        lift $ safeFromIO $ F.createTree $ FP.directory fp
+        liftIO $ F.createTree $ FP.directory fp
         C.genSink $ CB.sinkFile fp
     }
 

@@ -35,9 +35,8 @@ import Data.ByteString (ByteString)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Control.Failure (Failure (..))
-import Control.Exception (Exception, throwIO)
+import Control.Exception (Exception)
 import Data.Typeable (Typeable)
-import Control.Monad.Trans.Control (MonadBaseControl)
 import Control.Monad.Trans.Resource (ResourceIO)
 import Control.Monad.Trans.Class (lift)
 
