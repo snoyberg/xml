@@ -33,7 +33,8 @@ import qualified Data.IORef as I
 import Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Data.Attoparsec.Text as A
 import Control.Monad (liftM)
-import Control.Monad.Trans.Resource (ResourceIO (safeFromIO))
+import Control.Monad.Trans.Resource (ResourceIO)
+import Control.Monad.IO.Class (liftIO)
 
 type ResolveMonad m = ReaderT ResolveReader m
 
@@ -82,7 +83,7 @@ enumFile fp = C.SourceM $ do
     C.genSource $ readEID Map.empty eid $ toSchemeMap [fileScheme]
 
 filePathToEID :: ResourceIO m => FilePath -> m ExternalID
-filePathToEID = liftM uriToEID . safeFromIO . decodeString
+filePathToEID = liftM uriToEID . liftIO . decodeString
 
 uriToEID :: URI -> ExternalID
 uriToEID = SystemID . T.pack . show . toNetworkURI
@@ -126,12 +127,12 @@ data ResolveReader = ResolveReader
 get :: ResourceIO m => ReaderT ResolveReader m ResolveState
 get = do
     rr <- ask
-    safeFromIO $ I.readIORef $ rrState rr
+    liftIO $ I.readIORef $ rrState rr
 
 put :: ResourceIO m => ResolveState -> ReaderT ResolveReader m ()
 put rs = do
     rr <- ask
-    safeFromIO $ I.writeIORef (rrState rr) rs
+    liftIO $ I.writeIORef (rrState rr) rs
 
 modify :: ResourceIO m => (ResolveState -> ResolveState) -> ReaderT ResolveReader m ()
 modify f = get >>= put . f
