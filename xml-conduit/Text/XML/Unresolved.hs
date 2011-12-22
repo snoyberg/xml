@@ -63,7 +63,7 @@ readFile :: P.ParseSettings -> FilePath -> IO Document
 readFile ps fp = C.runResourceT $ P.parseFile ps fp C.$$ fromEvents
 
 sinkDoc :: C.ResourceThrow m
-        => P.ParseSettings -> C.SinkM ByteString m Document
+        => P.ParseSettings -> C.Sink ByteString m Document
 sinkDoc ps = P.parseBytes ps C.=$ fromEvents
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
@@ -84,7 +84,7 @@ parseLBS :: P.ParseSettings -> L.ByteString -> Either SomeException Document
 parseLBS ps lbs =
     runST $ runExceptionT
           $ C.runResourceT
-          $ CL.fromList (L.toChunks lbs) C.$$ sinkDoc ps
+          $ CL.sourceList (L.toChunks lbs) C.$$ sinkDoc ps
 
 parseLBS_ :: P.ParseSettings -> L.ByteString -> Document
 parseLBS_ ps lbs = either throw id $ parseLBS ps lbs
@@ -93,16 +93,16 @@ data InvalidEventStream = InvalidEventStream String
     deriving (Show, Typeable)
 instance Exception InvalidEventStream
 
-renderBuilder :: C.Resource m => R.RenderSettings -> Document -> C.SourceM m Builder
-renderBuilder rs doc = CL.fromList (toEvents doc) C.$= R.renderBuilder rs
+renderBuilder :: C.Resource m => R.RenderSettings -> Document -> C.Source m Builder
+renderBuilder rs doc = CL.sourceList (toEvents doc) C.$= R.renderBuilder rs
 
-renderBytes :: ResourceUnsafeIO m => R.RenderSettings -> Document -> C.SourceM m ByteString
-renderBytes rs doc = CL.fromList (toEvents doc) C.$= R.renderBytes rs
+renderBytes :: ResourceUnsafeIO m => R.RenderSettings -> Document -> C.Source m ByteString
+renderBytes rs doc = CL.sourceList (toEvents doc) C.$= R.renderBytes rs
 
-renderText :: (C.ResourceThrow m, ResourceUnsafeIO m) => R.RenderSettings -> Document -> C.SourceM m Text
-renderText rs doc = CL.fromList (toEvents doc) C.$= R.renderText rs
+renderText :: (C.ResourceThrow m, ResourceUnsafeIO m) => R.RenderSettings -> Document -> C.Source m Text
+renderText rs doc = CL.sourceList (toEvents doc) C.$= R.renderText rs
 
-fromEvents :: C.ResourceThrow m => C.SinkM Event m Document
+fromEvents :: C.ResourceThrow m => C.Sink Event m Document
 fromEvents = do
     skip EventBeginDocument
     d <- Document <$> goP <*> require goE <*> goM

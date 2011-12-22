@@ -36,10 +36,10 @@ fileScheme :: Scheme
 fileScheme = Scheme
     { schemeNames = Set.singleton "file:"
     , schemeReader = Just $ CB.sourceFile . toFilePath
-    , schemeWriter = Just $ \uri -> C.SinkM $ do
+    , schemeWriter = Just $ \uri -> C.Sink $ do
         let fp = toFilePath uri
         liftIO $ F.createTree $ FP.directory fp
-        C.genSink $ CB.sinkFile fp
+        C.prepareSink $ CB.sinkFile fp
     }
 
 toFilePath :: URI -> FP.FilePath

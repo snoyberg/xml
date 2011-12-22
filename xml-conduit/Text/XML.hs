@@ -181,7 +181,7 @@ parseLBS :: ParseSettings -> L.ByteString -> Either SomeException Document
 parseLBS ps lbs = runST
                 $ runExceptionT
                 $ C.runResourceT
-                $ CL.fromList (L.toChunks lbs)
+                $ CL.sourceList (L.toChunks lbs)
            C.$$ sinkDoc ps
 
 parseLBS_ :: ParseSettings -> L.ByteString -> Document
@@ -189,14 +189,14 @@ parseLBS_ ps = either throw id . parseLBS ps
 
 sinkDoc :: C.ResourceThrow m
         => ParseSettings
-        -> C.SinkM ByteString m Document
+        -> C.Sink ByteString m Document
 sinkDoc ps = P.parseBytes ps C.=$ fromEvents
 
 parseText :: ParseSettings -> TL.Text -> Either SomeException Document
 parseText ps tl = runST
                 $ runExceptionT
                 $ C.runResourceT
-                $ CL.fromList (TL.toChunks tl)
+                $ CL.sourceList (TL.toChunks tl)
            C.$$ sinkTextDoc ps
 
 parseText_ :: ParseSettings -> TL.Text -> Document
@@ -204,10 +204,10 @@ parseText_ ps = either throw id . parseText ps
 
 sinkTextDoc :: C.ResourceThrow m
             => ParseSettings
-            -> C.SinkM Text m Document
+            -> C.Sink Text m Document
 sinkTextDoc ps = P.parseText ps C.=$ fromEvents
 
-fromEvents :: C.ResourceThrow m => C.SinkM X.Event m Document
+fromEvents :: C.ResourceThrow m => C.Sink X.Event m Document
 fromEvents = do
     d <- D.fromEvents
     either (lift . C.resourceThrow . UnresolvedEntityException) return $ fromXMLDocument d
@@ -216,7 +216,7 @@ data UnresolvedEntityException = UnresolvedEntityException (Set Text)
     deriving (Show, Typeable)
 instance Exception UnresolvedEntityException
 
-renderBytes :: ResourceUnsafeIO m => R.RenderSettings -> Document -> C.SourceM m ByteString
+renderBytes :: ResourceUnsafeIO m => R.RenderSettings -> Document -> C.Source m ByteString
 renderBytes rs doc = D.renderBytes rs $ toXMLDocument doc
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()

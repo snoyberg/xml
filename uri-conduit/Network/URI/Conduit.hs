@@ -70,8 +70,8 @@ hasExtension URI { uriPath = p } t = (cons '.' t) `isSuffixOf` p
 
 data Scheme = Scheme
     { schemeNames :: Set.Set Text
-    , schemeReader :: forall m. ResourceIO m => Maybe (URI -> C.SourceM m ByteString)
-    , schemeWriter :: forall m. ResourceIO m => Maybe (URI -> C.SinkM ByteString m ())
+    , schemeReader :: forall m. ResourceIO m => Maybe (URI -> C.Source m ByteString)
+    , schemeWriter :: forall m. ResourceIO m => Maybe (URI -> C.Sink ByteString m ())
     }
 
 type SchemeMap = Map.Map Text Scheme
@@ -95,16 +95,16 @@ instance Exception URIException
 readURI :: ResourceIO m
         => SchemeMap
         -> URI
-        -> C.SourceM m ByteString
-readURI sm uri = C.SourceM $ do
+        -> C.Source m ByteString
+readURI sm uri = C.Source $ do
     case Map.lookup (uriScheme uri) sm >>= schemeReader of
         Nothing -> lift $ C.resourceThrow $ UnknownReadScheme uri
-        Just f -> C.genSource $ f uri
+        Just f -> C.prepareSource $ f uri
 
 writeURI :: ResourceIO m
          => SchemeMap
          -> URI
-         -> C.SinkM ByteString m ()
+         -> C.Sink ByteString m ()
 writeURI sm uri =
     case Map.lookup (uriScheme uri) sm >>= schemeWriter of
         Nothing -> lift $ C.resourceThrow $ UnknownWriteScheme uri

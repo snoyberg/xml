@@ -42,26 +42,26 @@ readEID :: (ResourceIO m, MonadBaseControl IO m)
         => Catalog
         -> ExternalID
         -> SchemeMap
-        -> C.SourceM m DTDComponent
-readEID catalog eid sm = C.SourceM $ do
+        -> C.Source m DTDComponent
+readEID catalog eid sm = C.Source $ do
     case resolveURI catalog Nothing eid of
         Nothing -> C.liftBase $ throwIO $ CannotResolveExternalID eid
         Just uri -> do
             istate <- C.liftBase $ I.newIORef initState
             let rr = ResolveReader catalog uri istate sm
-            C.genSource $ readerToEnum rr
+            C.prepareSource $ readerToEnum rr
 
 readerToEnum :: (MonadBaseControl IO m, ResourceIO m)
-             => ResolveReader -> C.SourceM m DTDComponent
-readerToEnum rr = C.SourceM $ do
-    C.Source pull close <- C.genSource $
+             => ResolveReader -> C.Source m DTDComponent
+readerToEnum rr = C.Source $ do
+    C.PreparedSource pull close <- C.prepareSource $
         readURI (rrSchemeMap rr) (rrBase rr)
                 C.$= detectUtf
                 C.$= singleChunk -- FIXME this is working around an apparent bug in attoparsec-text
                 C.$= streamUnresolved
                 C.$= CL.concatMap id
                 C.$= resolveEnum rr
-    return $ C.Source (pull `Lifted.catch` (lift . throw rr)) close
+    return $ C.PreparedSource (pull `Lifted.catch` (lift . throw rr)) close
 
 
 throw :: C.ResourceThrow m => ResolveReader -> SomeException -> m a
@@ -71,16 +71,16 @@ throw rr e =
 -- | For some reason, attoparsec-text seems to be dropping bits of text when
 -- being served chunks. This occurred in both streaming and lazy. See
 -- lazy-bug.hs for a demonstration.
-singleChunk :: C.Resource m => C.ConduitM T.Text m T.Text
+singleChunk :: C.Resource m => C.Conduit T.Text m T.Text
 singleChunk = C.sequence $ T.concat <$> CL.consume
 
 readFile_ :: FilePath -> IO [DTDComponent]
 readFile_ fp = C.runResourceT $ enumFile fp C.$$ CL.consume
 
-enumFile :: (MonadBaseControl IO m, ResourceIO m) => FilePath -> C.SourceM m DTDComponent
-enumFile fp = C.SourceM $ do
+enumFile :: (MonadBaseControl IO m, ResourceIO m) => FilePath -> C.Source m DTDComponent
+enumFile fp = C.Source $ do
     eid <- lift $ filePathToEID fp
-    C.genSource $ readEID Map.empty eid $ toSchemeMap [fileScheme]
+    C.prepareSource $ readEID Map.empty eid $ toSchemeMap [fileScheme]
 
 filePathToEID :: ResourceIO m => FilePath -> m ExternalID
 filePathToEID = liftM uriToEID . liftIO . decodeString
@@ -88,7 +88,7 @@ filePathToEID = liftM uriToEID . liftIO . decodeString
 uriToEID :: URI -> ExternalID
 uriToEID = SystemID . T.pack . show . toNetworkURI
 
-streamUnresolved :: ResourceIO m => C.ConduitM T.Text m [U.DTDComponent]
+streamUnresolved :: ResourceIO m => C.Conduit T.Text m [U.DTDComponent]
 streamUnresolved =
     C.sequence $ sinkParser p
   where
@@ -98,9 +98,9 @@ streamUnresolved =
 
 resolveEnum :: (ResourceIO m, MonadBaseControl IO m)
             => ResolveReader
-            -> C.ConduitM U.DTDComponent m DTDComponent
+            -> C.Conduit U.DTDComponent m DTDComponent
 resolveEnum rr =
-      C.transConduitM (evalStateT' rr)
+      C.transConduit (evalStateT' rr)
     $ CL.concatMapM resolvef
 
 evalStateT' :: ResourceIO m

@@ -37,14 +37,14 @@ import Control.Monad.Trans.Resource (ResourceUnsafeIO)
 -- optimally sized 'ByteString's with minimal buffer copying.
 --
 -- The output is UTF8 encoded.
-renderBytes :: ResourceUnsafeIO m => RenderSettings -> C.ConduitM Event m ByteString
+renderBytes :: ResourceUnsafeIO m => RenderSettings -> C.Conduit Event m ByteString
 renderBytes rs = renderBuilder rs C.=$= builderToByteString
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder', 'builderToByteString' and 'renderBytes', so it
 -- produces optimally sized 'ByteString's with minimal buffer copying.
 renderText :: (C.ResourceThrow m, ResourceUnsafeIO m)
-           => RenderSettings -> C.ConduitM Event m Text
+           => RenderSettings -> C.Conduit Event m Text
 renderText rs = renderBytes rs C.=$= CT.decode CT.utf8
 
 data RenderSettings = RenderSettings
@@ -59,12 +59,12 @@ instance Default RenderSettings where
 -- | Render a stream of 'Event's into a stream of 'Builder's. Builders are from
 -- the blaze-builder package, and allow the create of optimally sized
 -- 'ByteString's with minimal buffer copying.
-renderBuilder :: C.Resource m => RenderSettings -> C.ConduitM Event m Builder
+renderBuilder :: C.Resource m => RenderSettings -> C.Conduit Event m Builder
 renderBuilder RenderSettings { rsPretty = True } = prettify C.=$= renderBuilder'
 renderBuilder RenderSettings { rsPretty = False } = renderBuilder'
 
-renderBuilder' :: C.Resource m => C.ConduitM Event m Builder
-renderBuilder' = C.conduitMState
+renderBuilder' :: C.Resource m => C.Conduit Event m Builder
+renderBuilder' = C.conduitState
     (id, [])
     push
     close
@@ -194,11 +194,11 @@ getPrefix ppref nsmap ns =
 
 -- | Convert a stream of 'Event's into a prettified one, adding extra
 -- whitespace. Note that this can change the meaning of your XML.
-prettify :: C.Resource m => C.ConduitM Event m Event
+prettify :: C.Resource m => C.Conduit Event m Event
 prettify = prettify' 0 []
 
-prettify' :: C.Resource m => Int -> [Name] -> C.ConduitM Event m Event
-prettify' level0 names0 = C.conduitMState
+prettify' :: C.Resource m => Int -> [Name] -> C.Conduit Event m Event
+prettify' level0 names0 = C.conduitState
     (id, (level0, names0))
     push
     close
