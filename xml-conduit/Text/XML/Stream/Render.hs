@@ -89,14 +89,14 @@ renderBuilder' = C.conduitState
          in go stack' atEnd rest (front . token)
 
     push (front, stack) es =
-        return ((leftover, stack'), C.ConduitResult C.Processing ts)
+        return ((leftover, stack'), C.Producing ts)
       where
-        (stack', leftover, ts) = go stack False (front es) id
+        (stack', leftover, ts) = go stack False (front [es]) id
 
-    close (front, stack) es =
-        return $ C.ConduitResult (leftover []) ts
+    close (front, stack) =
+        return ts
       where
-        (_, leftover, ts) = go stack True (front es) id
+        (_, leftover, ts) = go stack True (front []) id
 
 eventToToken :: Stack -> Event -> ([Token] -> [Token], [NSLevel])
 eventToToken s EventBeginDocument =
@@ -204,12 +204,12 @@ prettify' level0 names0 = C.conduitState
     close
   where
     push (front, a) b = do
-        let (a', es) = go False a (front b) id
-        return (a', C.ConduitResult C.Processing es)
-    close (front, a) b = do
-        let ((front', _), es) = go True a (front b) id
+        let (a', es) = go False a (front [b]) id
+        return (a', C.Producing es)
+    close (front, a) = do
+        let ((front', _), es) = go True a (front []) id
         assert (null $ front' [])
-            $ return $ C.ConduitResult [] es
+            $ return es
 
     go _ state [] front = ((id, state), front [])
     go atEnd state@(level, _) es@(EventContent t:xs) front =

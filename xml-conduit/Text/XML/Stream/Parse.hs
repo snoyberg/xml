@@ -88,7 +88,6 @@ import Filesystem.Path.CurrentOS (FilePath)
 import Control.Applicative (Applicative(..), Alternative(empty,(<|>)), (<$>))
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.Lazy as TL
 import Data.Text.Read (Reader, decimal, hexadecimal)
 import Data.Text.Encoding (decodeUtf32BEWith)
 import Data.Text.Encoding.Error (ignore)
@@ -174,31 +173,26 @@ detectUtf = C.conduitState
     push (Left front) bss = do
         e <- getEncoding front bss
         case e of
-            Left x -> return (Left x, C.ConduitResult C.Processing [])
+            Left x -> return (Left x, C.Producing [])
             Right (bss', decode) -> push (Right decode) bss'
     push (Right decode) bss = do
         t <- C.conduitPush decode bss
         return (Right decode, t)
 
-    close (Left front) bss = do
-        e <- getEncoding front bss
-        case e of
-            Left x -> return $ C.ConduitResult (x []) []
-            Right (bss', decode) -> close (Right decode) bss'
-    close (Right decode) bss = C.conduitClose decode bss
+    close _ = return []
 
-    getEncoding front bss
-        | L.length lbs < 4 =
-            return $ Left (L.toChunks lbs ++)
+    getEncoding front bs'
+        | S.length bs < 4 =
+            return $ Left (bs `S.append`)
         | otherwise = do
             decode <- C.prepareConduit $ CT.decode codec
-            return $ Right (L.toChunks lbs', decode)
+            return $ Right (bsOut, decode)
       where
-        lbs = L.fromChunks $ front bss
-        lbs' = L.append (L.drop toDrop x) y
-        (x, y) = L.splitAt 4 lbs
+        bs = front bs'
+        bsOut = S.append (S.drop toDrop x) y
+        (x, y) = S.splitAt 4 bs
         (toDrop, codec) =
-            case L.unpack x of
+            case S.unpack x of
                 [0x00, 0x00, 0xFE, 0xFF] -> (4, CT.utf32_be)
                 [0xFF, 0xFE, 0x00, 0x00] -> (4, CT.utf32_le)
                 0xFE : 0xFF: _           -> (2, CT.utf16_be)
@@ -230,18 +224,14 @@ dropBOM = C.conduitState
   where
     push a b = do
         let (a', b') = go a b
-        return (a', C.ConduitResult C.Processing b')
-    close a b = do
-        let (_, b') = go a b
-        return $ C.ConduitResult [] b'
+        return (a', C.Producing [b'])
+    close _ = return []
     go True b = (True, b)
     go False b =
-        case TL.uncons tl of
-            Nothing -> (False, [])
+        case T.uncons b of
+            Nothing -> (False, b)
             Just (c, cs) -> (True,
-                if c == '\xfeef' then TL.toChunks cs else b)
-      where
-        tl = TL.fromChunks b
+                if c == '\xfeef' then cs else b)
 
 -- | Parses a character stream into 'Event's. This function is implemented
 -- fully in Haskell using attoparsec-text for parsing. The produced error
@@ -261,11 +251,11 @@ parseText de =
         push
         close
       where
-        go False es = EventBeginDocument : es
-        go True es = es
+        go False es = EventBeginDocument : [es]
+        go True es = [es]
 
-        push x es = return (True, C.ConduitResult C.Processing $ go x es)
-        close x es = return $ C.ConduitResult [] $ go x es ++ [EventEndDocument]
+        push x es = return (True, C.Producing $ go x es)
+        close x = return $ go x EventEndDocument
 
 toEventC :: C.Resource m => C.Conduit (Maybe Token) m Event
 toEventC = C.conduitState
@@ -279,14 +269,14 @@ toEventC = C.conduitState
          in go levels' ts (front . (events ++))
 
     push levels tokens =
-        return (levels', C.ConduitResult C.Processing events)
+        return (levels', C.Producing events)
       where
-        (levels', events) = go levels (catMaybes tokens) id
+        (levels', events) = go levels (catMaybes [tokens]) id
 
-    close levels tokens =
-        return $ C.ConduitResult [] events
+    close levels =
+        return events
       where
-        (_, events) = go levels (catMaybes tokens) id
+        (_, events) = go levels (catMaybes []) id
 
 data ParseSettings = ParseSettings
     { psDecodeEntities :: DecodeEntities
