@@ -107,7 +107,7 @@ eventToToken s EventBeginDocument =
      , s)
 eventToToken s EventEndDocument = (id, s)
 eventToToken s (EventInstruction i) = ((:) (TokenInstruction i), s)
-eventToToken s (EventBeginDoctype n meid) = ((:) (TokenDoctype n meid), s)
+eventToToken s (EventBeginDoctype n meid) = ((:) (TokenDoctype n meid []), s)
 eventToToken s EventEndDoctype = (id, s)
 eventToToken s (EventCDATA t) = ((:) (TokenCDATA t), s)
 eventToToken s (EventEndElement name) =

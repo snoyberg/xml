@@ -63,6 +63,7 @@ main = hspecX $ do
         it "identifies unresolved entities" resolvedIdentifies
         it "works for resolvable entities" resolvedAllGood
         it "merges adjacent content nodes" resolvedMergeContent
+        it "understands inline entity declarations" resolvedInline
 
 documentParseRender :: IO ()
 documentParseRender =
@@ -301,3 +302,10 @@ stripDuplicateAttributes = do
             [ ("x:bar", [ContentText "baz"])
             , (Name "bar" (Just "namespace") (Just "x"), [ContentText "bin"])
             ] []) [])
+
+resolvedInline :: Assertion
+resolvedInline = do
+    Res.Document _ root _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"baz\">]><foo>&bar;</foo>"
+    root @?= Res.Element "foo" [] [Res.NodeContent "baz"]
+    Res.Document _ root _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"baz\">]><foo bar='&bar;'/>"
+    root @?= Res.Element "foo" [("bar", "baz")] []

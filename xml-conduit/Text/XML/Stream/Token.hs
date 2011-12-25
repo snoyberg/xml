@@ -32,7 +32,7 @@ data Token = TokenBeginDocument [TAttribute]
            | TokenEndElement TName
            | TokenContent Content
            | TokenComment Text
-           | TokenDoctype Text (Maybe ExternalID)
+           | TokenDoctype Text (Maybe ExternalID) [(Text, Text)]
            | TokenCDATA Text
     deriving Show
 tokenToBuilder :: Token -> Builder
@@ -72,7 +72,7 @@ tokenToBuilder (TokenCDATA t) =
     `mappend` fromText t
     `mappend` copyByteString "]]>"
 tokenToBuilder (TokenComment t) = mconcat [fromByteString "<!--", fromText t, fromByteString "-->"]
-tokenToBuilder (TokenDoctype name eid) = mconcat
+tokenToBuilder (TokenDoctype name eid _) = mconcat
     [ fromByteString "<!DOCTYPE "
     , fromText name
     , go eid

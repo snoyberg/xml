@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PatternGuards #-}
 -- | This module provides both a native Haskell solution for parsing XML
 -- documents into a stream of events, and a set of parser combinators for
 -- dealing with a stream of events.
@@ -113,17 +114,19 @@ import Data.Maybe (catMaybes)
 import Control.Monad.Trans.Resource (ResourceIO, resourceThrow)
 import Control.Monad.Trans.Class (lift)
 
-tokenToEvent :: [NSLevel] -> Token -> ([NSLevel], [Event])
-tokenToEvent n (TokenBeginDocument _) = (n, [])
-tokenToEvent n (TokenInstruction i) = (n, [EventInstruction i])
-tokenToEvent n (TokenBeginElement name as isClosed _) =
-    (n', if isClosed then [begin, end] else [begin])
+type Ents = [(Text, Text)]
+
+tokenToEvent :: Ents -> [NSLevel] -> Token -> (Ents, [NSLevel], [Event])
+tokenToEvent es n (TokenBeginDocument _) = (es, n, [])
+tokenToEvent es n (TokenInstruction i) = (es, n, [EventInstruction i])
+tokenToEvent es n (TokenBeginElement name as isClosed _) =
+    (es, n', if isClosed then [begin, end] else [begin])
   where
     l0 = case n of
             [] -> NSLevel Nothing Map.empty
             x:_ -> x
     (as', l') = foldl' go (id, l0) as
-    go (front, l) a@(TName kpref kname, val)
+    go (front, l) (TName kpref kname, val)
         | kpref == Just "xmlns" =
             (front, l { prefixes = Map.insert kname (contentsToText val)
                                  $ prefixes l })
@@ -131,24 +134,29 @@ tokenToEvent n (TokenBeginElement name as isClosed _) =
             (front, l { defaultNS = if T.null $ contentsToText val
                                         then Nothing
                                         else Just $ contentsToText val })
-        | otherwise = (front . (:) a, l)
+        | otherwise = (front . (:) (TName kpref kname, map resolve val), l)
+    resolve (ContentEntity e)
+        | Just t <- lookup e es = ContentText t
+    resolve c = c
     n' = if isClosed then n else l' : n
     fixAttName level (name', val) = (tnameToName True level name', val)
     begin = EventBeginElement (tnameToName False l' name)
           $ map (fixAttName l')
           $ as' []
     end = EventEndElement $ tnameToName False l' name
-tokenToEvent n (TokenEndElement name) =
-    (n', [EventEndElement $ tnameToName False l name])
+tokenToEvent es n (TokenEndElement name) =
+    (es, n', [EventEndElement $ tnameToName False l name])
   where
     (l, n') =
         case n of
             [] -> (NSLevel Nothing Map.empty, [])
             x:xs -> (x, xs)
-tokenToEvent n (TokenContent c) = (n, [EventContent c])
-tokenToEvent n (TokenComment c) = (n, [EventComment c])
-tokenToEvent n (TokenDoctype t eid) = (n, [EventBeginDoctype t eid, EventEndDoctype])
-tokenToEvent n (TokenCDATA t) = (n, [EventCDATA t])
+tokenToEvent es n (TokenContent (ContentEntity e))
+    | Just t <- lookup e es = (es, n, [EventContent $ ContentText t])
+tokenToEvent es n (TokenContent c) = (es, n, [EventContent c])
+tokenToEvent es n (TokenComment c) = (es, n, [EventComment c])
+tokenToEvent es n (TokenDoctype t eid es') = (es ++ es', n, [EventBeginDoctype t eid, EventEndDoctype])
+tokenToEvent es n (TokenCDATA t) = (es, n, [EventCDATA t])
 
 tnameToName :: Bool -> NSLevel -> TName -> Name
 tnameToName _ _ (TName (Just "xml") name) =
@@ -259,24 +267,24 @@ parseText de =
 
 toEventC :: C.Resource m => C.Conduit (Maybe Token) m Event
 toEventC = C.conduitState
-    []
+    ([], [])
     push
     close
   where
-    go levels [] front = (levels, front [])
-    go levels (t:ts) front =
-        let (levels', events) = tokenToEvent levels t
-         in go levels' ts (front . (events ++))
+    go es levels [] front = (es, levels, front [])
+    go es levels (t:ts) front =
+        let (es', levels', events) = tokenToEvent es levels t
+         in go es' levels' ts (front . (events ++))
 
-    push levels tokens =
-        return (levels', C.Producing events)
+    push (es, levels) tokens =
+        return ((es', levels'), C.Producing events)
       where
-        (levels', events) = go levels (catMaybes [tokens]) id
+        (es', levels', events) = go es levels (catMaybes [tokens]) id
 
-    close levels =
+    close (es, levels) =
         return events
       where
-        (_, events) = go levels (catMaybes []) id
+        (_, _, events) = go es levels (catMaybes []) id
 
 data ParseSettings = ParseSettings
     { psDecodeEntities :: DecodeEntities
@@ -330,14 +338,27 @@ parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False
                fmap Just parseSystemID <|>
                return Nothing
         skipSpace
-        (do
+        ents <- (do
             char' '['
-            skipWhile (/= ']')
-            char' ']'
-            skipSpace) <|> return ()
+            ents <- parseEntities id
+            skipSpace
+            return ents) <|> return []
         char' '>'
         newline <|> return ()
-        return $ TokenDoctype i eid
+        return $ TokenDoctype i eid ents
+    parseEntities front =
+        (char ']' >> return (front [])) <|>
+        (parseEntity >>= \e -> parseEntities (front . (e:))) <|>
+        (char '<' >> parseEntities front) <|>
+        (skipWhile (\t -> t /= ']' && t /= '<') >> parseEntities front)
+    parseEntity = try $ do
+        _ <- string "<!ENTITY"
+        skipSpace
+        i <- parseIdent
+        t <- quotedText
+        skipSpace
+        char' '>'
+        return (i, t)
     parsePublicID = do
         _ <- string "PUBLIC"
         x <- quotedText
