@@ -68,7 +68,7 @@ newDTDCacheFile fp = do
     c <- loadCatalog (toSchemeMap [fileScheme]) uri
     newDTDCache c (toSchemeMap [fileScheme])
 
-loadAttrMap :: (ResourceIO m, MonadBaseControl IO m, MonadIO m) => DTDCache -> X.ExternalID -> m (EntityMap, AttrMap)
+loadAttrMap :: ResourceIO m => DTDCache -> X.ExternalID -> m (EntityMap, AttrMap)
 loadAttrMap (DTDCache icache catalog sm) ext = do
     res <- liftIO $ fmap (Map.lookup pubsys) $ I.readIORef icache
     case res of

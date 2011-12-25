@@ -57,7 +57,6 @@ readerToEnum rr = C.Source $ do
     C.PreparedSource pull close <- C.prepareSource $
         readURI (rrSchemeMap rr) (rrBase rr)
                 C.$= detectUtf
-                C.$= singleChunk -- FIXME this is working around an apparent bug in attoparsec-text
                 C.$= streamUnresolved
                 C.$= CL.concatMap id
                 C.$= resolveEnum rr
@@ -94,7 +93,8 @@ streamUnresolved =
   where
     p = (UP.ws >> UP.skipWS >> return []) <|>
         (UP.textDecl >> return []) <|>
-        (UP.dtdComponent >>= return . return)
+        (UP.dtdComponent >>= return . return) <|>
+        (A.endOfInput >> return [])
 
 resolveEnum :: (ResourceIO m, MonadBaseControl IO m)
             => ResolveReader
