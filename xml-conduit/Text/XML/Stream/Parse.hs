@@ -85,7 +85,7 @@ import Data.XML.Types
     , Instruction (..), ExternalID (..)
     )
 
-import Filesystem.Path.CurrentOS (FilePath)
+import Filesystem.Path.CurrentOS (FilePath, encodeString)
 import Control.Applicative (Applicative(..), Alternative(empty,(<|>)), (<$>))
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -250,10 +250,11 @@ parseText :: C.ResourceThrow m
           => ParseSettings
           -> C.Conduit TS.Text m Event
 parseText de =
-    dropBOM C.=$= C.sequence (sinkToken de)
+    dropBOM C.=$= tokenize
             C.=$= toEventC
             C.=$= addBeginEnd
   where
+    tokenize = C.sequenceSink () $ const $ C.Emit () . return <$> sinkToken de
     addBeginEnd = C.conduitState
         False
         push
@@ -631,7 +632,7 @@ parseFile :: (ResourceIO m, C.ResourceThrow m)
           => ParseSettings
           -> FilePath
           -> C.Source m Event
-parseFile ps fp = sourceFile fp C.$= parseBytes ps
+parseFile ps fp = sourceFile (encodeString fp) C.$= parseBytes ps
 
 -- | Parse an event stream from a lazy 'L.ByteString'.
 parseLBS :: C.ResourceThrow m

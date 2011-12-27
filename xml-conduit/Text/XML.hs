@@ -77,7 +77,7 @@ import qualified Text.XML.Stream.Render as R
 import qualified Data.Text as T
 import Data.Either (partitionEithers)
 import Prelude hiding (readFile, writeFile, FilePath)
-import Filesystem.Path.CurrentOS (FilePath)
+import Filesystem.Path.CurrentOS (FilePath, encodeString)
 import Control.Exception (SomeException, Exception)
 import Text.XML.Stream.Parse (ParseSettings, def, psDecodeEntities)
 import Data.ByteString (ByteString)
@@ -175,7 +175,7 @@ fromXMLNode (X.NodeComment c) = Right $ NodeComment c
 fromXMLNode (X.NodeInstruction i) = Right $ NodeInstruction i
 
 readFile :: ParseSettings -> FilePath -> IO Document
-readFile ps fp = C.runResourceT $ CB.sourceFile fp C.$$ sinkDoc ps
+readFile ps fp = C.runResourceT $ CB.sourceFile (encodeString fp) C.$$ sinkDoc ps
 
 parseLBS :: ParseSettings -> L.ByteString -> Either SomeException Document
 parseLBS ps lbs = runST
@@ -221,7 +221,7 @@ renderBytes rs doc = D.renderBytes rs $ toXMLDocument doc
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
 writeFile rs fp doc =
-    C.runResourceT $ renderBytes rs doc C.$$ CB.sinkFile fp
+    C.runResourceT $ renderBytes rs doc C.$$ CB.sinkFile (encodeString fp)
 
 renderLBS :: R.RenderSettings -> Document -> L.ByteString
 renderLBS rs doc =

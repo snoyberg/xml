@@ -96,7 +96,7 @@ renderBuilder' = C.conduitState
     close (front, stack) =
         return ts
       where
-        (_, leftover, ts) = go stack True (front []) id
+        (_, _leftover, ts) = go stack True (front []) id
 
 eventToToken :: Stack -> Event -> ([Token] -> [Token], [NSLevel])
 eventToToken s EventBeginDocument =

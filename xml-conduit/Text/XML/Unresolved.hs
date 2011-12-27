@@ -35,7 +35,7 @@ module Text.XML.Unresolved
     ) where
 
 import Prelude hiding (writeFile, readFile, FilePath)
-import Filesystem.Path.CurrentOS (FilePath)
+import Filesystem.Path.CurrentOS (FilePath, encodeString)
 import Data.XML.Types
 import Control.Exception (Exception, SomeException)
 import Data.Typeable (Typeable)
@@ -68,7 +68,7 @@ sinkDoc ps = P.parseBytes ps C.=$ fromEvents
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
 writeFile rs fp doc =
-    C.runResourceT $ renderBytes rs doc C.$$ CB.sinkFile fp
+    C.runResourceT $ renderBytes rs doc C.$$ CB.sinkFile (encodeString fp)
 
 renderLBS :: R.RenderSettings -> Document -> L.ByteString
 renderLBS rs doc =
