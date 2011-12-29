@@ -12,6 +12,9 @@ Cabal-version:       >=1.6
 Description:         Read and write URIs
 
 Library
+  if os(windows)
+      cpp-options: -DCABAL_OS_WINDOWS
+      other-modules: System.Win32FileRead
   Exposed-modules:     Network.URI.Conduit
                        Network.URI.Conduit.File
   Build-depends:       base                     >= 4          && < 5
