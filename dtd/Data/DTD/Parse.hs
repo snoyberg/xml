@@ -38,16 +38,16 @@ import Control.Monad.IO.Class (liftIO)
 
 type ResolveMonad m = ReaderT ResolveReader m
 
-readEID :: (ResourceIO m, MonadBaseControl IO m)
+readEID :: ResourceIO m
         => Catalog
         -> ExternalID
         -> SchemeMap
         -> C.Source m DTDComponent
 readEID catalog eid sm = C.Source $ do
     case resolveURI catalog Nothing eid of
-        Nothing -> C.liftBase $ throwIO $ CannotResolveExternalID eid
+        Nothing -> liftIO $ throwIO $ CannotResolveExternalID eid
         Just uri -> do
-            istate <- C.liftBase $ I.newIORef initState
+            istate <- liftIO $ I.newIORef initState
             let rr = ResolveReader catalog uri istate sm
             C.prepareSource $ readerToEnum rr
 
@@ -67,12 +67,6 @@ throw :: C.ResourceThrow m => ResolveReader -> SomeException -> m a
 throw rr e =
     C.resourceThrow $ OccuredAt (show $ toNetworkURI $ rrBase rr) (ResolveOther e)
 
--- | For some reason, attoparsec-text seems to be dropping bits of text when
--- being served chunks. This occurred in both streaming and lazy. See
--- lazy-bug.hs for a demonstration.
-singleChunk :: C.Resource m => C.Conduit T.Text m T.Text
-singleChunk = C.sequence $ T.concat <$> CL.consume
-
 readFile_ :: FilePath -> IO [DTDComponent]
 readFile_ fp = C.runResourceT $ enumFile fp C.$$ CL.consume
 
@@ -89,7 +83,7 @@ uriToEID = SystemID . T.pack . show . toNetworkURI
 
 streamUnresolved :: ResourceIO m => C.Conduit T.Text m [U.DTDComponent]
 streamUnresolved =
-    C.sequence $ sinkParser p
+    C.sequenceSink () $ const $ C.Emit () . return <$> sinkParser p
   where
     p = (UP.ws >> UP.skipWS >> return []) <|>
         (UP.textDecl >> return []) <|>

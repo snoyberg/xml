@@ -20,6 +20,7 @@ import Control.Monad (foldM)
 import Network.URI.Conduit
 import qualified Data.Text as T
 import qualified Data.Conduit as C
+import Control.Monad.IO.Class (liftIO)
 
 -- | Either a public or system identifier.
 data PubSys = Public Text | System Text
@@ -29,9 +30,9 @@ data PubSys = Public Text | System Text
 type Catalog = Map.Map PubSys URI
 
 -- | Load a 'Catalog' from the given path.
-loadCatalog :: C.MonadBaseControl IO m => SchemeMap -> URI -> m Catalog
+loadCatalog :: C.ResourceIO m => SchemeMap -> URI -> m Catalog
 loadCatalog sm uri = do
-    X.Document _ (X.Element _ _ ns) _ <- C.liftBase $ C.runResourceT $
+    X.Document _ (X.Element _ _ ns) _ <- liftIO $ C.runResourceT $
         readURI sm uri C.$$ X.sinkDoc X.def
     foldM (addNode Nothing) Map.empty ns
   where

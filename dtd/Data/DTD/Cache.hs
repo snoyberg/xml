@@ -62,7 +62,7 @@ newDTDCache c sm = do
     x <- liftIO $ I.newIORef Map.empty
     return $ DTDCache x c sm
 
-newDTDCacheFile :: (MonadBaseControl IO m, MonadIO m) => FilePath -> m DTDCache
+newDTDCacheFile :: ResourceIO m => FilePath -> m DTDCache
 newDTDCacheFile fp = do
     uri <- liftIO $ decodeString fp
     c <- loadCatalog (toSchemeMap [fileScheme]) uri

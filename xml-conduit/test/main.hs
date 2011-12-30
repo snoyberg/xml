@@ -307,5 +307,5 @@ resolvedInline :: Assertion
 resolvedInline = do
     Res.Document _ root _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"baz\">]><foo>&bar;</foo>"
     root @?= Res.Element "foo" [] [Res.NodeContent "baz"]
-    Res.Document _ root _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"baz\">]><foo bar='&bar;'/>"
-    root @?= Res.Element "foo" [("bar", "baz")] []
+    Res.Document _ root2 _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"baz\">]><foo bar='&bar;'/>"
+    root2 @?= Res.Element "foo" [("bar", "baz")] []

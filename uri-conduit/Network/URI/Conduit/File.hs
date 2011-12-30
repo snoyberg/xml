@@ -44,7 +44,7 @@ fileScheme = Scheme
     , schemeWriter = Just $ \uri -> C.Sink $ do
         let fp = toFilePath uri
         liftIO $ F.createTree $ FP.directory fp
-        C.prepareSink $ CB.sinkFile fp
+        C.prepareSink $ CB.sinkFile (FP.encodeString fp)
     }
 
 toFilePath :: URI -> FP.FilePath
@@ -60,5 +60,5 @@ sourceFile fp = C.sourceIO
     W.close
     (liftIO . fmap (maybe C.Closed C.Open) . flip W.read 4096)
 #else
-sourceFile = CB.sourceFile
+sourceFile = CB.sourceFile . FP.encodeString
 #endif
