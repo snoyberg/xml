@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE CPP #-}
 module Network.URI.Conduit.File
     ( decodeString
     , fileScheme
@@ -18,9 +17,6 @@ import qualified Data.Conduit.Binary as CB
 import qualified Filesystem as F
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString as S
-#if CABAL_OS_WINDOWS
-import qualified System.Win32FileRead as W
-#endif
 
 -- | Converts a string, such as a command-line argument, into a URI. First
 -- tries to parse as an absolute URI. If this fails, it interprets as a
@@ -54,11 +50,4 @@ toFilePath uri = FP.fromText $
         Just a -> T.concat [uriRegName a, uriPort a, T.pack $ unEscapeString $ T.unpack $ uriPath uri]
 
 sourceFile :: C.ResourceIO m => FP.FilePath -> C.Source m S.ByteString
-#if CABAL_OS_WINDOWS
-sourceFile fp = C.sourceIO
-    (W.open $ FP.encodeString fp)
-    W.close
-    (liftIO . fmap (maybe C.Closed C.Open) . flip W.read 4096)
-#else
 sourceFile = CB.sourceFile . FP.encodeString
-#endif
