@@ -124,12 +124,14 @@ $else
     , it "recognizes clark with URLs" $ [xml|
 <{http://www.example.com/foo/bar}baz>
 |] @?= [X.NodeElement $ X.Element "{http://www.example.com/foo/bar}baz" [] []]
+    , it "allow embedding comments" $[xml|^{comment}|] @?= comment
     ]
   where
     bin = "bin"
     nodes = [X.NodeInstruction $ X.Instruction "ifoo" "ibar"]
     true = "true"
     xs = ["foo", "bar", "baz"]
+    comment = [X.NodeComment "somecomment"]
 
 five :: Int
 five = 5

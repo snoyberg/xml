@@ -34,6 +34,7 @@ main = hspecX $ do
         it "is idempotent to parse and pretty render a document" documentParsePrettyRender
         it "ignores the BOM" parseIgnoreBOM
         it "strips duplicated attributes" stripDuplicateAttributes
+        it "displays comments" testRenderComments
     describe "XML Cursors" $ do
         it "has correct parent" cursorParent
         it "has correct ancestor" cursorAncestor
@@ -302,6 +303,12 @@ stripDuplicateAttributes = do
             [ ("x:bar", [ContentText "baz"])
             , (Name "bar" (Just "namespace") (Just "x"), [ContentText "bin"])
             ] []) [])
+
+testRenderComments :: Assertion
+testRenderComments =do
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<foo><!--comment--></foo>"
+        @=? D.renderLBS def (Document (Prologue [] Nothing [])
+            (Element "foo" [] [NodeComment "comment"]) [])
 
 resolvedInline :: Assertion
 resolvedInline = do
