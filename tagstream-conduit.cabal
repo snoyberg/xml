@@ -24,7 +24,7 @@ source-repository head
   location: git://github.com/yihuang/tag-stream.git
 
 Library
-  GHC-Options:       -Wall -O2
+  GHC-Options:       -Wall
   Exposed-modules:     Text.HTML.TagStream
                      , Text.HTML.TagStream.Parser
                      , Text.HTML.TagStream.Types
