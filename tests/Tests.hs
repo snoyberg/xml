@@ -9,8 +9,8 @@ import Test.HUnit hiding (Test)
 import Test.QuickCheck
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S
-import qualified Data.Enumerator as E
-import qualified Data.Enumerator.List as EL
+import qualified Data.Conduit as C
+import qualified Data.Conduit.List as CL
 import Text.HTML.TagStream
 
 main :: IO ()
@@ -49,10 +49,10 @@ streamlineTests = map one testcases
     one (str, tokens) = testCase (S.unpack str) $ do
         -- streamline parse result don't contain the trailing Incomplete token.
         let tokens' = reverse . dropWhile isIncomplete  . reverse $ tokens
-        result <- combineText <$> E.run_ (
-                      E.enumList 1 (map S.singleton (S.unpack str))
-                      E.$= tokenStream
-                      E.$$ EL.consume )
+        result <- combineText <$> C.runResourceT (
+                      CL.sourceList (map S.singleton (S.unpack str))
+                      C.$= tokenStream
+                      C.$$ CL.consume )
         assertEqual "streamline parse result incorrect" tokens' result
 
 testcases :: [(ByteString, [Token])]

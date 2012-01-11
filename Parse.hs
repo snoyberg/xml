@@ -1,15 +1,16 @@
 import Data.Maybe
 import System.Environment
 import Text.HTML.TagStream
-import qualified Data.Enumerator as E
-import qualified Data.Enumerator.Binary as E
-import qualified Data.Enumerator.List as EL
+import qualified Data.Conduit as C
+import qualified Data.Conduit.Binary as C
+import qualified Data.Conduit.List as CL
 
 main :: IO ()
 main = do
     args <- getArgs
     filename <- maybe (fail "pass file path") return (listToMaybe args)
-    _ <- E.run_ $ E.enumFile filename
-                E.$= tokenStream
-                E.$$ EL.consume
+    _ <- C.runResourceT $
+           C.sourceFile filename
+           C.$= tokenStream
+           C.$$ CL.consume
     return ()
