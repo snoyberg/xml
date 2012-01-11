@@ -6,8 +6,8 @@ Description:
     It can parse unstructured and malformed HTML from the web.
     It also provides an Enumeratee which can parse streamline html, which means it consumes constant memory.
 
-    Users can start from the `tests/Tests.hs` module to see what it can do.
-Homepage:            http://github.com/yihuang/tag-stream
+    You can start from the `tests/Tests.hs` module to see what it can do.
+Homepage:            http://github.com/yihuang/tagstream-conduit
 License:             BSD3
 License-file:        LICENSE
 Author:              yihuang
@@ -17,7 +17,7 @@ Build-type:          Simple
 Extra-source-files:    tests/Tests.hs
                      , Highlight.hs
                      , Parse.hs
-Cabal-version:       >=1.6
+Cabal-version:       >=1.8
 
 source-repository head
   type:     git
@@ -36,3 +36,18 @@ Library
                      , attoparsec
                      , blaze-builder
                      , blaze-builder-conduit
+
+test-suite test
+    hs-source-dirs: tests
+    main-is: Tests.hs
+    type: exitcode-stdio-1.0
+    build-depends:     base >= 4 && < 5
+                     , bytestring
+                     , conduit >= 0.0.2
+                     , QuickCheck
+                     , HUnit
+                     , test-framework
+                     , test-framework-quickcheck2
+                     , test-framework-hunit
+                     , tagstream-conduit
+    ghc-options:     -Wall
