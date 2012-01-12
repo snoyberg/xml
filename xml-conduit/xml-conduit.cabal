@@ -1,5 +1,5 @@
 name:            xml-conduit
-version:         0.5.0
+version:         0.5.0.1
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michaels@suite-sol.com>, Aristid Breitkreuz <aristidb@googlemail.com>
@@ -26,8 +26,9 @@ build-type:      Simple
 homepage:        http://github.com/snoyberg/xml
 extra-source-files: test/main.hs
 
-flag test
-    default: False
+flag dechunk
+    default: True
+    description: Work around an (apparent) attoparsec bug by combining all input into a single chunk. Widely inefficient, so we hope to be able to get rid of this in the future.
 
 library
     build-depends:   base                      >= 4        && < 5
@@ -52,6 +53,8 @@ library
                      Text.XML
     other-modules:   Text.XML.Stream.Token
     ghc-options:     -Wall
+    if flag(dechunk)
+        cpp-options: -DDECHUNK
 
 test-suite runtests
     type: exitcode-stdio-1.0
