@@ -26,14 +26,10 @@ build-type:      Simple
 homepage:        http://github.com/snoyberg/xml
 extra-source-files: test/main.hs
 
-flag dechunk
-    default: True
-    description: Work around an (apparent) attoparsec bug by combining all input into a single chunk. Widely inefficient, so we hope to be able to get rid of this in the future.
-
 library
     build-depends:   base                      >= 4        && < 5
                    , conduit                   >= 0.0      && < 0.1
-                   , attoparsec-conduit        >= 0.0      && < 0.1
+                   , attoparsec-conduit        >= 0.0.0.1  && < 0.1
                    , blaze-builder-conduit     >= 0.0      && < 0.1
                    , bytestring                >= 0.9      && < 0.10
                    , text                      >= 0.7      && < 0.12
@@ -53,8 +49,6 @@ library
                      Text.XML
     other-modules:   Text.XML.Stream.Token
     ghc-options:     -Wall
-    if flag(dechunk)
-        cpp-options: -DDECHUNK
 
 test-suite runtests
     type: exitcode-stdio-1.0

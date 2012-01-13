@@ -3,7 +3,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PatternGuards #-}
-{-# LANGUAGE CPP #-}
 -- | This module provides both a native Haskell solution for parsing XML
 -- documents into a stream of events, and a set of parser combinators for
 -- dealing with a stream of events.
@@ -252,18 +251,10 @@ parseText :: C.ResourceThrow m
           -> C.Conduit TS.Text m Event
 parseText de =
     dropBOM
-#if DECHUNK
-        C.=$= oneChunk
-#endif
         C.=$= tokenize
         C.=$= toEventC
         C.=$= addBeginEnd
   where
-#if DECHUNK
-    oneChunk = C.sequenceSink () $ const $ do
-        x <- CL.consume
-        return $ C.Emit () [TS.concat x]
-#endif
     tokenize = C.sequenceSink () $ const $ C.Emit () . return <$> sinkToken de
     addBeginEnd = C.conduitState
         False
