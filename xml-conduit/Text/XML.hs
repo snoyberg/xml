@@ -109,14 +109,14 @@ data Node
     | NodeInstruction Instruction
     | NodeContent Text
     | NodeComment Text
-  deriving (Show, Eq, Typeable)
+  deriving (Show, Eq, Ord, Typeable)
 
 data Element = Element
     { elementName :: Name
     , elementAttributes :: [(Name, Text)]
     , elementNodes :: [Node]
     }
-  deriving (Show, Eq, Typeable)
+  deriving (Show, Eq, Ord, Typeable)
 
 {-
 readFile :: FilePath -> ParseSettings -> IO (Either SomeException Document)
