@@ -28,10 +28,12 @@ decodeString s =
         Nothing -> do
             wd <- F.getWorkingDirectory
             let fp = wd FP.</> FP.decodeString s
-            parseURI $ T.append "file://" $ T.map fixSlash $ either id id $ FP.toText fp
+            parseURI $ T.append "file://" $ T.concatMap fixSpace $ T.map fixSlash $ either id id $ FP.toText fp
   where
     fixSlash '\\' = '/'
     fixSlash c = c
+    fixSpace ' ' = "%20"
+    fixSpace c = T.singleton c
 
 fileScheme :: Scheme
 fileScheme = Scheme
