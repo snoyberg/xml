@@ -1,5 +1,5 @@
 name:            xml-conduit
-version:         0.5.1
+version:         0.5.1.1
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michaels@suite-sol.com>, Aristid Breitkreuz <aristidb@googlemail.com>
@@ -28,7 +28,7 @@ extra-source-files: test/main.hs
 
 library
     build-depends:   base                      >= 4        && < 5
-                   , conduit                   >= 0.0      && < 0.1
+                   , conduit
                    , attoparsec-conduit        >= 0.0.0.1  && < 0.1
                    , blaze-builder-conduit     >= 0.0      && < 0.1
                    , bytestring                >= 0.9      && < 0.10
