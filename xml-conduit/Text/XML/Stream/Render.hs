@@ -89,7 +89,7 @@ renderBuilder' = C.conduitState
          in go stack' atEnd rest (front . token)
 
     push (front, stack) es =
-        return ((leftover, stack'), C.Producing ts)
+        return $ C.StateProducing (leftover, stack') ts
       where
         (stack', leftover, ts) = go stack False (front [es]) id
 
@@ -205,7 +205,7 @@ prettify' level0 names0 = C.conduitState
   where
     push (front, a) b = do
         let (a', es) = go False a (front [b]) id
-        return (a', C.Producing es)
+        return $ C.StateProducing a' es
     close (front, a) = do
         let ((front', _), es) = go True a (front []) id
         assert (null $ front' [])

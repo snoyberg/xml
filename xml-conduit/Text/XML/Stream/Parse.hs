@@ -173,27 +173,24 @@ tnameToName _ (NSLevel _ m) (TName (Just pref) name) =
 -- equivalent of <?xml for each of UTF-8, UTF-16LE/BE, and UTF-32LE/BE. It
 -- defaults to assuming UTF-8.
 detectUtf :: C.ResourceThrow m => C.Conduit S.ByteString m TS.Text
-detectUtf = C.conduitState
-    (Left id)
-    push
-    close
+detectUtf =
+    conduit id
   where
-    push (Left front) bss = do
+    conduit front = C.Conduit (push front) close
+
+    push front bss = do
         e <- getEncoding front bss
         case e of
-            Left x -> return (Left x, C.Producing [])
-            Right (bss', decode) -> push (Right decode) bss'
-    push (Right decode) bss = do
-        t <- C.conduitPush decode bss
-        return (Right decode, t)
+            Left x -> return $ C.Producing (conduit x) []
+            Right (bss', decode) -> C.conduitPush decode bss'
 
-    close _ = return []
+    close = return []
 
     getEncoding front bs'
         | S.length bs < 4 =
             return $ Left (bs `S.append`)
         | otherwise = do
-            decode <- C.prepareConduit $ CT.decode codec
+            let decode = CT.decode codec
             return $ Right (bsOut, decode)
       where
         bs = front bs'
@@ -232,7 +229,7 @@ dropBOM = C.conduitState
   where
     push a b = do
         let (a', b') = go a b
-        return (a', C.Producing [b'])
+        return $ C.StateProducing a' [b']
     close _ = return []
     go True b = (True, b)
     go False b =
@@ -264,7 +261,7 @@ parseText de =
         go False es = EventBeginDocument : [es]
         go True es = [es]
 
-        push x es = return (True, C.Producing $ go x es)
+        push x es = return $ C.StateProducing True $ go x es
         close x = return $ go x EventEndDocument
 
 toEventC :: C.Resource m => C.Conduit (Maybe Token) m Event
@@ -279,7 +276,7 @@ toEventC = C.conduitState
          in go es' levels' ts (front . (events ++))
 
     push (es, levels) tokens =
-        return ((es', levels'), C.Producing events)
+        return $ C.StateProducing (es', levels') events
       where
         (es', levels', events) = go es levels (catMaybes [tokens]) id
 
