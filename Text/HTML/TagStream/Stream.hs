@@ -2,22 +2,20 @@
 module Text.HTML.TagStream.Stream where
 
 import Data.ByteString (ByteString)
-import Data.Attoparsec.Char8 (parseOnly)
 import qualified Data.ByteString.Char8 as S
+import Data.Attoparsec.ByteString (parseOnly)
 import Data.Conduit
 import Text.HTML.TagStream.Parser
 import Text.HTML.TagStream.Types
 
--- | like concatMap, with a accumerator.
---
--- Since 0.0.0
+-- | html parser conduit.
 tokenStream :: Resource m => Conduit ByteString m Token
 tokenStream = conduitState S.empty push close
   where
     push accum input =
         case parseOnly html (accum `S.append` input) of
+            Right (splitAccum -> (accum', tokens)) -> return $ StateProducing accum' tokens
             Left err -> fail err
-            Right (splitAccum -> (accum', tokens)) -> return (accum', Producing tokens)
 
     close s = return $ if S.null s then [] else [Text s]
 

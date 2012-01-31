@@ -1,5 +1,5 @@
 Name:                tagstream-conduit
-Version:             0.2.1
+Version:             0.2.2
 Synopsis:            streamlined html tag parser
 Description:
     Tag-stream is a library for parsing HTML//XML to a token stream.
@@ -32,7 +32,7 @@ Library
                      , Text.HTML.TagStream.Utils
   Build-depends:       base >= 4 && < 5
                      , bytestring
-                     , conduit >= 0.0.2
+                     , conduit >= 0.2.0
                      , attoparsec
                      , blaze-builder
                      , blaze-builder-conduit
