@@ -96,10 +96,13 @@ readURI :: ResourceIO m
         => SchemeMap
         -> URI
         -> C.Source m ByteString
-readURI sm uri = C.Source $ do
-    case Map.lookup (uriScheme uri) sm >>= schemeReader of
-        Nothing -> lift $ C.resourceThrow $ UnknownReadScheme uri
-        Just f -> C.prepareSource $ f uri
+readURI sm uri = C.Source
+    { C.sourcePull =
+        case Map.lookup (uriScheme uri) sm >>= schemeReader of
+            Nothing -> lift $ C.resourceThrow $ UnknownReadScheme uri
+            Just f -> C.sourcePull $ f uri
+    , C.sourceClose = return ()
+    }
 
 writeURI :: ResourceIO m
          => SchemeMap

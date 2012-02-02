@@ -1,5 +1,5 @@
 Name:                uri-conduit
-Version:             0.2.0.2
+Version:             0.2.1
 Synopsis:            Read and write URIs
 Homepage:            http://github.com/snoyberg/xml
 License:             BSD3
@@ -15,7 +15,7 @@ Library
   Exposed-modules:     Network.URI.Conduit
                        Network.URI.Conduit.File
   Build-depends:       base                     >= 4          && < 5
-                     , conduit                  >= 0.0.0.2
+                     , conduit                  >= 0.2        && < 0.3
                      , text                     >= 0.5        && < 1.0
                      , transformers             >= 0.2        && < 0.3
                      , bytestring               >= 0.9        && < 0.10

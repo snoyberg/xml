@@ -43,25 +43,36 @@ readEID :: ResourceIO m
         -> ExternalID
         -> SchemeMap
         -> C.Source m DTDComponent
-readEID catalog eid sm = C.Source $ do
-    case resolveURI catalog Nothing eid of
-        Nothing -> liftIO $ throwIO $ CannotResolveExternalID eid
-        Just uri -> do
-            istate <- liftIO $ I.newIORef initState
-            let rr = ResolveReader catalog uri istate sm
-            C.prepareSource $ readerToEnum rr
+readEID catalog eid sm = C.Source
+    { C.sourcePull = do
+        case resolveURI catalog Nothing eid of
+            Nothing -> liftIO $ throwIO $ CannotResolveExternalID eid
+            Just uri -> do
+                istate <- liftIO $ I.newIORef initState
+                let rr = ResolveReader catalog uri istate sm
+                C.sourcePull $ readerToEnum rr
+    , C.sourceClose = return ()
+    }
 
 readerToEnum :: (MonadBaseControl IO m, ResourceIO m)
              => ResolveReader -> C.Source m DTDComponent
-readerToEnum rr = C.Source $ do
-    C.PreparedSource pull close <- C.prepareSource $
+readerToEnum rr =
+    addCatch src0
+  where
+    src0 =
         readURI (rrSchemeMap rr) (rrBase rr)
                 C.$= detectUtf
                 C.$= streamUnresolved
                 C.$= CL.concatMap id
                 C.$= resolveEnum rr
-    return $ C.PreparedSource (pull `Lifted.catch` (lift . throw rr)) close
-
+    addCatch src = C.Source
+        { C.sourcePull = do
+            res <- C.sourcePull src `Lifted.catch` (lift . throw rr)
+            return $ case res of
+                C.Open src' val -> C.Open (addCatch src') val
+                C.Closed -> C.Closed
+        , C.sourceClose = return ()
+        }
 
 throw :: C.ResourceThrow m => ResolveReader -> SomeException -> m a
 throw rr e =
@@ -71,9 +82,12 @@ readFile_ :: FilePath -> IO [DTDComponent]
 readFile_ fp = C.runResourceT $ enumFile fp C.$$ CL.consume
 
 enumFile :: (MonadBaseControl IO m, ResourceIO m) => FilePath -> C.Source m DTDComponent
-enumFile fp = C.Source $ do
-    eid <- lift $ filePathToEID fp
-    C.prepareSource $ readEID Map.empty eid $ toSchemeMap [fileScheme]
+enumFile fp = C.Source
+    { C.sourcePull = do
+        eid <- lift $ filePathToEID fp
+        C.sourcePull $ readEID Map.empty eid $ toSchemeMap [fileScheme]
+    , C.sourceClose = return ()
+    }
 
 filePathToEID :: ResourceIO m => FilePath -> m ExternalID
 filePathToEID = liftM uriToEID . liftIO . decodeString
