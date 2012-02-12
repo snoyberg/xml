@@ -28,7 +28,8 @@ decodeString s =
         Nothing -> do
             wd <- F.getWorkingDirectory
             let fp = wd FP.</> FP.decodeString s
-            parseURI $ T.append "file://" $ T.concatMap fixSpace $ T.map fixSlash $ either id id $ FP.toText fp
+                t = T.append "file:///" $ T.concatMap fixSpace $ T.map fixSlash $ either id id $ FP.toText fp
+            parseURI t
   where
     fixSlash '\\' = '/'
     fixSlash c = c
@@ -51,8 +52,19 @@ fileScheme = Scheme
 toFilePath :: URI -> FP.FilePath
 toFilePath uri = FP.fromText $
     case uriAuthority uri of
-        Nothing -> uriPath uri
-        Just a -> T.concat [uriRegName a, uriPort a, T.pack $ unEscapeString $ T.unpack $ uriPath uri]
+        Nothing -> fixWinPath $ uriPath uri
+        Just a -> T.concat [uriRegName a, uriPort a, T.pack $ unEscapeString $ T.unpack $ fixWinPath $ uriPath uri]
+  where
+    fixWinPath t =
+        res
+      where
+        c1 = T.head t
+        c3 = T.head $ T.drop 2 t
+        len = T.length t
+        res =
+            if len > 3 && c1 == '/' && c3 == ':'
+                then T.tail t -- Windows absolute path
+                else t
 
 sourceFile :: C.ResourceIO m => FP.FilePath -> C.Source m S.ByteString
 sourceFile = CB.sourceFile . FP.encodeString
