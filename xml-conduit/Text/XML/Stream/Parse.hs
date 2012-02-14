@@ -18,19 +18,24 @@
 -- Then this code:
 --
 -- > {-# LANGUAGE OverloadedStrings #-}
--- > import Text.XML.Stream.Parse
+-- > import Control.Monad.Trans.Resource
+-- > import Data.Conduit (($$))
 -- > import Data.Text (Text, unpack)
--- > 
--- > data Person = Person { age :: Int, name :: Text }
+-- > import Text.XML.Stream.Parse
+-- >
+-- > data Person = Person Int Text
 -- >     deriving Show
--- > 
+-- >
 -- > parsePerson = tagName "person" (requireAttr "age") $ \age -> do
 -- >     name <- content
 -- >     return $ Person (read $ unpack age) name
--- > 
+-- >
 -- > parsePeople = tagNoAttr "people" $ many parsePerson
--- > 
--- > main = parseFile_ def "people.xml" $ force "people required" parsePeople
+-- >
+-- > main = do
+-- >     people <- runResourceT $
+-- >             parseFile def "people.xml" $$ force "people required" parsePeople
+-- >     print people
 --
 -- will produce:
 --
