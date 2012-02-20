@@ -9,7 +9,7 @@ import Language.Haskell.TH.Syntax
 import Language.Haskell.TH.Quote
 import qualified Data.Text.Lazy as TL
 import Control.Monad ((<=<))
-import Text.Hamlet.Parse
+import Text.Hamlet.XMLParse
 import Text.Shakespeare.Base (readUtf8File, derefToExp, Scope, Deref (DerefIdent), Ident (Ident))
 import Data.Text (pack, unpack)
 import qualified Data.Text as T

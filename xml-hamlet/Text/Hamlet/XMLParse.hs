@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE CPP #-}
-module Text.Hamlet.Parse
+module Text.Hamlet.XMLParse
     ( Result (..)
     , Content (..)
     , Doc (..)
