@@ -38,6 +38,7 @@ module Text.XML
       -- ** Other
     , fromEvents
     , UnresolvedEntityException (..)
+    , XMLException (..)
       -- * Rendering
     , writeFile
     , renderLBS
@@ -78,7 +79,7 @@ import qualified Data.Text as T
 import Data.Either (partitionEithers)
 import Prelude hiding (readFile, writeFile, FilePath)
 import Filesystem.Path.CurrentOS (FilePath, encodeString)
-import Control.Exception (SomeException, Exception)
+import Control.Exception (SomeException, Exception, throwIO, handle)
 import Text.XML.Stream.Parse (ParseSettings, def, psDecodeEntities)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as L
@@ -175,7 +176,21 @@ fromXMLNode (X.NodeComment c) = Right $ NodeComment c
 fromXMLNode (X.NodeInstruction i) = Right $ NodeInstruction i
 
 readFile :: ParseSettings -> FilePath -> IO Document
-readFile ps fp = C.runResourceT $ CB.sourceFile (encodeString fp) C.$$ sinkDoc ps
+readFile ps fp = handle
+    (throwIO . InvalidXMLFile fp)
+    (C.runResourceT $ CB.sourceFile (encodeString fp) C.$$ sinkDoc ps)
+
+data XMLException = InvalidXMLFile FilePath SomeException
+    deriving Typeable
+
+instance Show XMLException where
+    show (InvalidXMLFile fp e) = concat
+        [ "Error parsing XML file "
+        , encodeString fp
+        , ": "
+        , show e
+        ]
+instance Exception XMLException
 
 parseLBS :: ParseSettings -> L.ByteString -> Either SomeException Document
 parseLBS ps lbs = runST
