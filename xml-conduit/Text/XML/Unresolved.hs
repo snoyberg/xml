@@ -53,11 +53,11 @@ import System.IO.Unsafe (unsafePerformIO)
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
-import Data.Conduit.Lazy (lazyConsume)
 import Control.Exception (throw)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Resource (ResourceUnsafeIO, runExceptionT)
 import Control.Monad.ST (runST)
+import Text.XML.Stream.Token (lazyConsumeNoResource)
 
 readFile :: P.ParseSettings -> FilePath -> IO Document
 readFile ps fp = C.runResourceT $ P.parseFile ps fp C.$$ fromEvents
@@ -77,7 +77,7 @@ renderLBS rs doc =
                  -- will not deallocate any of the resources being used
                  -- by the process
                  $ C.runResourceT
-                 $ lazyConsume
+                 $ lazyConsumeNoResource
                  $ renderBytes rs doc
 
 parseLBS :: P.ParseSettings -> L.ByteString -> Either SomeException Document

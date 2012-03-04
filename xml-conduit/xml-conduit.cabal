@@ -1,5 +1,5 @@
 name:            xml-conduit
-version:         0.5.3
+version:         0.5.3.1
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michaels@suite-sol.com>, Aristid Breitkreuz <aristidb@googlemail.com>
@@ -41,6 +41,7 @@ library
                    , failure                   >= 0.1      && < 0.3
                    , data-default              >= 0.2      && < 0.4
                    , system-filepath           >= 0.4      && < 0.5
+                   , monad-control             >= 0.3      && < 0.4
     exposed-modules: Text.XML.Stream.Parse
                      Text.XML.Stream.Render
                      Text.XML.Unresolved

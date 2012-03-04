@@ -92,11 +92,11 @@ import qualified Data.Text.Lazy.Encoding as TLE
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
-import Data.Conduit.Lazy (lazyConsume)
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Exception (throw)
 import Control.Monad.Trans.Resource (ResourceUnsafeIO, runExceptionT)
 import Control.Monad.Trans.Class (lift)
+import Text.XML.Stream.Token (lazyConsumeNoResource)
 
 data Document = Document
     { documentPrologue :: Prologue
@@ -245,7 +245,7 @@ renderLBS rs doc =
                  -- will not deallocate any of the resources being used
                  -- by the process
                  $ C.runResourceT
-                 $ lazyConsume
+                 $ lazyConsumeNoResource
                  $ renderBytes rs doc
 
 renderText :: R.RenderSettings -> Document -> TL.Text
