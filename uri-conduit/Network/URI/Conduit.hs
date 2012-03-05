@@ -37,7 +37,6 @@ import qualified Data.Set as Set
 import Control.Failure (Failure (..))
 import Control.Exception (Exception)
 import Data.Typeable (Typeable)
-import Control.Monad.Trans.Resource (ResourceIO)
 import Control.Monad.Trans.Class (lift)
 
 data URI = URI
@@ -70,8 +69,8 @@ hasExtension URI { uriPath = p } t = (cons '.' t) `isSuffixOf` p
 
 data Scheme = Scheme
     { schemeNames :: Set.Set Text
-    , schemeReader :: forall m. ResourceIO m => Maybe (URI -> C.Source m ByteString)
-    , schemeWriter :: forall m. ResourceIO m => Maybe (URI -> C.Sink ByteString m ())
+    , schemeReader :: forall m. C.MonadResource m => Maybe (URI -> C.Source m ByteString)
+    , schemeWriter :: forall m. C.MonadResource m => Maybe (URI -> C.Sink ByteString m ())
     }
 
 type SchemeMap = Map.Map Text Scheme
@@ -92,25 +91,23 @@ data URIException = UnknownReadScheme URI
   deriving (Show, Typeable)
 instance Exception URIException
 
-readURI :: ResourceIO m
+readURI :: C.MonadResource m
         => SchemeMap
         -> URI
         -> C.Source m ByteString
-readURI sm uri = C.Source
-    { C.sourcePull =
-        case Map.lookup (uriScheme uri) sm >>= schemeReader of
-            Nothing -> lift $ C.resourceThrow $ UnknownReadScheme uri
-            Just f -> C.sourcePull $ f uri
-    , C.sourceClose = return ()
-    }
+readURI sm uri = C.SourceM
+    (case Map.lookup (uriScheme uri) sm >>= schemeReader of
+        Nothing -> C.monadThrow $ UnknownReadScheme uri
+        Just f -> return $ f uri)
+    (return ())
 
-writeURI :: ResourceIO m
+writeURI :: C.MonadResource m
          => SchemeMap
          -> URI
          -> C.Sink ByteString m ()
 writeURI sm uri =
     case Map.lookup (uriScheme uri) sm >>= schemeWriter of
-        Nothing -> lift $ C.resourceThrow $ UnknownWriteScheme uri
+        Nothing -> lift $ C.monadThrow $ UnknownWriteScheme uri
         Just f -> f uri
 
 toNetworkURI :: URI -> N.URI
@@ -149,9 +146,9 @@ relativeTo a b = fmap fromNetworkURI $ toNetworkURI a `N.relativeTo` toNetworkUR
 nullURI :: URI
 nullURI = fromNetworkURI N.nullURI
 
-copyURI :: ResourceIO m
+copyURI :: C.MonadResource m
         => SchemeMap
         -> URI
         -> URI
         -> m ()
-copyURI sm src dst = C.runResourceT $ readURI sm src C.$$ writeURI sm dst
+copyURI sm src dst = readURI sm src C.$$ writeURI sm dst

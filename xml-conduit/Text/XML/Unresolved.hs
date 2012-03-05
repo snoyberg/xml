@@ -55,14 +55,14 @@ import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
 import Control.Exception (throw)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Resource (ResourceUnsafeIO, runExceptionT)
+import Control.Monad.Trans.Resource (MonadUnsafeIO, runExceptionT)
 import Control.Monad.ST (runST)
-import Text.XML.Stream.Token (lazyConsumeNoResource)
+import Data.Conduit.Lazy (lazyConsume)
 
 readFile :: P.ParseSettings -> FilePath -> IO Document
 readFile ps fp = C.runResourceT $ P.parseFile ps fp C.$$ fromEvents
 
-sinkDoc :: C.ResourceThrow m
+sinkDoc :: C.MonadThrow m
         => P.ParseSettings -> C.Sink ByteString m Document
 sinkDoc ps = P.parseBytes ps C.=$ fromEvents
 
@@ -76,14 +76,12 @@ renderLBS rs doc =
                  -- not generally safe, but we know that runResourceT
                  -- will not deallocate any of the resources being used
                  -- by the process
-                 $ C.runResourceT
-                 $ lazyConsumeNoResource
+                 $ lazyConsume
                  $ renderBytes rs doc
 
 parseLBS :: P.ParseSettings -> L.ByteString -> Either SomeException Document
 parseLBS ps lbs =
     runST $ runExceptionT
-          $ C.runResourceT
           $ CL.sourceList (L.toChunks lbs) C.$$ sinkDoc ps
 
 parseLBS_ :: P.ParseSettings -> L.ByteString -> Document
@@ -93,16 +91,16 @@ data InvalidEventStream = InvalidEventStream String
     deriving (Show, Typeable)
 instance Exception InvalidEventStream
 
-renderBuilder :: C.Resource m => R.RenderSettings -> Document -> C.Source m Builder
+renderBuilder :: Monad m => R.RenderSettings -> Document -> C.Source m Builder
 renderBuilder rs doc = CL.sourceList (toEvents doc) C.$= R.renderBuilder rs
 
-renderBytes :: ResourceUnsafeIO m => R.RenderSettings -> Document -> C.Source m ByteString
+renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> C.Source m ByteString
 renderBytes rs doc = CL.sourceList (toEvents doc) C.$= R.renderBytes rs
 
-renderText :: (C.ResourceThrow m, ResourceUnsafeIO m) => R.RenderSettings -> Document -> C.Source m Text
+renderText :: (C.MonadThrow m, MonadUnsafeIO m) => R.RenderSettings -> Document -> C.Source m Text
 renderText rs doc = CL.sourceList (toEvents doc) C.$= R.renderText rs
 
-fromEvents :: C.ResourceThrow m => C.Sink Event m Document
+fromEvents :: C.MonadThrow m => C.Sink Event m Document
 fromEvents = do
     skip EventBeginDocument
     d <- Document <$> goP <*> require goE <*> goM
@@ -110,7 +108,7 @@ fromEvents = do
     y <- CL.head
     if y == Nothing
         then return d
-        else lift $ C.resourceThrow $ InvalidEventStream $ "Trailing matter after epilogue: " ++ show y
+        else lift $ C.monadThrow $ InvalidEventStream $ "Trailing matter after epilogue: " ++ show y
   where
     skip e = do
         x <- CL.peek
@@ -130,7 +128,7 @@ fromEvents = do
             Just y -> return y
             Nothing -> do
                 y <- CL.head
-                lift $ C.resourceThrow $ InvalidEventStream $ "Document must have a single root element, got: " ++ show y
+                lift $ C.monadThrow $ InvalidEventStream $ "Document must have a single root element, got: " ++ show y
     goP = Prologue <$> goM <*> goD <*> goM
     goM = many goM'
     goM' = do
@@ -158,7 +156,7 @@ fromEvents = do
             --
             -- Just (EventDeclaration _) -> dropTillDoctype
             Just EventEndDoctype -> return ()
-            _ -> lift $ C.resourceThrow $ InvalidEventStream $ "Invalid event during doctype, got: " ++ show x
+            _ -> lift $ C.monadThrow $ InvalidEventStream $ "Invalid event during doctype, got: " ++ show x
     goE = do
         x <- CL.peek
         case x of
@@ -170,7 +168,7 @@ fromEvents = do
         y <- CL.head
         if y == Just (EventEndElement n)
             then return $ Element n as $ compressNodes ns
-            else lift $ C.resourceThrow $ InvalidEventStream $ "Missing end element for " ++ show n ++ ", got: " ++ show y
+            else lift $ C.monadThrow $ InvalidEventStream $ "Missing end element for " ++ show n ++ ", got: " ++ show y
     goN = do
         x <- CL.peek
         case x of

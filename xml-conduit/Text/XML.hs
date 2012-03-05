@@ -94,9 +94,9 @@ import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Exception (throw)
-import Control.Monad.Trans.Resource (ResourceUnsafeIO, runExceptionT)
+import Control.Monad.Trans.Resource (MonadUnsafeIO, runExceptionT)
 import Control.Monad.Trans.Class (lift)
-import Text.XML.Stream.Token (lazyConsumeNoResource)
+import Data.Conduit.Lazy (lazyConsume)
 
 data Document = Document
     { documentPrologue :: Prologue
@@ -195,14 +195,13 @@ instance Exception XMLException
 parseLBS :: ParseSettings -> L.ByteString -> Either SomeException Document
 parseLBS ps lbs = runST
                 $ runExceptionT
-                $ C.runResourceT
                 $ CL.sourceList (L.toChunks lbs)
            C.$$ sinkDoc ps
 
 parseLBS_ :: ParseSettings -> L.ByteString -> Document
 parseLBS_ ps = either throw id . parseLBS ps
 
-sinkDoc :: C.ResourceThrow m
+sinkDoc :: C.MonadThrow m
         => ParseSettings
         -> C.Sink ByteString m Document
 sinkDoc ps = P.parseBytes ps C.=$ fromEvents
@@ -210,28 +209,27 @@ sinkDoc ps = P.parseBytes ps C.=$ fromEvents
 parseText :: ParseSettings -> TL.Text -> Either SomeException Document
 parseText ps tl = runST
                 $ runExceptionT
-                $ C.runResourceT
                 $ CL.sourceList (TL.toChunks tl)
            C.$$ sinkTextDoc ps
 
 parseText_ :: ParseSettings -> TL.Text -> Document
 parseText_ ps = either throw id . parseText ps
 
-sinkTextDoc :: C.ResourceThrow m
+sinkTextDoc :: C.MonadThrow m
             => ParseSettings
             -> C.Sink Text m Document
 sinkTextDoc ps = P.parseText ps C.=$ fromEvents
 
-fromEvents :: C.ResourceThrow m => C.Sink X.Event m Document
+fromEvents :: C.MonadThrow m => C.Sink X.Event m Document
 fromEvents = do
     d <- D.fromEvents
-    either (lift . C.resourceThrow . UnresolvedEntityException) return $ fromXMLDocument d
+    either (lift . C.monadThrow . UnresolvedEntityException) return $ fromXMLDocument d
 
 data UnresolvedEntityException = UnresolvedEntityException (Set Text)
     deriving (Show, Typeable)
 instance Exception UnresolvedEntityException
 
-renderBytes :: ResourceUnsafeIO m => R.RenderSettings -> Document -> C.Source m ByteString
+renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> C.Source m ByteString
 renderBytes rs doc = D.renderBytes rs $ toXMLDocument doc
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
@@ -244,8 +242,7 @@ renderLBS rs doc =
                  -- not generally safe, but we know that runResourceT
                  -- will not deallocate any of the resources being used
                  -- by the process
-                 $ C.runResourceT
-                 $ lazyConsumeNoResource
+                 $ lazyConsume
                  $ renderBytes rs doc
 
 renderText :: R.RenderSettings -> Document -> TL.Text

@@ -16,7 +16,6 @@ import qualified Data.Conduit as C
 import qualified Data.Conduit.Binary as CB
 import qualified Filesystem as F
 import Control.Monad.IO.Class (liftIO)
-import qualified Data.ByteString as S
 
 -- | Converts a string, such as a command-line argument, into a URI. First
 -- tries to parse as an absolute URI. If this fails, it interprets as a
@@ -39,14 +38,11 @@ decodeString s =
 fileScheme :: Scheme
 fileScheme = Scheme
     { schemeNames = Set.singleton "file:"
-    , schemeReader = Just $ sourceFile . toFilePath
-    , schemeWriter = Just $ \uri -> C.SinkData
-        { C.sinkPush = \bs -> do
-            let fp = toFilePath uri
-            liftIO $ F.createTree $ FP.directory fp
-            C.sinkPush (CB.sinkFile $ FP.encodeString fp) bs
-        , C.sinkClose = return ()
-        }
+    , schemeReader = Just $ CB.sourceFile . FP.encodeString . toFilePath
+    , schemeWriter = Just $ \uri -> C.SinkM $ do
+        let fp = toFilePath uri
+        liftIO $ F.createTree $ FP.directory fp
+        return $ CB.sinkFile $ FP.encodeString fp
     }
 
 toFilePath :: URI -> FP.FilePath
@@ -65,6 +61,3 @@ toFilePath uri = FP.fromText $
             if len > 3 && c1 == '/' && c3 == ':'
                 then T.tail t -- Windows absolute path
                 else t
-
-sourceFile :: C.ResourceIO m => FP.FilePath -> C.Source m S.ByteString
-sourceFile = CB.sourceFile . FP.encodeString

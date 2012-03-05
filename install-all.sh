@@ -4,7 +4,7 @@
 CABAL=${CABAL:-cabal}
 
 # install testing dependencies
-$CABAL install HUnit QuickCheck 'hspec >= 0.6.1 && < 0.7'
+$CABAL install HUnit QuickCheck hspec
 
 pkgs=( xml-conduit
        uri-conduit

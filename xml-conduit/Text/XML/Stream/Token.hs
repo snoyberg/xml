@@ -6,7 +6,6 @@ module Text.XML.Stream.Token
     , Token (..)
     , TAttribute
     , NSLevel (..)
-    , lazyConsumeNoResource
     ) where
 
 import Data.XML.Types (Instruction (..), Content (..), ExternalID (..))
@@ -24,9 +23,6 @@ import qualified Blaze.ByteString.Builder.Char8 as BC8
 import qualified Data.Set as Set
 import Data.List (foldl')
 import Control.Arrow (first)
-import Control.Monad.Trans.Control (MonadBaseControl, liftBaseOp_)
-import Data.Conduit (Source, sourcePull, SourceResult (Open, Closed), ResourceT)
-import System.IO.Unsafe (unsafeInterleaveIO)
 
 oneSpace :: Builder
 oneSpace = copyByteString " "
@@ -175,15 +171,3 @@ splitTName x@(TName Nothing t)
     | otherwise = TName (Just a) $ T.drop 1 b
   where
     (a, b) = T.break (== ':') t
-
-lazyConsumeNoResource :: MonadBaseControl IO m => Source m a -> ResourceT m [a]
-lazyConsumeNoResource src0 = do
-    go src0
-  where
-    go src = liftBaseOp_ unsafeInterleaveIO $ do
-        res <- sourcePull src
-        case res of
-            Closed -> return []
-            Open src' x -> do
-                y <- go src'
-                return $ x : y

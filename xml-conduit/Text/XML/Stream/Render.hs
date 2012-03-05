@@ -30,20 +30,20 @@ import Data.List (foldl')
 import qualified Data.Conduit as C
 import qualified Data.Conduit.Text as CT
 import Control.Exception (assert)
-import Control.Monad.Trans.Resource (ResourceUnsafeIO)
+import Control.Monad.Trans.Resource (MonadUnsafeIO)
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder' and 'builderToByteString', so it produces
 -- optimally sized 'ByteString's with minimal buffer copying.
 --
 -- The output is UTF8 encoded.
-renderBytes :: ResourceUnsafeIO m => RenderSettings -> C.Conduit Event m ByteString
+renderBytes :: MonadUnsafeIO m => RenderSettings -> C.Conduit Event m ByteString
 renderBytes rs = renderBuilder rs C.=$= builderToByteString
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder', 'builderToByteString' and 'renderBytes', so it
 -- produces optimally sized 'ByteString's with minimal buffer copying.
-renderText :: (C.ResourceThrow m, ResourceUnsafeIO m)
+renderText :: (C.MonadThrow m, MonadUnsafeIO m)
            => RenderSettings -> C.Conduit Event m Text
 renderText rs = renderBytes rs C.=$= CT.decode CT.utf8
 
@@ -59,11 +59,11 @@ instance Default RenderSettings where
 -- | Render a stream of 'Event's into a stream of 'Builder's. Builders are from
 -- the blaze-builder package, and allow the create of optimally sized
 -- 'ByteString's with minimal buffer copying.
-renderBuilder :: C.Resource m => RenderSettings -> C.Conduit Event m Builder
+renderBuilder :: Monad m => RenderSettings -> C.Conduit Event m Builder
 renderBuilder RenderSettings { rsPretty = True } = prettify C.=$= renderBuilder'
 renderBuilder RenderSettings { rsPretty = False } = renderBuilder'
 
-renderBuilder' :: C.Resource m => C.Conduit Event m Builder
+renderBuilder' :: Monad m => C.Conduit Event m Builder
 renderBuilder' = C.conduitState
     (id, [])
     push
@@ -194,10 +194,10 @@ getPrefix ppref nsmap ns =
 
 -- | Convert a stream of 'Event's into a prettified one, adding extra
 -- whitespace. Note that this can change the meaning of your XML.
-prettify :: C.Resource m => C.Conduit Event m Event
+prettify :: Monad m => C.Conduit Event m Event
 prettify = prettify' 0 []
 
-prettify' :: C.Resource m => Int -> [Name] -> C.Conduit Event m Event
+prettify' :: Monad m => Int -> [Name] -> C.Conduit Event m Event
 prettify' level0 names0 = C.conduitState
     (id, (level0, names0))
     push
