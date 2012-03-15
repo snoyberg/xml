@@ -49,6 +49,9 @@ module Text.XML
       -- ** Parsing
     , ParseSettings
     , psDecodeEntities
+      -- *** Entity decoding
+    , P.decodeXmlEntities
+    , P.decodeHtmlEntities
       -- ** Rendering
     , R.RenderSettings
     , R.rsPretty
