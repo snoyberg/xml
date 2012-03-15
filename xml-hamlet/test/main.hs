@@ -125,6 +125,7 @@ $else
 <{http://www.example.com/foo/bar}baz>
 |] @?= [X.NodeElement $ X.Element "{http://www.example.com/foo/bar}baz" [] []]
     , it "allow embedding comments" $[xml|^{comment}|] @?= comment
+    , it "short circuiting of attributes" $ [xml|<foo :False:x=#{undefined}>|] @?= [xml|<foo>|]
     ]
   where
     bin = "bin"
