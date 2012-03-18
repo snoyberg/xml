@@ -90,7 +90,9 @@ loadSchemaAttrMap (DTDCache icache catalog sm) uri0 = do
             Just uri' -> do
                 doc <- C.runResourceT $ readURI sm uri' C.$$ X.sinkDoc X.def
                 let c = fromDocument doc
-                let includes = c $// element "{http://www.w3.org/2001/XMLSchema}include" >=> attribute "schemaLocation"
+                let includes =
+                        (c $// element "{http://www.w3.org/2001/XMLSchema}include" >=> attribute "schemaLocation") ++
+                        (c $// element "{http://www.w3.org/2001/XMLSchema}redefine" >=> attribute "schemaLocation")
                 ms1 <- mapM load includes
                 let ms2 = c $// element "{http://www.w3.org/2001/XMLSchema}element" >=> go
                 let ms = ms1 ++ map (uncurry Map.singleton) ms2
