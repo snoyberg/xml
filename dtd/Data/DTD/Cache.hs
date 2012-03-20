@@ -13,6 +13,7 @@ module Data.DTD.Cache
     ) where
 
 import qualified Text.XML as X
+import Text.XML.Cursor
 import qualified Data.XML.Types as XU
 import qualified Data.Map as Map
 import Data.Text (Text)
@@ -33,6 +34,7 @@ import Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Network.URI as NU
 import Control.Exception.Lifted (try)
 import Control.Monad.Trans.Resource (ResourceIO)
+import Control.Monad (liftM)
 
 toMaps :: [D.DTDComponent] -> (EntityMap, AttrMap)
 toMaps =
@@ -68,6 +70,44 @@ newDTDCacheFile fp = do
     c <- loadCatalog (toSchemeMap [fileScheme]) uri
     newDTDCache c (toSchemeMap [fileScheme])
 
+loadSchemaAttrMap :: ResourceIO m => DTDCache -> Text -> m (EntityMap, AttrMap)
+loadSchemaAttrMap (DTDCache icache catalog sm) uri0 = do
+    res <- liftIO $ fmap (Map.lookup pubsys) $ I.readIORef icache
+    case res of
+        Just dtd -> return dtd
+        Nothing -> do
+            res' <- load uri0
+            let maps = (Map.empty, res')
+            liftIO $ I.atomicModifyIORef icache $ \m ->
+                (Map.insert pubsys maps m, ())
+            return maps
+  where
+    pubsys = Public uri0
+
+    load uri =
+        case resolveURI catalog Nothing (X.PublicID uri uri) of
+            Nothing -> C.resourceThrow $ UnknownSchemaURI uri
+            Just uri' -> do
+                doc <- C.runResourceT $ readURI sm uri' C.$$ X.sinkDoc X.def
+                let c = fromDocument doc
+                let includes =
+                        (c $// element "{http://www.w3.org/2001/XMLSchema}include" >=> attribute "schemaLocation") ++
+                        (c $// element "{http://www.w3.org/2001/XMLSchema}redefine" >=> attribute "schemaLocation")
+                ms1 <- mapM load includes
+                let ms2 = c $// element "{http://www.w3.org/2001/XMLSchema}element" >=> go
+                let ms = ms1 ++ map (uncurry Map.singleton) ms2
+                return $ Map.unionsWith Map.union ms
+
+    go c = do
+        name <- attribute "name" c
+        let attrs = c $// element "{http://www.w3.org/2001/XMLSchema}attribute" >=> goA
+        return (X.Name name Nothing Nothing, Map.fromList attrs)
+
+    goA c = do
+        ref <- attribute "ref" c
+        def <- attribute "default" c
+        return (X.Name ref Nothing Nothing, Def def)
+
 loadAttrMap :: ResourceIO m => DTDCache -> X.ExternalID -> m (EntityMap, AttrMap)
 loadAttrMap (DTDCache icache catalog sm) ext = do
     res <- liftIO $ fmap (Map.lookup pubsys) $ I.readIORef icache
@@ -91,6 +131,7 @@ loadAttrMap (DTDCache icache catalog sm) ext = do
 
 data UnknownExternalID = UnknownExternalID X.ExternalID
                        | CannotLoadDTD NU.URI SomeException
+                       | UnknownSchemaURI Text
     deriving (Show, Typeable)
 instance Exception UnknownExternalID
 
@@ -104,14 +145,20 @@ applyDTD_ dc doc = applyDTD dc doc >>= either (liftIO . throwIO) return
 
 applyDTD :: (MonadBaseControl IO m, MonadIO m, ResourceIO m)
          => DTDCache -> XU.Document -> m (Either UnresolvedEntity X.Document)
-applyDTD dc doc@(XU.Document pro@(X.Prologue _ mdoctype _) root epi) =
-    case mdoctype of
-        Just (X.Doctype _ (Just extid)) -> do
-            attrs <- loadAttrMap dc extid
+applyDTD dc doc@(XU.Document pro@(X.Prologue _ mdoctype _) root epi) = do
+    mattrs <-
+        case mdoctype of
+            Just (X.Doctype _ (Just extid)) -> liftM Just $ loadAttrMap dc extid
+            _ ->
+                case lookup "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation" $ XU.elementAttributes root of
+                    Just [XU.ContentText uri] -> liftM Just $ loadSchemaAttrMap dc uri
+                    _ -> return Nothing
+    case mattrs of
+        Nothing -> return $ goD (Map.empty, Map.empty) doc
+        Just attrs ->
             case go attrs root of
                 Left e -> return $ Left e
                 Right root' -> return $ Right $ X.Document pro root' epi
-        _ -> return $ goD (Map.empty, Map.empty) doc
   where
     go :: (EntityMap, AttrMap) -> XU.Element -> Either UnresolvedEntity X.Element
     go (ents, attrs) (XU.Element name as ns) = do

@@ -62,6 +62,7 @@ main = hspecX $ do
         it "has correct attributeIs" cursorAttributeIs
     describe "resolved" $ do
         it "identifies unresolved entities" resolvedIdentifies
+        it "decodeHtmlEntities" testHtmlEntities
         it "works for resolvable entities" resolvedAllGood
         it "merges adjacent content nodes" resolvedMergeContent
         it "understands inline entity declarations" resolvedInline
@@ -218,7 +219,8 @@ cursorParent, cursorAncestor, cursorOrSelf, cursorPreceding, cursorFollowing,
     cursorAnyElement, cursorElement, cursorLaxElement, cursorContent,
     cursorAttribute, cursorLaxAttribute, cursorHasAttribute,
     cursorAttributeIs, cursorDeep, cursorForce, cursorForceM,
-    resolvedIdentifies, resolvedAllGood, resolvedMergeContent
+    resolvedIdentifies, resolvedAllGood, resolvedMergeContent,
+    testHtmlEntities
     :: Assertion
 cursorParent = name (Cu.parent bar2) @?= ["foo"]
 cursorAncestor = name (Cu.ancestor baz2) @?= ["bar2", "foo"]
@@ -276,6 +278,14 @@ resolvedIdentifies =
     Left (toException $ Res.UnresolvedEntityException $ Set.fromList ["foo", "bar", "baz"]) `showEq`
     Res.parseLBS def
     "<root attr='&bar;'>&foo; --- &baz; &foo;</root>"
+
+testHtmlEntities =
+    Res.parseLBS_ def
+        { P.psDecodeEntities = P.decodeHtmlEntities
+        } xml1 @=? Res.parseLBS_ def xml2
+  where
+    xml1 = "<root>&nbsp;</root>"
+    xml2 = "<root>&#160;</root>"
 
 resolvedAllGood =
     D.parseLBS_ def xml @=?

@@ -129,6 +129,7 @@ $else
 <foo bar=baz
      bin=bin>content
 |] @?= [xml|<foo bar=baz bin=bin>content|]
+    , it "short circuiting of attributes" $ [xml|<foo :False:x=#{undefined}>|] @?= [xml|<foo>|]
     ]
   where
     bin = "bin"

@@ -62,7 +62,7 @@ loadCatalog sm uri = do
                 "{urn:oasis:names:tc:entity:xmlns:xml:catalog}nextCatalog" ->
                     case lookup "catalog" as of
                         Just catalog ->
-                            case parseURIReference catalog >>= flip relativeTo uri of
+                            case parseURIReference (withBase catalog) >>= flip relativeTo uri of
                                 Just uri' -> do
                                     c'' <- loadCatalog sm uri'
                                     return $ c'' `Map.union` c

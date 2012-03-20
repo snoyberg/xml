@@ -27,7 +27,7 @@ Library
                      , xml-types                >= 0.3        && < 0.4
                      , attoparsec               >= 0.10       && < 0.11
                      , monad-control            >= 0.3        && < 0.4
-                     , xml-catalog              >= 0.5        && < 0.6
+                     , xml-catalog              >= 0.5.0.2    && < 0.6
                      , blaze-builder            >= 0.3        && < 0.4
                      , network                  >= 2.2        && < 2.4
                      , conduit                  >= 0.3        && < 0.4
