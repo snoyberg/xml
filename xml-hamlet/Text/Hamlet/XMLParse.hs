@@ -177,7 +177,7 @@ parseLine = do
         _ <- char ':'
         tagAttrib (Just d)
     tagAttrib cond = do
-        s <- many1 $ noneOf " \t=\r\n>"
+        s <- many1 $ noneOf " \t=\r\n><"
         v <- (do
             _ <- char '='
             s' <- tagAttribValue NotInQuotesAttr
@@ -191,13 +191,11 @@ parseLine = do
         _ <- char '<'
         name' <- many  $ noneOf " \t\r\n>"
         let name = if null name' then "div" else name'
-        xs <- many $ try ((many $ oneOf " \t") >>
+        xs <- many $ try ((many $ oneOf " \t\r\n") >>
               (tagCond <|> tagAttrib Nothing))
         _ <- many $ oneOf " \t"
-        c <- (eol >> return []) <|> (do
-            _ <- char '>'
-            c <- content InContent
-            return c)
+        _ <- char '>'
+        c <- content InContent
         let (tn, attr) = tag' $ TagName name : xs
         return $ LineTag tn attr c
 

@@ -10,7 +10,7 @@ main :: IO ()
 main = hspecX $ describe "xml-hamlet"
     [ it "handles plain tags" $ [xml|
 <foo>
-        <baz
+        <baz>
 |] @?=
         [ X.NodeElement $ X.Element "foo" []
             [ X.NodeElement $ X.Element "baz" [] []
@@ -47,7 +47,7 @@ main = hspecX $ describe "xml-hamlet"
     , it "handles attributes" $ [xml|
 <foo>
     <bar here=there>
-        <baz
+        <baz>
 |] @?=
         [ X.NodeElement $ X.Element "foo" []
             [ X.NodeElement $ X.Element "bar" [("here", "there")]
@@ -58,7 +58,7 @@ main = hspecX $ describe "xml-hamlet"
     , it "handles attributes" $ [xml|
 <foo>
     <bar here=there>
-        <baz :False:false=false :True:true=#{true}
+        <baz :False:false=false :True:true=#{true}>
 |] @?=
         [ X.NodeElement $ X.Element "foo" []
             [ X.NodeElement $ X.Element "bar" [("here", "there")]
@@ -119,12 +119,16 @@ $else
         , X.NodeElement $ X.Element "seven" [] []
         ]
     , it "recognizes clark notation" $ [xml|
-<{foo}bar {baz}bin="x"
+<{foo}bar {baz}bin="x">
 |] @?= [X.NodeElement $ X.Element "{foo}bar" [("{baz}bin", "x")] []]
     , it "recognizes clark with URLs" $ [xml|
 <{http://www.example.com/foo/bar}baz>
 |] @?= [X.NodeElement $ X.Element "{http://www.example.com/foo/bar}baz" [] []]
     , it "allow embedding comments" $[xml|^{comment}|] @?= comment
+    , it "multiline tags" $ [xml|
+<foo bar=baz
+     bin=bin>content
+|] @?= [xml|<foo bar=baz bin=bin>content|]
     ]
   where
     bin = "bin"
