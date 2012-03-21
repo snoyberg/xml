@@ -184,12 +184,12 @@ detectUtf :: C.MonadThrow m => C.Conduit S.ByteString m TS.Text
 detectUtf =
     conduit id
   where
-    conduit front = C.Running (push front) C.Closed
+    conduit front = C.NeedInput (push front) C.Closed
 
     push front bss =
         case getEncoding front bss of
             Left x -> conduit x
-            Right (bss', C.Running decode _) -> decode bss'
+            Right (bss', C.NeedInput decode _) -> decode bss'
             Right _ -> error "detectUtf: Unexpecting decode constructor"
 
     getEncoding front bs'
