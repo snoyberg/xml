@@ -6,13 +6,7 @@ CABAL=${CABAL:-cabal}
 # install testing dependencies
 $CABAL install HUnit QuickCheck hspec
 
-pkgs=( xml-conduit
-       uri-conduit
-       xml2html
-       xml-hamlet
-       xml-catalog
-     )
-       # xpath
+source package-list.sh
 
 # install each sub-respository
 for pkg in "${pkgs[@]}"; do
