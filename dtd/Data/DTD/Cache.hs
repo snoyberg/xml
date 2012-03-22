@@ -10,6 +10,9 @@ module Data.DTD.Cache
     , newDTDCacheFile
     , loadAttrMap
     , UnresolvedEntity (..)
+    , AttrMap
+    , EntityMap
+    , Att (..)
     ) where
 
 import qualified Text.XML as X

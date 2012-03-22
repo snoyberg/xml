@@ -64,17 +64,11 @@ readerToEnum rr =
                 C.$= streamUnresolved
                 C.$= CL.concatMap id
                 C.$= resolveEnum rr
-    addCatch = id -- FIXME
-    {-
-    addCatch src = C.Source
-        { C.sourcePull = do
-            res <- C.sourcePull src `Lifted.catch` (lift . throw rr)
-            return $ case res of
-                C.Open src' val -> C.Open (addCatch src') val
-                C.Closed -> C.Closed
-        , C.sourceClose = return ()
-        }
-        -}
+    addCatch (C.Open src close x) = C.Open (addCatch src) (addCatch' close) x
+    addCatch C.Closed = C.Closed
+    addCatch (C.SourceM msrc close) = C.SourceM (addCatch' $ liftM addCatch msrc) (addCatch' close)
+
+    addCatch' m = m `Lifted.catch` throw rr
 
 throw :: C.MonadThrow m => ResolveReader -> SomeException -> m a
 throw rr e =
