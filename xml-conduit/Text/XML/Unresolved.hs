@@ -14,6 +14,10 @@ module Text.XML.Unresolved
     , renderLBS
     , parseLBS
     , parseLBS_
+      -- * Text
+    , parseText
+    , parseText_
+    , sinkTextDoc
       -- * Byte streams
     , sinkDoc
       -- * Streaming functions
@@ -42,11 +46,13 @@ import Data.Typeable (Typeable)
 import Blaze.ByteString.Builder (Builder)
 import qualified Text.XML.Stream.Render as R
 import qualified Text.XML.Stream.Parse as P
+import Text.XML.Stream.Parse (ParseSettings)
 import Data.ByteString (ByteString)
 import Data.Text (Text)
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad       (when)
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
 import Data.Char (isSpace)
 import qualified Data.ByteString.Lazy as L
 import System.IO.Unsafe (unsafePerformIO)
@@ -212,3 +218,17 @@ compressNodes [x] = [x]
 compressNodes (NodeContent (ContentText x) : NodeContent (ContentText y) : z) =
     compressNodes $ NodeContent (ContentText $ x `T.append` y) : z
 compressNodes (x:xs) = x : compressNodes xs
+
+parseText :: ParseSettings -> TL.Text -> Either SomeException Document
+parseText ps tl = runST
+                $ runExceptionT
+                $ CL.sourceList (TL.toChunks tl)
+           C.$$ sinkTextDoc ps
+
+parseText_ :: ParseSettings -> TL.Text -> Document
+parseText_ ps = either throw id . parseText ps
+
+sinkTextDoc :: C.MonadThrow m
+            => ParseSettings
+            -> C.Sink Text m Document
+sinkTextDoc ps = P.parseText ps C.=$ fromEvents
