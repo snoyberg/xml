@@ -184,7 +184,7 @@ detectUtf :: C.MonadThrow m => C.Conduit S.ByteString m TS.Text
 detectUtf =
     conduit id
   where
-    conduit front = C.NeedInput (push front) C.Closed
+    conduit front = C.NeedInput (push front) (return ())
 
     push front bss =
         case getEncoding front bss of
