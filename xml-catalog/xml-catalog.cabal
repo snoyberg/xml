@@ -19,6 +19,6 @@ Library
                      , xml-conduit              >= 0.6        && < 0.7
                      , uri-conduit              >= 0.3        && < 0.4
                      , conduit                  >= 0.3        && < 0.4
-                     , transformers             >= 0.2        && < 0.3
+                     , transformers             >= 0.2        && < 0.4
                      , bytestring
   Ghc-options: -Wall
