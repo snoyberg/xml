@@ -33,28 +33,27 @@ import qualified Data.IORef as I
 import Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Data.Attoparsec.Text as A
 import Control.Monad (liftM)
-import Control.Monad.Trans.Resource (ResourceIO)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 
 type ResolveMonad m = ReaderT ResolveReader m
 
-readEID :: ResourceIO m
+readEID :: (C.MonadResource m, MonadBaseControl IO m)
         => Catalog
         -> ExternalID
         -> SchemeMap
         -> C.Source m DTDComponent
-readEID catalog eid sm = C.Source
-    { C.sourcePull = do
+readEID catalog eid sm =
+    C.SourceM pull (return ())
+  where
+    pull =
         case resolveURI catalog Nothing eid of
             Nothing -> liftIO $ throwIO $ CannotResolveExternalID eid
             Just uri -> do
                 istate <- liftIO $ I.newIORef initState
                 let rr = ResolveReader catalog uri istate sm
-                C.sourcePull $ readerToEnum rr
-    , C.sourceClose = return ()
-    }
+                return $ readerToEnum rr
 
-readerToEnum :: (MonadBaseControl IO m, ResourceIO m)
+readerToEnum :: (MonadBaseControl IO m, C.MonadThrow m, MonadIO m, C.MonadResource m)
              => ResolveReader -> C.Source m DTDComponent
 readerToEnum rr =
     addCatch src0
@@ -65,37 +64,34 @@ readerToEnum rr =
                 C.$= streamUnresolved
                 C.$= CL.concatMap id
                 C.$= resolveEnum rr
-    addCatch src = C.Source
-        { C.sourcePull = do
-            res <- C.sourcePull src `Lifted.catch` (lift . throw rr)
-            return $ case res of
-                C.Open src' val -> C.Open (addCatch src') val
-                C.Closed -> C.Closed
-        , C.sourceClose = return ()
-        }
+    addCatch (C.Open src close x) = C.Open (addCatch src) (addCatch' close) x
+    addCatch C.Closed = C.Closed
+    addCatch (C.SourceM msrc close) = C.SourceM (addCatch' $ liftM addCatch msrc) (addCatch' close)
 
-throw :: C.ResourceThrow m => ResolveReader -> SomeException -> m a
+    addCatch' m = m `Lifted.catch` throw rr
+
+throw :: C.MonadThrow m => ResolveReader -> SomeException -> m a
 throw rr e =
-    C.resourceThrow $ OccuredAt (show $ toNetworkURI $ rrBase rr) (ResolveOther e)
+    C.monadThrow $ OccuredAt (show $ toNetworkURI $ rrBase rr) (ResolveOther e)
 
 readFile_ :: FilePath -> IO [DTDComponent]
 readFile_ fp = C.runResourceT $ enumFile fp C.$$ CL.consume
 
-enumFile :: (MonadBaseControl IO m, ResourceIO m) => FilePath -> C.Source m DTDComponent
-enumFile fp = C.Source
-    { C.sourcePull = do
-        eid <- lift $ filePathToEID fp
-        C.sourcePull $ readEID Map.empty eid $ toSchemeMap [fileScheme]
-    , C.sourceClose = return ()
-    }
+enumFile :: (MonadBaseControl IO m, C.MonadResource m) => FilePath -> C.Source m DTDComponent
+enumFile fp =
+    C.SourceM pull (return ())
+  where
+    pull = do
+        eid <- filePathToEID fp
+        return $ readEID Map.empty eid $ toSchemeMap [fileScheme]
 
-filePathToEID :: ResourceIO m => FilePath -> m ExternalID
+filePathToEID :: MonadIO m => FilePath -> m ExternalID
 filePathToEID = liftM uriToEID . liftIO . decodeString
 
 uriToEID :: URI -> ExternalID
 uriToEID = SystemID . T.pack . show . toNetworkURI
 
-streamUnresolved :: ResourceIO m => C.Conduit T.Text m [U.DTDComponent]
+streamUnresolved :: C.MonadThrow m => C.Conduit T.Text m [U.DTDComponent]
 streamUnresolved =
     C.sequenceSink () $ const $ C.Emit () . return <$> sinkParser p
   where
@@ -104,14 +100,14 @@ streamUnresolved =
         (UP.dtdComponent >>= return . return) <|>
         (A.endOfInput >> return [])
 
-resolveEnum :: (ResourceIO m, MonadBaseControl IO m)
+resolveEnum :: (MonadBaseControl IO m, C.MonadThrow m, MonadIO m, C.MonadUnsafeIO m)
             => ResolveReader
             -> C.Conduit U.DTDComponent m DTDComponent
 resolveEnum rr =
       C.transConduit (evalStateT' rr)
     $ CL.concatMapM resolvef
 
-evalStateT' :: ResourceIO m
+evalStateT' :: Monad m
             => ResolveReader
             -> ReaderT ResolveReader m a
             -> m a
@@ -132,23 +128,23 @@ data ResolveReader = ResolveReader
     , rrSchemeMap :: SchemeMap
     }
 
-get :: ResourceIO m => ReaderT ResolveReader m ResolveState
+get :: MonadIO m => ReaderT ResolveReader m ResolveState
 get = do
     rr <- ask
     liftIO $ I.readIORef $ rrState rr
 
-put :: ResourceIO m => ResolveState -> ReaderT ResolveReader m ()
+put :: MonadIO m => ResolveState -> ReaderT ResolveReader m ()
 put rs = do
     rr <- ask
     liftIO $ I.writeIORef (rrState rr) rs
 
-modify :: ResourceIO m => (ResolveState -> ResolveState) -> ReaderT ResolveReader m ()
+modify :: MonadIO m => (ResolveState -> ResolveState) -> ReaderT ResolveReader m ()
 modify f = get >>= put . f
 
 initState :: ResolveState
 initState = ResolveState Map.empty Map.empty
 
-resolvef :: (MonadBaseControl IO m, ResourceIO m)
+resolvef :: (MonadBaseControl IO m, C.MonadThrow m, MonadIO m, C.MonadUnsafeIO m)
          => U.DTDComponent
          -> ResolveMonad m [DTDComponent]
 
@@ -219,7 +215,7 @@ resolvef (U.DTDAttList (U.AttList name' xs)) = do
     ys <- mapM resolveAttDeclPERef xs
     return [DTDAttList $ AttList name $ concat ys]
 
-resolveAttDeclPERef :: ResourceIO m => U.AttDeclPERef -> ResolveMonad m [AttDecl]
+resolveAttDeclPERef :: (MonadIO m, C.MonadThrow m) => U.AttDeclPERef -> ResolveMonad m [AttDecl]
 resolveAttDeclPERef (U.ADPDecl (U.AttDecl name typ def)) = do
     typ' <-
         case typ of
@@ -236,16 +232,16 @@ resolveAttDeclPERef (U.ADPPERef p) = do
         A.Done "" x -> liftM concat $ mapM (resolveAttDeclPERef . U.ADPDecl) x
         x -> throwError' $ InvalidAttDecl p t x
 
-throwError' :: ResourceIO m => ResolveException' -> ResolveMonad m a
+throwError' :: C.MonadThrow m => ResolveException' -> ResolveMonad m a
 throwError' e = do
     uri <- liftM rrBase ask
-    lift $ C.resourceThrow $ OccuredAt (show $ toNetworkURI uri) e
+    lift $ C.monadThrow $ OccuredAt (show $ toNetworkURI uri) e
 
 runPartial :: A.Result t -> A.Result t
 runPartial (A.Partial f) = f ""
 runPartial r = r
 
-resolvePERefText :: ResourceIO m => U.PERef -> ResolveMonad m T.Text
+resolvePERefText :: (MonadIO m, C.MonadThrow m) => U.PERef -> ResolveMonad m T.Text
 resolvePERefText p = do
     rs <- get
     maybe (throwError' $ UnknownPERefText p) return $ Map.lookup p $ rsRefText rs
@@ -260,7 +256,7 @@ resolveEntityValue rs evs =
             Nothing -> Left $ UnknownPERefValue p
             Just t -> Right t
 
-resolveContentModel :: ResourceIO m => [U.EntityValue] -> ResolveMonad m ContentDecl
+resolveContentModel :: (MonadIO m, C.MonadThrow m) => [U.EntityValue] -> ResolveMonad m ContentDecl
 resolveContentModel ev = do
     rs <- get
     text <- either throwError' return $ resolveEntityValue rs ev

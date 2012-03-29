@@ -10,6 +10,9 @@ module Data.DTD.Cache
     , newDTDCacheFile
     , loadAttrMap
     , UnresolvedEntity (..)
+    , AttrMap
+    , EntityMap
+    , Att (..)
     ) where
 
 import qualified Text.XML as X
@@ -33,7 +36,6 @@ import Data.Typeable (Typeable)
 import Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Network.URI as NU
 import Control.Exception.Lifted (try)
-import Control.Monad.Trans.Resource (ResourceIO)
 import Control.Monad (liftM)
 
 toMaps :: [D.DTDComponent] -> (EntityMap, AttrMap)
@@ -64,21 +66,21 @@ newDTDCache c sm = do
     x <- liftIO $ I.newIORef Map.empty
     return $ DTDCache x c sm
 
-newDTDCacheFile :: ResourceIO m => FilePath -> m DTDCache
+newDTDCacheFile :: MonadIO m => FilePath -> m DTDCache
 newDTDCacheFile fp = do
     uri <- liftIO $ decodeString fp
     c <- loadCatalog (toSchemeMap [fileScheme]) uri
     newDTDCache c (toSchemeMap [fileScheme])
 
-loadSchemaAttrMap :: ResourceIO m => DTDCache -> Text -> m (EntityMap, AttrMap)
+loadSchemaAttrMap :: MonadIO m => DTDCache -> Text -> m (EntityMap, AttrMap)
 loadSchemaAttrMap (DTDCache icache catalog sm) uri0 = do
     res <- liftIO $ fmap (Map.lookup pubsys) $ I.readIORef icache
     case res of
         Just dtd -> return dtd
-        Nothing -> do
+        Nothing -> liftIO $ do
             res' <- load uri0
             let maps = (Map.empty, res')
-            liftIO $ I.atomicModifyIORef icache $ \m ->
+            I.atomicModifyIORef icache $ \m ->
                 (Map.insert pubsys maps m, ())
             return maps
   where
@@ -86,7 +88,7 @@ loadSchemaAttrMap (DTDCache icache catalog sm) uri0 = do
 
     load uri =
         case resolveURI catalog Nothing (X.PublicID uri uri) of
-            Nothing -> C.resourceThrow $ UnknownSchemaURI uri
+            Nothing -> throwIO $ UnknownSchemaURI uri
             Just uri' -> do
                 doc <- C.runResourceT $ readURI sm uri' C.$$ X.sinkDoc X.def
                 let c = fromDocument doc
@@ -108,16 +110,16 @@ loadSchemaAttrMap (DTDCache icache catalog sm) uri0 = do
         def <- attribute "default" c
         return (X.Name ref Nothing Nothing, Def def)
 
-loadAttrMap :: ResourceIO m => DTDCache -> X.ExternalID -> m (EntityMap, AttrMap)
+loadAttrMap :: MonadIO m => DTDCache -> X.ExternalID -> m (EntityMap, AttrMap)
 loadAttrMap (DTDCache icache catalog sm) ext = do
     res <- liftIO $ fmap (Map.lookup pubsys) $ I.readIORef icache
     case res of
         Just dtd -> return dtd
         Nothing ->
             case Map.lookup pubsys catalog of
-                Nothing -> C.resourceThrow $ UnknownExternalID ext
+                Nothing -> liftIO $ throwIO $ UnknownExternalID ext
                 Just uri -> do
-                    ecomps <- try $ C.runResourceT $ readEID catalog (uriToEID uri) sm C.$$ CL.consume
+                    ecomps <- liftIO $ try $ C.runResourceT $ readEID catalog (uriToEID uri) sm C.$$ CL.consume
                     comps <- either (liftIO . throwIO . CannotLoadDTD (toNetworkURI uri)) return ecomps
                     let maps = toMaps comps
                     liftIO $ I.atomicModifyIORef icache $ \m ->
@@ -139,11 +141,11 @@ data UnresolvedEntity = UnresolvedEntity Text
     deriving (Show, Typeable)
 instance Exception UnresolvedEntity
 
-applyDTD_ :: (MonadBaseControl IO m, MonadIO m, ResourceIO m)
+applyDTD_ :: (MonadBaseControl IO m, MonadIO m)
           => DTDCache -> XU.Document -> m X.Document
 applyDTD_ dc doc = applyDTD dc doc >>= either (liftIO . throwIO) return
 
-applyDTD :: (MonadBaseControl IO m, MonadIO m, ResourceIO m)
+applyDTD :: (MonadBaseControl IO m, MonadIO m)
          => DTDCache -> XU.Document -> m (Either UnresolvedEntity X.Document)
 applyDTD dc doc@(XU.Document pro@(X.Prologue _ mdoctype _) root epi) = do
     mattrs <-

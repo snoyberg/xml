@@ -95,7 +95,8 @@ import Data.XML.Types
 
 import Filesystem.Path.CurrentOS (FilePath, encodeString)
 import Control.Applicative (Applicative(..), Alternative(empty,(<|>)), (<$>))
-import Data.Text (Text)
+import Data.Text (Text, pack)
+import Control.Arrow ((***))
 import qualified Data.Text as T
 import Data.Text.Read (Reader, decimal, hexadecimal)
 import Data.Text.Encoding (decodeUtf32BEWith)
@@ -774,6 +775,7 @@ decodeHtmlEntities t =
 
 htmlEntities :: Map.Map T.Text T.Text
 htmlEntities = Map.fromList
+    $ map (pack *** pack) -- Work around the long-compile-time bug
     [ ("nbsp", "\160")
     , ("iexcl", "\161")
     , ("cent", "\162")
