@@ -1,10 +1,11 @@
 {-# LANGUAGE FlexibleInstances, OverloadedStrings #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Main where
 
 import Control.Applicative
-import Test.Framework (defaultMain, testGroup, Test)
-import Test.Framework.Providers.HUnit
-import Test.Framework.Providers.QuickCheck2
+import Test.Hspec.Monadic
+import Test.Hspec.HUnit ()
+import Test.Hspec.QuickCheck (prop)
 import Test.HUnit hiding (Test)
 import Test.QuickCheck
 import Data.ByteString (ByteString)
@@ -14,14 +15,12 @@ import qualified Data.Conduit.List as CL
 import Text.HTML.TagStream
 
 main :: IO ()
-main = defaultMain
-         [ testGroup "Property"
-             [ testProperty "Text nodes can't be empty" propTextNotEmpty
-             , testProperty "Parse results can't empty" propResultNotEmpty
-             ]
-         , testGroup "One pass parse" onePassTests
-         , testGroup "Streamline parse" streamlineTests
-         ]
+main = hspecX $ do
+    describe "Property" $ do
+         prop "Text nodes can't be empty" propTextNotEmpty
+         prop "Parse results can't empty" propResultNotEmpty
+    describe "One pass parse" onePassTests
+    describe "Streamline parse" streamlineTests
 
 propTextNotEmpty :: ByteString -> Bool
 propTextNotEmpty = either (const False) text_not_empty . decode
@@ -34,19 +33,19 @@ propResultNotEmpty s = either (const False) not_empty . decode $ s
   where not_empty tokens = (S.null s && null tokens)
                         || (not (S.null s) && not (null tokens))
 
-onePassTests :: [Test]
-onePassTests = map one testcases
+onePassTests :: Specs
+onePassTests = mapM_ one testcases
   where
-    one (str, tokens) = testCase (S.unpack str) $ do
+    one (str, tokens) = it (S.unpack str) $ do
         result <- combineText <$> assertDecode str
         assertEqual "one-pass parse result incorrect" tokens result
 
-streamlineTests :: [Test]
-streamlineTests = map one testcases
+streamlineTests :: Specs
+streamlineTests = mapM_ one testcases
   where
     isIncomplete (Incomplete _) = True
     isIncomplete _ = False
-    one (str, tokens) = testCase (S.unpack str) $ do
+    one (str, tokens) = it (S.unpack str) $ do
         -- streamline parse result don't contain the trailing Incomplete token.
         let tokens' = reverse . dropWhile isIncomplete  . reverse $ tokens
         result <- combineText <$> C.runResourceT (

@@ -46,8 +46,6 @@ test-suite test
                      , conduit >= 0.0.2
                      , QuickCheck
                      , HUnit
-                     , test-framework
-                     , test-framework-quickcheck2
-                     , test-framework-hunit
+                     , hspec
                      , tagstream-conduit
     ghc-options:     -Wall
