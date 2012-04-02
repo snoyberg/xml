@@ -39,7 +39,7 @@ fileScheme :: Scheme
 fileScheme = Scheme
     { schemeNames = Set.singleton "file:"
     , schemeReader = Just $ CB.sourceFile . FP.encodeString . toFilePath
-    , schemeWriter = Just $ \uri -> C.SinkM $ do
+    , schemeWriter = Just $ \uri -> flip C.PipeM (return ()) $ do
         let fp = toFilePath uri
         liftIO $ F.createTree $ FP.directory fp
         return $ CB.sinkFile $ FP.encodeString fp

@@ -3,5 +3,6 @@ pkgs=( xml-conduit
        xml2html
        xml-hamlet
        xml-catalog
+       dtd
      )
        # xpath

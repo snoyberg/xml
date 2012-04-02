@@ -43,7 +43,7 @@ readEID :: (C.MonadResource m, MonadBaseControl IO m)
         -> SchemeMap
         -> C.Source m DTDComponent
 readEID catalog eid sm =
-    C.SourceM pull (return ())
+    C.PipeM pull (return ())
   where
     pull =
         case resolveURI catalog Nothing eid of
@@ -64,9 +64,10 @@ readerToEnum rr =
                 C.$= streamUnresolved
                 C.$= CL.concatMap id
                 C.$= resolveEnum rr
-    addCatch (C.Open src close x) = C.Open (addCatch src) (addCatch' close) x
-    addCatch C.Closed = C.Closed
-    addCatch (C.SourceM msrc close) = C.SourceM (addCatch' $ liftM addCatch msrc) (addCatch' close)
+    addCatch (C.HaveOutput src close x) = C.HaveOutput (addCatch src) (addCatch' close) x
+    addCatch (C.NeedInput _ src) = addCatch src
+    addCatch (C.Done l ()) = C.Done l ()
+    addCatch (C.PipeM msrc close) = C.PipeM (addCatch' $ liftM addCatch msrc) (addCatch' close)
 
     addCatch' m = m `Lifted.catch` throw rr
 
@@ -79,7 +80,7 @@ readFile_ fp = C.runResourceT $ enumFile fp C.$$ CL.consume
 
 enumFile :: (MonadBaseControl IO m, C.MonadResource m) => FilePath -> C.Source m DTDComponent
 enumFile fp =
-    C.SourceM pull (return ())
+    C.PipeM pull (return ())
   where
     pull = do
         eid <- filePathToEID fp
@@ -104,7 +105,7 @@ resolveEnum :: (MonadBaseControl IO m, C.MonadThrow m, MonadIO m, C.MonadUnsafeI
             => ResolveReader
             -> C.Conduit U.DTDComponent m DTDComponent
 resolveEnum rr =
-      C.transConduit (evalStateT' rr)
+      C.transPipe (evalStateT' rr)
     $ CL.concatMapM resolvef
 
 evalStateT' :: Monad m
