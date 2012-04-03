@@ -9,7 +9,7 @@ import Text.HTML.TagStream.Parser
 import Text.HTML.TagStream.Types
 
 -- | html parser conduit.
-tokenStream :: Resource m => Conduit ByteString m Token
+tokenStream :: Monad m => Conduit ByteString m Token
 tokenStream = conduitState S.empty push close
   where
     push accum input =
