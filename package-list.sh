@@ -5,4 +5,3 @@ pkgs=( xml-conduit
        xml-catalog
        dtd
      )
-       # xpath
