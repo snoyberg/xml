@@ -84,7 +84,7 @@ module Text.XML.Stream.Parse
     ) where
 import Data.Attoparsec.Text
     ( char, Parser, takeWhile1, skipWhile, string
-    , manyTill, takeWhile, try, anyChar, endOfInput
+    , manyTill, takeWhile, try, anyChar
     )
 import qualified Control.Applicative as A
 import Data.Conduit.Attoparsec (sinkParser)
@@ -119,7 +119,6 @@ import Control.Exception (Exception)
 import Data.Conduit.Binary (sourceFile)
 import Data.Char (isSpace)
 import Data.Default (Default (..))
-import Data.Maybe (catMaybes)
 import Control.Monad.Trans.Resource (MonadResource, monadThrow)
 import Control.Monad.Trans.Class (lift)
 
@@ -229,21 +228,20 @@ parseBytes :: C.MonadThrow m
 parseBytes ps = detectUtf C.=$= parseText ps
 
 dropBOM :: Monad m => C.Conduit TS.Text m TS.Text
-dropBOM = C.conduitState
-    False
-    push
-    close
+dropBOM =
+    C.NeedInput push (return ())
   where
-    push a b = do
-        let (a', b') = go a b
-        return $ C.StateProducing a' [b']
-    close _ = return []
-    go True b = (True, b)
-    go False b =
-        case T.uncons b of
-            Nothing -> (False, b)
-            Just (c, cs) -> (True,
-                if c == '\xfeef' then cs else b)
+    push t =
+        case T.uncons t of
+            Nothing -> dropBOM
+            Just (c, cs) ->
+                let output
+                        | c == '\xfeef' = cs
+                        | otherwise = t
+                 in C.HaveOutput idConduit (return ()) output
+    idConduit = C.NeedInput
+        (\x -> C.HaveOutput idConduit (return ()) x)
+        (return ())
 
 -- | Parses a character stream into 'Event's. This function is implemented
 -- fully in Haskell using attoparsec-text for parsing. The produced error
@@ -265,26 +263,21 @@ parseText de =
         (\e -> C.HaveOutput addEnd (return ()) e)
         (C.HaveOutput (C.Done Nothing ()) (return ()) EventEndDocument)
 
-toEventC :: Monad m => C.Conduit (Maybe Token) m Event
-toEventC = C.conduitState
-    ([], [])
-    push
-    close
+toEventC :: Monad m => C.Conduit Token m Event
+toEventC =
+    go [] []
   where
-    go es levels [] front = (es, levels, front [])
-    go es levels (t:ts) front =
-        let (es', levels', events) = tokenToEvent es levels t
-         in go es' levels' ts (front . (events ++))
-
-    push (es, levels) tokens =
-        return $ C.StateProducing (es', levels') events
+    go es levels =
+        C.NeedInput push close
       where
-        (es', levels', events) = go es levels (catMaybes [tokens]) id
+        push token =
+            send events $ go es' levels'
+          where
+            (es', levels', events) = tokenToEvent es levels token
+        close = C.Done Nothing ()
 
-    close (es, levels) =
-        return events
-      where
-        (_, _, events) = go es levels (catMaybes []) id
+    send [] c = c
+    send (e:es) c = C.HaveOutput (send es c) (return ()) e
 
 data ParseSettings = ParseSettings
     { psDecodeEntities :: DecodeEntities
@@ -295,8 +288,8 @@ instance Default ParseSettings where
         { psDecodeEntities = decodeXmlEntities
         }
 
-sinkToken :: C.MonadThrow m => ParseSettings -> C.Sink TS.Text m (Maybe Token)
-sinkToken de = sinkParser ((endOfInput >> return Nothing) <|> fmap Just (parseToken $ psDecodeEntities de))
+sinkToken :: C.MonadThrow m => ParseSettings -> C.Sink TS.Text m Token
+sinkToken = sinkParser . parseToken . psDecodeEntities
 
 parseToken :: DecodeEntities -> Parser Token
 parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False False
