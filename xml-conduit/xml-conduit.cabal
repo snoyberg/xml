@@ -40,7 +40,7 @@ library
                    , blaze-builder             >= 0.2      && < 0.4
                    , transformers              >= 0.2      && < 0.4
                    , failure                   >= 0.1      && < 0.3
-                   , data-default              >= 0.2      && < 0.4
+                   , data-default              >= 0.2      && < 0.5
                    , system-filepath           >= 0.4      && < 0.5
                    , monad-control             >= 0.3      && < 0.4
     exposed-modules: Text.XML.Stream.Parse
