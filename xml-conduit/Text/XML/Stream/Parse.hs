@@ -259,17 +259,11 @@ parseText de =
         C.=$= toEventC
         C.=$= addBeginEnd
   where
-    tokenize = C.sequenceSink () $ const $ C.Emit () . return <$> sinkToken de
-    addBeginEnd = C.conduitState
-        False
-        push
-        close
-      where
-        go False es = EventBeginDocument : [es]
-        go True es = [es]
-
-        push x es = return $ C.StateProducing True $ go x es
-        close x = return $ go x EventEndDocument
+    tokenize = C.sequence $ sinkToken de
+    addBeginEnd = C.HaveOutput addEnd (return ()) EventBeginDocument
+    addEnd = C.NeedInput
+        (\e -> C.HaveOutput addEnd (return ()) e)
+        (C.HaveOutput (C.Done Nothing ()) (return ()) EventEndDocument)
 
 toEventC :: Monad m => C.Conduit (Maybe Token) m Event
 toEventC = C.conduitState
