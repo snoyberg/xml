@@ -18,7 +18,7 @@ description:
     .
     * Text.XML.Stream.Render: Streaming renderer.
     .
-    Additionally, the xml-hamlet package <http://hackage.haskell.org/package/xml-hamlet> provides a more convenient syntax for creating XML documents. For a more thorough tutorial on this library, please see <http://www.yesodweb.com/book/xml-enumerator>.
+    Additionally, the xml-hamlet package <http://hackage.haskell.org/package/xml-hamlet> provides a more convenient syntax for creating XML documents. For a more thorough tutorial on this library, please see <http://www.yesodweb.com/book/xml>.
 category:        XML, Conduit
 stability:       Stable
 cabal-version:   >= 1.8
