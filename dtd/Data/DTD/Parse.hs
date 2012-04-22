@@ -26,6 +26,7 @@ import Text.XML.Catalog (resolveURI, Catalog)
 import Network.URI.Conduit (URI, SchemeMap, readURI, toNetworkURI, toSchemeMap)
 import Network.URI.Conduit.File (decodeString, fileScheme)
 import qualified Data.Conduit as C
+import qualified Data.Conduit.Internal as CI
 import Text.XML.Stream.Parse (detectUtf)
 import Data.Conduit.Attoparsec (sinkParser)
 import Control.Applicative ((*>), (<*), (<|>), (<$>), many)
@@ -64,12 +65,16 @@ readerToEnum rr =
                 C.$= streamUnresolved
                 C.$= CL.concatMap id
                 C.$= resolveEnum rr
-    addCatch (C.HaveOutput src close x) = C.HaveOutput (addCatch src) (addCatch' close) x
+
+    addCatch (C.HaveOutput src close x) = C.HaveOutput (addCatch src) (addCatch'' close) x
     addCatch (C.NeedInput _ src) = addCatch src
     addCatch (C.Done l ()) = C.Done l ()
-    addCatch (C.PipeM msrc close) = C.PipeM (addCatch' $ liftM addCatch msrc) (addCatch' close)
+    addCatch (C.PipeM msrc close) = C.PipeM (addCatch' $ liftM addCatch msrc) (addCatch'' close)
 
     addCatch' m = m `Lifted.catch` throw rr
+
+    addCatch'' (CI.FinalizeM m) = CI.FinalizeM $ m `Lifted.catch` throw rr
+    addCatch'' (CI.FinalizePure x) = CI.FinalizePure x
 
 throw :: C.MonadThrow m => ResolveReader -> SomeException -> m a
 throw rr e =
