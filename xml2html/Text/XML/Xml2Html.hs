@@ -1,11 +1,22 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 module Text.XML.Xml2Html () where
 
+#if MIN_VERSION_blaze_html(0, 5, 0)
+import qualified Text.XML as X
+import qualified Text.Blaze as B
+import qualified Text.Blaze.Html as B
+import qualified Text.Blaze.Html5 as B5
+import qualified Text.Blaze.Internal as BI
+#define ToHtml ToMarkup
+#define toHtml toMarkup
+#else
 import qualified Text.XML as X
 import qualified Text.Blaze as B
 import qualified Text.Blaze.Html5 as B5
 import qualified Text.Blaze.Internal as BI
+#endif
 import qualified Data.Text as T
 import Data.String (fromString)
 import Data.Monoid (mempty, mappend)
@@ -13,6 +24,14 @@ import Data.List (foldl')
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import Control.Arrow (first)
+
+preEscapedText :: T.Text -> B.Html
+preEscapedText =
+#if MIN_VERSION_blaze_html(0, 5, 0)
+    B.preEscapedToMarkup
+#else
+    B.preEscapedText
+#endif
 
 instance B.ToHtml X.Document where
     toHtml (X.Document _ root _) = B5.docType >> B.toHtml root
@@ -22,11 +41,11 @@ instance B.ToHtml X.Element where
                 "{http://www.snoyman.com/xml2html}ie-cond"
                 [("cond", cond)]
                 children) =
-        B.preEscapedText "<!--[if "
-        `mappend` B.preEscapedText cond
-        `mappend` B.preEscapedText "]>"
+        preEscapedText "<!--[if "
+        `mappend` preEscapedText cond
+        `mappend` preEscapedText "]>"
         `mappend` mapM_ B.toHtml children
-        `mappend` B.preEscapedText "<![endif]-->"
+        `mappend` preEscapedText "<![endif]-->"
 
     toHtml (X.Element name' attrs children) =
         if isVoid
@@ -36,7 +55,7 @@ instance B.ToHtml X.Element where
         childrenHtml :: B.Html
         childrenHtml =
             case (name `elem` ["style", "script"], children) of
-                (True, [X.NodeContent t]) -> B.preEscapedText t
+                (True, [X.NodeContent t]) -> preEscapedText t
                 _ -> mapM_ B.toHtml children
 
         isVoid = X.nameLocalName name' `Set.member` voidElems

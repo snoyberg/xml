@@ -1,5 +1,5 @@
 name:            xml2html
-version:         0.1.2
+version:         0.1.2.1
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>
@@ -12,12 +12,24 @@ build-type:      Simple
 homepage:        http://github.com/snoyberg/xml
 Description:     blaze-html instances for xml-conduit types
 
+flag blaze_html_0_5
+    description: use blaze-html 0.5 and blaze-markup 0.5
+    default: False
+
 library
     build-depends:   base                      >= 4        && < 5
                    , text                      >= 0.5      && < 1
                    , xml-conduit               >= 0.5      && < 0.8
                    , containers                >= 0.2      && < 0.5
-                   , blaze-html                >= 0.4      && < 0.5
+
+    if flag(blaze_html_0_5)
+        build-depends:
+                     blaze-html               >= 0.5     && < 0.6
+                   , blaze-markup             >= 0.5.1   && < 0.6
+    else
+        build-depends:
+                     blaze-html               >= 0.4     && < 0.5
+
     exposed-modules: Text.XML.Xml2Html
     ghc-options:     -Wall
 
