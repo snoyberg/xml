@@ -1,0 +1,43 @@
+Name:                html-conduit
+Version:             0.0.0
+Synopsis:            Parse HTML documents using xml-conduit datatypes.
+Description:         This package uses tagstream-conduit for its parser. It automatically balances mismatched tags, so that there shouldn't be any parse failures. It does not handle a full HTML document rendering, such as adding missing html and head tags.
+Homepage:            https://github.com/snoyberg/xml
+License:             MIT
+License-file:        LICENSE
+Author:              Michael Snoyman
+Maintainer:          michael@snoyman.com
+Category:            Web, Text
+Build-type:          Simple
+Extra-source-files:  test/main.hs
+Cabal-version:       >=1.8
+
+Library
+  Exposed-modules:     Text.HTML.DOM
+  Build-depends:       base                             >= 4              && < 5
+                     , transformers
+                     , bytestring
+                     , containers
+                     , text
+                     , resourcet                        >= 0.3            && < 0.4
+                     , conduit                          >= 0.4            && < 0.5
+                     , filesystem-conduit               >= 0.4            && < 0.5
+                     , system-filepath                  >= 0.4            && < 0.5
+                     , xml-conduit                      >= 0.7            && < 0.8
+                     , tagstream-conduit                >= 0.3            && < 0.4
+                     , xml-types                        >= 0.3            && < 0.4
+
+test-suite test
+    type: exitcode-stdio-1.0
+    main-is: main.hs
+    hs-source-dirs: test
+    build-depends:          base
+                          , hspec
+                          , HUnit
+                          , xml-conduit
+                          , html-conduit
+                          , bytestring
+
+source-repository head
+  type: git
+  location: git://github.com/snoyberg/xml.conduit
