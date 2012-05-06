@@ -7,7 +7,7 @@ License:             MIT
 License-file:        LICENSE
 Author:              Michael Snoyman
 Maintainer:          michael@snoyman.com
-Category:            Web, Text
+Category:            Web, Text, Conduit
 Build-type:          Simple
 Extra-source-files:  test/main.hs
 Cabal-version:       >=1.8
