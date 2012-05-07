@@ -31,7 +31,7 @@ test-suite test
   hs-source-dirs:      test
   type:                exitcode-stdio-1.0
   ghc-options:         -Wall
-  build-depends:       hspec
+  build-depends:       hspec >= 1.0 && < 1.2
                      , HUnit
                      , base >= 4 && < 5
                      , shakespeare
