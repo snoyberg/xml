@@ -21,7 +21,7 @@ Cabal-version:       >=1.8
 
 source-repository head
   type:     git
-  location: git://github.com/yihuang/tag-stream.git
+  location: git://github.com/yihuang/tagstream-conduit
 
 Library
   GHC-Options:       -Wall
