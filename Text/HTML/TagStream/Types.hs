@@ -5,6 +5,7 @@ import Data.Monoid
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S
 import Blaze.ByteString.Builder (Builder, fromByteString, toByteString)
+import Control.Arrow ((***))
 
 type Attr' s = (s, s)
 type Attr = Attr' ByteString
@@ -47,3 +48,11 @@ encode = encodeHL id
 
 encodeHL :: (ByteString -> ByteString) -> [Token] -> ByteString
 encodeHL hl = toByteString . mconcat . map (showToken hl)
+
+instance Functor Token' where
+    fmap f (TagOpen x pairs b) = TagOpen (f x) (map (f *** f) pairs) b
+    fmap f (TagClose x) = TagClose (f x)
+    fmap f (Text x) = Text (f x)
+    fmap f (Comment x) = Comment (f x)
+    fmap f (Special x y) = Special (f x) (f y)
+    fmap f (Incomplete x) = Incomplete (f x)
