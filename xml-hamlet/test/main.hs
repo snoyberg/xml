@@ -7,7 +7,7 @@ import Test.Hspec
 import Test.Hspec.HUnit ()
 
 main :: IO ()
-main = hspecX $ describe "xml-hamlet"
+main = hspecX [describe "xml-hamlet"
     [ it "handles plain tags" $ [xml|
 <foo>
         <baz>
@@ -130,7 +130,7 @@ $else
      bin=bin>content
 |] @?= [xml|<foo bar=baz bin=bin>content|]
     , it "short circuiting of attributes" $ [xml|<foo :False:x=#{undefined}>|] @?= [xml|<foo>|]
-    ]
+    ]]
   where
     bin = "bin"
     nodes = [X.NodeInstruction $ X.Instruction "ifoo" "ibar"]
