@@ -11,12 +11,15 @@ import qualified Data.ByteString as S
 import qualified Text.HTML.TagStream as TS
 import qualified Data.XML.Types as XT
 import Data.Conduit
+import Data.Text (Text)
+import qualified Data.Text as T
 import qualified Data.Conduit.List as CL
-import Control.Arrow ((***))
+import Control.Arrow ((***), second)
 import Data.Text.Encoding (decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
 import qualified Data.Set as Set
 import qualified Text.XML as X
+import Text.XML.Stream.Parse (decodeHtmlEntities)
 import qualified Filesystem.Path.CurrentOS as F
 import Data.Conduit.Filesystem (sourceFile)
 import qualified Data.ByteString.Lazy as L
@@ -30,7 +33,7 @@ eventConduit =
   where
     go stack = do
         mx <- await
-        case fmap (fmap' $ decodeUtf8With lenientDecode) mx of
+        case fmap (entities . fmap' (decodeUtf8With lenientDecode)) mx of
             Nothing -> closeStack stack
             Just (TS.TagOpen local attrs isClosed) -> do
                 let name = toName local
@@ -67,6 +70,24 @@ eventConduit =
     fmap' f (TS.Comment x) = TS.Comment (f x)
     fmap' f (TS.Special x y) = TS.Special (f x) (f y)
     fmap' f (TS.Incomplete x) = TS.Incomplete (f x)
+
+    entities :: TS.Token' Text -> TS.Token' Text
+    entities (TS.TagOpen x pairs b) = TS.TagOpen x (map (second entities') pairs) b
+    entities (TS.Text x) = TS.Text $ entities' x
+    entities ts = ts
+
+    entities' :: Text -> Text
+    entities' t =
+        case T.break (== '&') t of
+            (_, "") -> t
+            (before, t') ->
+                case T.break (== ';') $ T.drop 1 t' of
+                    (_, "") -> t
+                    (entity, rest') ->
+                        let rest = T.drop 1 rest'
+                         in case decodeHtmlEntities entity of
+                                XT.ContentText entity' -> T.concat [before, entity', entities' rest]
+                                XT.ContentEntity _ -> T.concat [before, "&", entity, entities' rest']
 
     isVoid = flip Set.member $ Set.fromList
         [ "area"
