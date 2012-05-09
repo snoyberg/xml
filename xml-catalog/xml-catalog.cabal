@@ -1,5 +1,5 @@
 Name:                xml-catalog
-Version:             0.7.0
+Version:             0.7.0.1
 Synopsis:            Parse XML catalog files
 Homepage:            http://github.com/snoyberg/xml
 License:             BSD3
@@ -15,7 +15,7 @@ Library
   Exposed-modules:     Text.XML.Catalog
   Build-depends:       base                     >= 4          && < 5
                      , text                     >= 0.11       && < 1.0
-                     , containers               >= 0.2        && < 0.5
+                     , containers               >= 0.2
                      , xml-conduit              >= 0.7        && < 0.8
                      , uri-conduit              >= 0.4        && < 0.5
                      , conduit                  >= 0.4        && < 0.5
