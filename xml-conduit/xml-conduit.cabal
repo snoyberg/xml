@@ -52,7 +52,7 @@ library
     other-modules:   Text.XML.Stream.Token
     ghc-options:     -Wall
 
-test-suite runtests
+test-suite test
     type: exitcode-stdio-1.0
     main-is: main.hs
     hs-source-dirs: test

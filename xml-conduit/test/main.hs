@@ -77,9 +77,9 @@ documentParseRender =
                    (Element "foo" [] [])
                    []
         , D.parseLBS_ def
-            "<?xml version=\"1.0\"?>\n<!DOCTYPE foo>\n<foo/>"
+            "<?xml version=\"1.0\"?><!DOCTYPE foo>\n<foo/>"
         , D.parseLBS_ def
-            "<?xml version=\"1.0\"?>\n<!DOCTYPE foo>\n<foo><nested>&ignore;</nested></foo>"
+            "<?xml version=\"1.0\"?><!DOCTYPE foo>\n<foo><nested>&ignore;</nested></foo>"
         , D.parseLBS_ def
             "<foo><![CDATA[this is some<CDATA content>]]></foo>"
         , D.parseLBS_ def
@@ -95,8 +95,7 @@ documentParsePrettyRender =
     L.unpack (D.renderLBS def { D.rsPretty = True } (D.parseLBS_ def $ doc True)) @?= L.unpack (doc False)
   where
     doc x = L.unlines
-        [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-        , "<foo>"
+        [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?><foo>"
         , "    <?bar bar?>"
         , if x
             then "    text"
@@ -116,7 +115,7 @@ combinators = C.runResourceT $ P.parseLBS def input C.$$ do
             liftIO $ x @?= Just "combine <all> &content"
   where
     input = L.concat
-        [ "<?xml version='1.0'?>\n"
+        [ "<?xml version='1.0'?>"
         , "<!DOCTYPE foo []>\n"
         , "<hello world='true'>"
         , "<?this should be ignored?>"
@@ -137,7 +136,7 @@ testChoose = C.runResourceT $ P.parseLBS def input C.$$ do
         liftIO $ x @?= Just (2 :: Int)
   where
     input = L.concat
-        [ "<?xml version='1.0'?>\n"
+        [ "<?xml version='1.0'?>"
         , "<!DOCTYPE foo []>\n"
         , "<hello>"
         , "<success/>"
@@ -151,7 +150,7 @@ testMany = C.runResourceT $ P.parseLBS def input C.$$ do
         liftIO $ length x @?= 5
   where
     input = L.concat
-        [ "<?xml version='1.0'?>\n"
+        [ "<?xml version='1.0'?>"
         , "<!DOCTYPE foo []>\n"
         , "<hello>"
         , "<success/>"
@@ -170,7 +169,7 @@ testOrE = C.runResourceT $ P.parseLBS def input C.$$ do
         liftIO $ x @?= Just (2 :: Int)
   where
     input = L.concat
-        [ "<?xml version='1.0'?>\n"
+        [ "<?xml version='1.0'?>"
         , "<!DOCTYPE foo []>\n"
         , "<hello>"
         , "<success/>"
@@ -306,9 +305,9 @@ parseIgnoreBOM = do
 
 stripDuplicateAttributes :: Assertion
 stripDuplicateAttributes = do
-    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<foo bar=\"baz\"/>" @=?
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?><foo bar=\"baz\"/>" @=?
         D.renderLBS def (Document (Prologue [] Nothing []) (Element "foo" [("bar", [ContentText "baz"]), ("bar", [ContentText "bin"])] []) [])
-    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<foo x:bar=\"baz\" xmlns:x=\"namespace\"/>" @=?
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?><foo x:bar=\"baz\" xmlns:x=\"namespace\"/>" @=?
         D.renderLBS def (Document (Prologue [] Nothing []) (Element "foo"
             [ ("x:bar", [ContentText "baz"])
             , (Name "bar" (Just "namespace") (Just "x"), [ContentText "bin"])
@@ -316,7 +315,7 @@ stripDuplicateAttributes = do
 
 testRenderComments :: Assertion
 testRenderComments =do
-    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<foo><!--comment--></foo>"
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?><foo><!--comment--></foo>"
         @=? D.renderLBS def (Document (Prologue [] Nothing [])
             (Element "foo" [] [NodeComment "comment"]) [])
 

@@ -39,7 +39,7 @@ data Token = TokenBeginDocument [TAttribute]
 tokenToBuilder :: Token -> Builder
 tokenToBuilder (TokenBeginDocument attrs) =
     fromByteString "<?xml"
-    `mappend` foldAttrs oneSpace attrs (fromByteString "?>\n")
+    `mappend` foldAttrs oneSpace attrs (fromByteString "?>")
 tokenToBuilder (TokenInstruction (Instruction target data_)) = mconcat
     [ fromByteString "<?"
     , fromText target
@@ -77,7 +77,7 @@ tokenToBuilder (TokenDoctype name eid _) = mconcat
     [ fromByteString "<!DOCTYPE "
     , fromText name
     , go eid
-    , fromByteString ">\n"
+    , fromByteString ">"
     ]
   where
     go Nothing = mempty
