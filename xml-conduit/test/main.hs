@@ -333,14 +333,10 @@ casePretty = do
     let pretty = S.unlines
             [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
             , "<foo bar=\"bar\" baz=\"baz\">"
-            {- FIXME
             , "    <foo"
             , "      bar=\"bar\""
             , "      baz=\"baz\""
-            , "      bin=\"bin\""
-            , "    >"
-            -}
-            , "    <foo bar=\"bar\" baz=\"baz\" bin=\"bin\">" -- FIXME remove
+            , "      bin=\"bin\">"
             , "        Hello World"
             , "    </foo>"
             , "    <foo/>"

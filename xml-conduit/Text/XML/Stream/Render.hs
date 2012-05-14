@@ -62,11 +62,11 @@ instance Default RenderSettings where
 -- the blaze-builder package, and allow the create of optimally sized
 -- 'ByteString's with minimal buffer copying.
 renderBuilder :: Monad m => RenderSettings -> C.Conduit Event m Builder
-renderBuilder RenderSettings { rsPretty = True } = prettify C.=$= renderBuilder'
-renderBuilder RenderSettings { rsPretty = False } = renderBuilder'
+renderBuilder RenderSettings { rsPretty = True } = prettify C.=$= renderBuilder' True
+renderBuilder RenderSettings { rsPretty = False } = renderBuilder' False
 
-renderBuilder' :: Monad m => C.Conduit Event m Builder
-renderBuilder' = C.conduitState
+renderBuilder' :: Monad m => Bool -> C.Conduit Event m Builder
+renderBuilder' isPretty = C.conduitState
     (id, [])
     push
     close
@@ -81,10 +81,10 @@ renderBuilder' = C.conduitState
         : EventEndElement n2
         : rest
         ) front | n1 == n2 =
-            let (token, stack') = mkBeginToken False True stack n1 as
+            let (token, stack') = mkBeginToken isPretty True stack n1 as
              in go stack' atEnd rest (front . token)
     go stack atEnd (EventBeginElement name as:rest) front =
-        let (token, stack') = mkBeginToken False False stack name as
+        let (token, stack') = mkBeginToken isPretty False stack name as
          in go stack' atEnd rest (front . token)
     go stack atEnd (e:rest) front =
         let (token, stack') = eventToToken stack e
