@@ -6,6 +6,7 @@ import           Control.Monad.IO.Class       (liftIO)
 import           Data.XML.Types
 import           Test.HUnit                   hiding (Test)
 import           Test.Hspec.Monadic
+import qualified Data.ByteString.Char8        as S
 import qualified Data.ByteString.Lazy.Char8   as L
 import qualified Text.XML.Unresolved          as D
 import qualified Text.XML.Stream.Parse        as P
@@ -66,6 +67,8 @@ main = hspecX $ do
         it "works for resolvable entities" resolvedAllGood
         it "merges adjacent content nodes" resolvedMergeContent
         it "understands inline entity declarations" resolvedInline
+    describe "pretty" $ do
+        it "works" casePretty
 
 documentParseRender :: IO ()
 documentParseRender =
@@ -92,14 +95,13 @@ documentParseRender =
 
 documentParsePrettyRender :: IO ()
 documentParsePrettyRender =
-    L.unpack (D.renderLBS def { D.rsPretty = True } (D.parseLBS_ def $ doc True)) @?= L.unpack (doc False)
+    L.unpack (D.renderLBS def { D.rsPretty = True } (D.parseLBS_ def doc)) @?= L.unpack doc
   where
-    doc x = L.unlines
-        [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?><foo>"
+    doc = L.unlines
+        [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+        , "<foo>"
         , "    <?bar bar?>"
-        , if x
-            then "    text"
-            else "    text     "
+        , "    text"
         , "    <?bin bin?>"
         , "</foo>"
         ]
@@ -325,3 +327,39 @@ resolvedInline = do
     root @?= Res.Element "foo" [] [Res.NodeContent "baz"]
     Res.Document _ root2 _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"baz\">]><foo bar='&bar;'/>"
     root2 @?= Res.Element "foo" [("bar", "baz")] []
+
+casePretty :: Assertion
+casePretty = do
+    let pretty = S.unlines
+            [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            , "<foo bar=\"bar\" baz=\"baz\">"
+            {- FIXME
+            , "    <foo"
+            , "      bar=\"bar\""
+            , "      baz=\"baz\""
+            , "      bin=\"bin\""
+            , "    >"
+            -}
+            , "    <foo bar=\"bar\" baz=\"baz\" bin=\"bin\">" -- FIXME remove
+            , "        Hello World"
+            , "    </foo>"
+            , "    <foo/>"
+            , "    <?foo bar?>"
+            , "    <!-- foo bar baz bin -->"
+            , "    <bar>"
+            , "        bar content"
+            , "    </bar>"
+            , "</foo>"
+            ]
+        doc = Res.Document (Res.Prologue [] Nothing []) root []
+        root = Res.Element "foo" [("bar", "bar"), ("baz", "baz")]
+                [ Res.NodeElement $ Res.Element "foo" [("bar", "bar"), ("baz", "baz"), ("bin", "bin")]
+                    [ Res.NodeContent "  Hello World\n\n"
+                    , Res.NodeContent "  "
+                    ]
+                , Res.NodeElement $ Res.Element "foo" [] []
+                , Res.NodeInstruction $ Res.Instruction "foo" "bar"
+                , Res.NodeComment "foo bar\n\r\nbaz    \tbin "
+                , Res.NodeElement $ Res.Element "bar" [] [Res.NodeContent "bar content"]
+                ]
+    pretty @=? S.concat (L.toChunks $ Res.renderLBS def { D.rsPretty = True } doc)

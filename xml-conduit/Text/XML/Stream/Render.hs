@@ -21,13 +21,15 @@ import Blaze.ByteString.Builder
 import Data.Conduit.Blaze (builderToByteString)
 import qualified Data.Map as Map
 import Data.Map (Map)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.ByteString (ByteString)
 import Data.Char (isSpace)
 import Data.Default (Default (def))
 import qualified Data.Set as Set
 import Data.List (foldl')
 import qualified Data.Conduit as C
+import Data.Conduit.Internal (sinkToPipe)
+import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Text as CT
 import Control.Exception (assert)
 import Control.Monad.Trans.Resource (MonadUnsafeIO)
@@ -195,10 +197,84 @@ getPrefix ppref nsmap ns =
 -- | Convert a stream of 'Event's into a prettified one, adding extra
 -- whitespace. Note that this can change the meaning of your XML.
 prettify :: Monad m => C.Conduit Event m Event
-prettify = prettify' 0 []
+prettify = prettify' 0
 
-prettify' :: Monad m => Int -> [Name] -> C.Conduit Event m Event
-prettify' level0 names0 = C.conduitState
+prettify' :: Monad m => Int -> C.Conduit Event m Event
+prettify' level = do
+    me <- C.await
+    case me of
+        Nothing -> return ()
+        Just e -> go e
+  where
+    go e@EventBeginDocument = do
+        C.yield e
+        C.yield $ EventContent $ ContentText "\n"
+        prettify' level
+    go e@EventBeginElement{} = do
+        C.yield before
+        C.yield e
+        mnext <- sinkToPipe CL.peek
+        case mnext of
+            Just next@EventEndElement{} -> do
+                sinkToPipe $ CL.drop 1
+                C.yield next
+                C.yield after
+                prettify' level
+            _ -> do
+                C.yield after
+                prettify' $ level + 1
+    go e@EventEndElement{} = do
+        let level' = max 0 $ level - 1
+        C.yield $ before' level'
+        C.yield e
+        C.yield after
+        prettify' level'
+    go (EventContent c) = do
+        cs <- sinkToPipe $ takeContents (c:)
+        let cs' = mapMaybe normalize cs
+        case cs' of
+            [] -> return ()
+            _ -> do
+                C.yield before
+                mapM_ (C.yield . EventContent) cs'
+                C.yield after
+        prettify' level
+    go e@EventInstruction{} = do
+        C.yield before
+        C.yield e
+        C.yield after
+        prettify' level
+    go (EventComment t) = do
+        C.yield before
+        C.yield $ EventComment $ T.concat
+            [ " "
+            , T.unwords $ T.words t
+            , " "
+            ]
+        C.yield after
+        prettify' level
+
+    go e = C.yield e >> prettify' level
+
+    takeContents front = do
+        me <- CL.peek
+        case me of
+            Just (EventContent c) -> do
+                CL.drop 1
+                takeContents $ front . (c:)
+            _ -> return $ front []
+
+    normalize (ContentText t)
+        | T.null t' = Nothing
+        | otherwise = Just $ ContentText t'
+      where
+        t' = T.unwords $ T.words t
+    normalize c = Just c
+
+    before = EventContent $ ContentText $ T.replicate level "    "
+    before' l = EventContent $ ContentText $ T.replicate l "    "
+    after = EventContent $ ContentText "\n"
+    {-
     (id, (level0, names0))
     push
     close
@@ -216,7 +292,7 @@ prettify' level0 names0 = C.conduitState
         case takeContents (t:) xs of
             Nothing
                 | not atEnd -> (((es++), state), front [])
-                | otherwise -> assert False $ error "Text.XML.Stream.Redner.prettify'"
+                | otherwise -> assert False $ error "Text.XML.Stream.Render.prettify'"
             Just (ts, xs') ->
                 let ts' = map EventContent $ cleanWhite ts
                     ts'' = if null ts' then [] else before level : ts' ++ [after]
@@ -239,8 +315,7 @@ prettify' level0 names0 = C.conduitState
                 (EventComment t, _) -> (\a -> before level : EventComment (T.map normalSpace t) : after : a, level, names, xs)
                 (e, _) -> (\a -> before level : e : after : a, level, names, xs)
 
-    before l = EventContent $ ContentText $ T.replicate l "    "
-    after = EventContent $ ContentText "\n"
+    -}
 
 takeContents :: ([Content] -> [Content]) -> [Event] -> Maybe ([Content], [Event])
 takeContents _ [] = Nothing
