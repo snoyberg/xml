@@ -332,6 +332,7 @@ casePretty :: Assertion
 casePretty = do
     let pretty = S.unlines
             [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            , "<!DOCTYPE foo>"
             , "<foo bar=\"bar\" baz=\"baz\">"
             , "    <foo"
             , "      bar=\"bar\""
@@ -347,7 +348,8 @@ casePretty = do
             , "    </bar>"
             , "</foo>"
             ]
-        doc = Res.Document (Res.Prologue [] Nothing []) root []
+        doctype = Res.Doctype "foo" Nothing
+        doc = Res.Document (Res.Prologue [] (Just doctype) []) root []
         root = Res.Element "foo" [("bar", "bar"), ("baz", "baz")]
                 [ Res.NodeElement $ Res.Element "foo" [("bar", "bar"), ("baz", "baz"), ("bin", "bin")]
                     [ Res.NodeContent "  Hello World\n\n"

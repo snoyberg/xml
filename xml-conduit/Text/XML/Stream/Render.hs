@@ -23,7 +23,6 @@ import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.ByteString (ByteString)
-import Data.Char (isSpace)
 import Data.Default (Default (def))
 import qualified Data.Set as Set
 import Data.List (foldl')
@@ -31,7 +30,6 @@ import qualified Data.Conduit as C
 import Data.Conduit.Internal (sinkToPipe)
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Text as CT
-import Control.Exception (assert)
 import Control.Monad.Trans.Resource (MonadUnsafeIO)
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
@@ -239,6 +237,7 @@ prettify' level = do
                 mapM_ (C.yield . EventContent) cs'
                 C.yield after
         prettify' level
+    go (EventCDATA t) = go $ EventContent $ ContentText t
     go e@EventInstruction{} = do
         C.yield before
         C.yield e
@@ -254,7 +253,9 @@ prettify' level = do
         C.yield after
         prettify' level
 
-    go e = C.yield e >> prettify' level
+    go e@EventEndDocument = C.yield e >> prettify' level
+    go e@EventBeginDoctype{} = C.yield e >> prettify' level
+    go e@EventEndDoctype{} = C.yield e >> C.yield after >> prettify' level
 
     takeContents front = do
         me <- CL.peek
@@ -262,6 +263,9 @@ prettify' level = do
             Just (EventContent c) -> do
                 CL.drop 1
                 takeContents $ front . (c:)
+            Just (EventCDATA t) -> do
+                CL.drop 1
+                takeContents $ front . (ContentText t:)
             _ -> return $ front []
 
     normalize (ContentText t)
@@ -274,71 +278,6 @@ prettify' level = do
     before = EventContent $ ContentText $ T.replicate level "    "
     before' l = EventContent $ ContentText $ T.replicate l "    "
     after = EventContent $ ContentText "\n"
-    {-
-    (id, (level0, names0))
-    push
-    close
-  where
-    push (front, a) b = do
-        let (a', es) = go False a (front [b]) id
-        return $ C.StateProducing a' es
-    close (front, a) = do
-        let ((front', _), es) = go True a (front []) id
-        assert (null $ front' [])
-            $ return es
-
-    go _ state [] front = ((id, state), front [])
-    go atEnd state@(level, _) es@(EventContent t:xs) front =
-        case takeContents (t:) xs of
-            Nothing
-                | not atEnd -> (((es++), state), front [])
-                | otherwise -> assert False $ error "Text.XML.Stream.Render.prettify'"
-            Just (ts, xs') ->
-                let ts' = map EventContent $ cleanWhite ts
-                    ts'' = if null ts' then [] else before level : ts' ++ [after]
-                 in go atEnd state xs' (front . (ts'' ++))
-    go atEnd (level, names) (x:xs) front = do
-        go atEnd (level', names') xs' (front . chunks)
-      where
-        (chunks, level', names', xs') =
-            case (x, xs) of
-                (EventBeginElement name attrs, EventEndElement _:rest) ->
-                    (\a -> before level : EventBeginElement name attrs : EventEndElement name : after : a, level, names, rest)
-                (EventBeginElement name attrs, _) ->
-                    (\a -> before level : EventBeginElement name attrs : after : a, level + 1, name : names, xs)
-                (EventEndElement _, _) ->
-                    let newLevel = level - 1
-                        n:ns = names
-                     in (\a -> before newLevel : EventEndElement n : after : a, newLevel, ns, xs)
-                (EventBeginDocument, _) -> ((EventBeginDocument:), level, names, xs)
-                (EventEndDocument, _) -> (\a -> EventEndDocument : a, level, names, xs)
-                (EventComment t, _) -> (\a -> before level : EventComment (T.map normalSpace t) : after : a, level, names, xs)
-                (e, _) -> (\a -> before level : e : after : a, level, names, xs)
-
-    -}
-
-takeContents :: ([Content] -> [Content]) -> [Event] -> Maybe ([Content], [Event])
-takeContents _ [] = Nothing
-takeContents front (EventContent t:es) = takeContents (front . (t:)) es
-takeContents front es = Just (front [], es)
-
-normalSpace :: Char -> Char
-normalSpace c
-    | isSpace c = ' '
-    | otherwise = c
-
-cleanWhite :: [Content] -> [Content]
-cleanWhite x =
-    go True [] $ go True [] x
-  where
-    go _ end (ContentEntity e:rest) = go False (ContentEntity e : end) rest
-    go isFront end (ContentText t:rest) =
-        if T.null t'
-            then go isFront end rest
-            else go False (ContentText t' : end) rest
-      where
-        t' = (if isFront then T.dropWhile isSpace else id) $ T.map normalSpace t
-    go _ end [] = end
 
 nubAttrs :: [(Name, v)] -> [(Name, v)]
 nubAttrs orig =
