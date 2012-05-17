@@ -10,6 +10,7 @@ module Text.XML.Stream.Render
     , RenderSettings
     , def
     , rsPretty
+    , rsNamespaces
     , prettify
     ) where
 
@@ -31,6 +32,7 @@ import Data.Conduit.Internal (sinkToPipe)
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Text as CT
 import Control.Monad.Trans.Resource (MonadUnsafeIO)
+import Data.Monoid (mempty)
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder' and 'builderToByteString', so it produces
@@ -49,73 +51,68 @@ renderText rs = renderBytes rs C.=$= CT.decode CT.utf8
 
 data RenderSettings = RenderSettings
     { rsPretty :: Bool
+    , rsNamespaces :: [(Text, Text)]
+      -- ^ Defines some top level namespace definitions to be used, in the form
+      -- of (prefix, namespace). This has absolutely no impact on the meaning
+      -- of your documents, but can increase readability by moving commonly
+      -- used namespace declarations to the top level.
     }
 
 instance Default RenderSettings where
     def = RenderSettings
         { rsPretty = False
+        , rsNamespaces = []
         }
 
 -- | Render a stream of 'Event's into a stream of 'Builder's. Builders are from
 -- the blaze-builder package, and allow the create of optimally sized
 -- 'ByteString's with minimal buffer copying.
 renderBuilder :: Monad m => RenderSettings -> C.Conduit Event m Builder
-renderBuilder RenderSettings { rsPretty = True } = prettify C.=$= renderBuilder' True
-renderBuilder RenderSettings { rsPretty = False } = renderBuilder' False
+renderBuilder RenderSettings { rsPretty = True, rsNamespaces = n } = prettify C.=$= renderBuilder' n True
+renderBuilder RenderSettings { rsPretty = False, rsNamespaces = n } = renderBuilder' n False
 
-renderBuilder' :: Monad m => Bool -> C.Conduit Event m Builder
-renderBuilder' isPretty = C.conduitState
-    (id, [])
-    push
-    close
+renderBuilder' :: Monad m => [(Text, Text)] -> Bool -> C.Conduit Event m Builder
+renderBuilder' namespaces0 isPretty = do
+    loop []
   where
-    go' front = map tokenToBuilder $ front []
-    go stack _ [] front = (stack, id, go' front)
-    -- we want to wait and see if the next event is the matching end
-    go stack False [e@EventBeginElement{}] front =
-        (stack, (e:), go' front)
-    go stack atEnd
-        ( EventBeginElement n1 as
-        : EventEndElement n2
-        : rest
-        ) front | n1 == n2 =
-            let (token, stack') = mkBeginToken isPretty True stack n1 as
-             in go stack' atEnd rest (front . token)
-    go stack atEnd (EventBeginElement name as:rest) front =
-        let (token, stack') = mkBeginToken isPretty False stack name as
-         in go stack' atEnd rest (front . token)
-    go stack atEnd (e:rest) front =
-        let (token, stack') = eventToToken stack e
-         in go stack' atEnd rest (front . token)
+    loop nslevels = C.await >>= maybe (return ()) (go nslevels)
 
-    push (front, stack) es =
-        return $ C.StateProducing (leftover, stack') ts
-      where
-        (stack', leftover, ts) = go stack False (front [es]) id
+    go nslevels e =
+        case e of
+            EventBeginElement n1 as -> do
+                mnext <- sinkToPipe CL.peek
+                isClosed <-
+                    case mnext of
+                        Just (EventEndElement n2) | n1 == n2 -> do
+                            sinkToPipe $ CL.drop 1
+                            return True
+                        _ -> return False
+                let (token, nslevels') = mkBeginToken isPretty isClosed namespaces0 nslevels n1 as
+                C.yield token
+                loop nslevels'
+            _ -> do
+                let (token, nslevels') = eventToToken nslevels e
+                C.yield token
+                loop nslevels'
 
-    close (front, stack) =
-        return ts
-      where
-        (_, _leftover, ts) = go stack True (front []) id
-
-eventToToken :: Stack -> Event -> ([Token] -> [Token], [NSLevel])
+eventToToken :: Stack -> Event -> (Builder, [NSLevel])
 eventToToken s EventBeginDocument =
-    ((:) (TokenBeginDocument
+    (tokenToBuilder $ TokenBeginDocument
             [ ("version", [ContentText "1.0"])
             , ("encoding", [ContentText "UTF-8"])
-            ])
+            ]
      , s)
-eventToToken s EventEndDocument = (id, s)
-eventToToken s (EventInstruction i) = ((:) (TokenInstruction i), s)
-eventToToken s (EventBeginDoctype n meid) = ((:) (TokenDoctype n meid []), s)
-eventToToken s EventEndDoctype = (id, s)
-eventToToken s (EventCDATA t) = ((:) (TokenCDATA t), s)
+eventToToken s EventEndDocument = (mempty, s)
+eventToToken s (EventInstruction i) = (tokenToBuilder $ TokenInstruction i, s)
+eventToToken s (EventBeginDoctype n meid) = (tokenToBuilder $ TokenDoctype n meid [], s)
+eventToToken s EventEndDoctype = (mempty, s)
+eventToToken s (EventCDATA t) = (tokenToBuilder $ TokenCDATA t, s)
 eventToToken s (EventEndElement name) =
-    ((:) (TokenEndElement $ nameToTName sl name), s')
+    (tokenToBuilder $ TokenEndElement $ nameToTName sl name, s')
   where
     (sl:s') = s
-eventToToken s (EventContent c) = ((:) (TokenContent c), s)
-eventToToken s (EventComment t) = ((:) (TokenComment t), s)
+eventToToken s (EventContent c) = (tokenToBuilder $ TokenContent c, s)
+eventToToken s (EventComment t) = (tokenToBuilder $ TokenComment t, s)
 eventToToken _ EventBeginElement{} = error "eventToToken on EventBeginElement" -- mkBeginToken False s name attrs
 
 type Stack = [NSLevel]
@@ -132,11 +129,15 @@ nameToTName (NSLevel def' sl) (Name name (Just ns) _)
             Just pref -> TName (Just pref) name
 
 mkBeginToken :: Bool -- ^ pretty print attributes?
-             -> Bool -> Stack -> Name -> [(Name, [Content])]
-             -> ([Token] -> [Token], Stack)
-mkBeginToken isPretty isClosed s name attrs =
-    ((:) (TokenBeginElement tname tattrs2 isClosed indent),
-     if isClosed then s else sl2 : s)
+             -> Bool -- ^ self closing?
+             -> [(Text, Text)] -- ^ namespaces to apply to top-level
+             -> Stack
+             -> Name
+             -> [(Name, [Content])]
+             -> (Builder, Stack)
+mkBeginToken isPretty isClosed namespaces0 s name attrs =
+    (tokenToBuilder $ TokenBeginElement tname tattrs3 isClosed indent,
+     if isClosed then s else sl3 : s)
   where
     indent = if isPretty then 2 + 4 * length s else 0
     prevsl = case s of
@@ -144,6 +145,19 @@ mkBeginToken isPretty isClosed s name attrs =
                 sl':_ -> sl'
     (sl1, tname, tattrs1) = newElemStack prevsl name
     (sl2, tattrs2) = foldr newAttrStack (sl1, tattrs1) $ nubAttrs attrs
+    (sl3, tattrs3) =
+        case s of
+            [] -> (sl2 { prefixes = Map.union (prefixes sl2) $ Map.fromList namespaceSL }, namespaceAttrs ++ tattrs2)
+            _ -> (sl2, tattrs2)
+
+    (namespaceSL, namespaceAttrs) = unzip $ mapMaybe unused namespaces0
+    unused (k, v) =
+        case lookup k' tattrs2 of
+            Just{} -> Nothing
+            Nothing -> Just ((v, k), (k', v'))
+      where
+        k' = TName (Just "xmlns") k
+        v' = [ContentText v]
 
 newElemStack :: NSLevel -> Name -> (NSLevel, TName, [TAttribute])
 newElemStack nsl@(NSLevel def' _) (Name local ns _)

@@ -36,6 +36,7 @@ module Text.XML.Unresolved
       -- ** Render
     , R.RenderSettings
     , R.rsPretty
+    , R.rsNamespaces
     ) where
 
 import Prelude hiding (writeFile, readFile, FilePath)

@@ -69,6 +69,10 @@ main = hspecX $ do
         it "understands inline entity declarations" resolvedInline
     describe "pretty" $ do
         it "works" casePretty
+    describe "top level namespaces" $ do
+        it "works" caseTopLevelNamespace
+        it "works with prefix" caseTopLevelNamespacePrefix
+        it "handles conflicts" caseTLNConflict
 
 documentParseRender :: IO ()
 documentParseRender =
@@ -361,3 +365,54 @@ casePretty = do
                 , Res.NodeElement $ Res.Element "bar" [] [Res.NodeContent "bar content"]
                 ]
     pretty @=? S.concat (L.toChunks $ Res.renderLBS def { D.rsPretty = True } doc)
+
+caseTopLevelNamespace :: Assertion
+caseTopLevelNamespace = do
+    let lbs = S.concat
+            [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            , "<foo xmlns:bar=\"baz\">"
+            , "<subfoo bar:bin=\"\"/>"
+            , "</foo>"
+            ]
+        rs = def { D.rsNamespaces = [("bar", "baz")] }
+        doc = Res.Document (Res.Prologue [] Nothing [])
+                (Res.Element "foo" []
+                    [ Res.NodeElement
+                        $ Res.Element "subfoo" [("{baz}bin", "")] []
+                    ])
+                []
+    lbs @=? S.concat (L.toChunks $ Res.renderLBS rs doc)
+
+caseTopLevelNamespacePrefix :: Assertion
+caseTopLevelNamespacePrefix = do
+    let lbs = S.concat
+            [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            , "<foo xmlns:bar=\"baz\">"
+            , "<subfoo bar:bin=\"\"/>"
+            , "</foo>"
+            ]
+        rs = def { D.rsNamespaces = [("bar", "baz")] }
+        doc = Res.Document (Res.Prologue [] Nothing [])
+                (Res.Element "foo" []
+                    [ Res.NodeElement
+                        $ Res.Element "subfoo" [(Name "bin" (Just "baz") (Just "bar"), "")] []
+                    ])
+                []
+    lbs @=? S.concat (L.toChunks $ Res.renderLBS rs doc)
+
+caseTLNConflict :: Assertion
+caseTLNConflict = do
+    let lbs = S.concat
+            [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            , "<foo xmlns:bar=\"something\" bar:x=\"y\">"
+            , "<subfoo xmlns:bar_=\"baz\" bar_:bin=\"\"/>"
+            , "</foo>"
+            ]
+        rs = def { D.rsNamespaces = [("bar", "baz")] }
+        doc = Res.Document (Res.Prologue [] Nothing [])
+                (Res.Element "foo" [(Name "x" (Just "something") (Just "bar"), "y")]
+                    [ Res.NodeElement
+                        $ Res.Element "subfoo" [(Name "bin" (Just "baz") (Just "bar"), "")] []
+                    ])
+                []
+    lbs @=? S.concat (L.toChunks $ Res.renderLBS rs doc)

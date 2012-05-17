@@ -55,6 +55,7 @@ module Text.XML
       -- ** Rendering
     , R.RenderSettings
     , R.rsPretty
+    , R.rsNamespaces
       -- * Conversion
     , toXMLDocument
     , fromXMLDocument
