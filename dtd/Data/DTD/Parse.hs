@@ -26,10 +26,11 @@ import Text.XML.Catalog (resolveURI, Catalog)
 import Network.URI.Conduit (URI, SchemeMap, readURI, toNetworkURI, toSchemeMap)
 import Network.URI.Conduit.File (decodeString, fileScheme)
 import qualified Data.Conduit as C
+import qualified Data.Conduit.Util as CU
 import qualified Data.Conduit.Internal as CI
 import Text.XML.Stream.Parse (detectUtf)
 import Data.Conduit.Attoparsec (sinkParser)
-import Control.Applicative ((*>), (<*), (<|>), (<$>), many)
+import Control.Applicative ((*>), (<*), (<|>), many)
 import qualified Data.IORef as I
 import Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Data.Attoparsec.Text as A
@@ -44,15 +45,12 @@ readEID :: (C.MonadResource m, MonadBaseControl IO m)
         -> SchemeMap
         -> C.Source m DTDComponent
 readEID catalog eid sm =
-    C.PipeM pull (return ())
-  where
-    pull =
-        case resolveURI catalog Nothing eid of
-            Nothing -> liftIO $ throwIO $ CannotResolveExternalID eid
-            Just uri -> do
-                istate <- liftIO $ I.newIORef initState
-                let rr = ResolveReader catalog uri istate sm
-                return $ readerToEnum rr
+    case resolveURI catalog Nothing eid of
+        Nothing -> liftIO $ throwIO $ CannotResolveExternalID eid
+        Just uri -> do
+            istate <- liftIO $ I.newIORef initState
+            let rr = ResolveReader catalog uri istate sm
+            readerToEnum rr
 
 readerToEnum :: (MonadBaseControl IO m, C.MonadThrow m, MonadIO m, C.MonadResource m)
              => ResolveReader -> C.Source m DTDComponent
@@ -66,15 +64,14 @@ readerToEnum rr =
                 C.$= CL.concatMap id
                 C.$= resolveEnum rr
 
-    addCatch (C.HaveOutput src close x) = C.HaveOutput (addCatch src) (addCatch'' close) x
-    addCatch (C.NeedInput _ src) = addCatch src
-    addCatch (C.Done l ()) = C.Done l ()
-    addCatch (C.PipeM msrc close) = C.PipeM (addCatch' $ liftM addCatch msrc) (addCatch'' close)
+    addCatch :: (C.MonadThrow m, MonadBaseControl IO m) => C.Source m DTDComponent -> C.Source m DTDComponent
+    addCatch (CI.HaveOutput src close x) = CI.HaveOutput (addCatch src) (addCatch' close) x
+    addCatch (CI.NeedInput _ src) = addCatch (src ())
+    addCatch (CI.Done ()) = CI.Done ()
+    addCatch (CI.PipeM msrc) = CI.PipeM (addCatch' $ liftM addCatch msrc)
+    addCatch (CI.Leftover p i) = CI.Leftover (addCatch p) i
 
     addCatch' m = m `Lifted.catch` throw rr
-
-    addCatch'' (CI.FinalizeM m) = CI.FinalizeM $ m `Lifted.catch` throw rr
-    addCatch'' (CI.FinalizePure x) = CI.FinalizePure x
 
 throw :: C.MonadThrow m => ResolveReader -> SomeException -> m a
 throw rr e =
@@ -84,12 +81,9 @@ readFile_ :: FilePath -> IO [DTDComponent]
 readFile_ fp = C.runResourceT $ enumFile fp C.$$ CL.consume
 
 enumFile :: (MonadBaseControl IO m, C.MonadResource m) => FilePath -> C.Source m DTDComponent
-enumFile fp =
-    C.PipeM pull (return ())
-  where
-    pull = do
-        eid <- filePathToEID fp
-        return $ readEID Map.empty eid $ toSchemeMap [fileScheme]
+enumFile fp = do
+    eid <- lift $ filePathToEID fp
+    readEID Map.empty eid $ toSchemeMap [fileScheme]
 
 filePathToEID :: MonadIO m => FilePath -> m ExternalID
 filePathToEID = liftM uriToEID . liftIO . decodeString
@@ -99,7 +93,7 @@ uriToEID = SystemID . T.pack . show . toNetworkURI
 
 streamUnresolved :: C.MonadThrow m => C.Conduit T.Text m [U.DTDComponent]
 streamUnresolved =
-    C.sequenceSink () $ const $ C.Emit () . return <$> sinkParser p
+    CU.sequence $ sinkParser p
   where
     p = (UP.ws >> UP.skipWS >> return []) <|>
         (UP.textDecl >> return []) <|>

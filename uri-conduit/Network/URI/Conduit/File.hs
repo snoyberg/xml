@@ -12,10 +12,10 @@ import Network.URI.Conduit
 import qualified Filesystem.Path.CurrentOS as FP
 import qualified Data.Text as T
 import qualified Data.Set as Set
-import qualified Data.Conduit as C
 import qualified Data.Conduit.Binary as CB
 import qualified Filesystem as F
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Class (lift)
 
 -- | Converts a string, such as a command-line argument, into a URI. First
 -- tries to parse as an absolute URI. If this fails, it interprets as a
@@ -39,10 +39,10 @@ fileScheme :: Scheme
 fileScheme = Scheme
     { schemeNames = Set.singleton "file:"
     , schemeReader = Just $ CB.sourceFile . FP.encodeString . toFilePath
-    , schemeWriter = Just $ \uri -> flip C.PipeM (return ()) $ do
+    , schemeWriter = Just $ \uri -> do
         let fp = toFilePath uri
-        liftIO $ F.createTree $ FP.directory fp
-        return $ CB.sinkFile $ FP.encodeString fp
+        lift $ liftIO $ F.createTree $ FP.directory fp
+        CB.sinkFile $ FP.encodeString fp
     }
 
 toFilePath :: URI -> FP.FilePath

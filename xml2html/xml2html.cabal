@@ -1,5 +1,5 @@
 name:            xml2html
-version:         0.1.2.3
+version:         0.1.2.4
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>
@@ -19,7 +19,7 @@ flag blaze_html_0_5
 library
     build-depends:   base                      >= 4        && < 5
                    , text                      >= 0.5      && < 1
-                   , xml-conduit               >= 0.5      && < 0.8
+                   , xml-conduit               >= 0.5      && < 0.9
                    , containers                >= 0.2
 
     if flag(blaze_html_0_5)

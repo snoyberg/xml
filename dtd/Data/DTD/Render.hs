@@ -135,9 +135,8 @@ buildEntityDecl d = pbracket $ fromText "ENTITY " <> pct <> name <> val
   where
     name = fromText (entityDeclName d) <> space
     (pct, val) = case d of
-      InternalGeneralEntityDecl   _ val    -> (mempty, quote $ fromText val)
+      InternalGeneralEntityDecl   _ val'   -> (mempty, quote $ fromText val')
       ExternalGeneralEntityDecl   _ eid nt -> (mempty, ege eid nt)
-    pctBld = fromText "% "
     ege eid nt = buildExternalID eid <>
       buildMaybe ((fromText " NDATA " <>) . quote . fromText) nt
 

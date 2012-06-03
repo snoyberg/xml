@@ -95,11 +95,10 @@ readURI :: C.MonadResource m
         => SchemeMap
         -> URI
         -> C.Source m ByteString
-readURI sm uri = C.PipeM
-    (case Map.lookup (uriScheme uri) sm >>= schemeReader of
-        Nothing -> C.monadThrow $ UnknownReadScheme uri
-        Just f -> return $ f uri)
-    (return ())
+readURI sm uri =
+    case Map.lookup (uriScheme uri) sm >>= schemeReader of
+        Nothing -> lift $ C.monadThrow $ UnknownReadScheme uri
+        Just f -> f uri
 
 writeURI :: C.MonadResource m
          => SchemeMap

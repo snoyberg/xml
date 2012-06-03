@@ -1,5 +1,5 @@
 Name:                html-conduit
-Version:             0.0.1
+Version:             0.1.0
 Synopsis:            Parse HTML documents using xml-conduit datatypes.
 Description:         This package uses tagstream-conduit for its parser. It automatically balances mismatched tags, so that there shouldn't be any parse failures. It does not handle a full HTML document rendering, such as adding missing html and head tags.
 Homepage:            https://github.com/snoyberg/xml
@@ -20,10 +20,10 @@ Library
                      , containers
                      , text
                      , resourcet                        >= 0.3            && < 0.4
-                     , conduit                          >= 0.4            && < 0.5
-                     , filesystem-conduit               >= 0.4            && < 0.5
+                     , conduit                          >= 0.5            && < 0.6
+                     , filesystem-conduit               >= 0.5            && < 0.6
                      , system-filepath                  >= 0.4            && < 0.5
-                     , xml-conduit                      >= 0.7            && < 0.8
+                     , xml-conduit                      >= 0.8            && < 0.9
                      , tagstream-conduit                >= 0.3            && < 0.4
                      , xml-types                        >= 0.3            && < 0.4
 
