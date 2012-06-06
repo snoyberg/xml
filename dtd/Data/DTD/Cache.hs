@@ -27,7 +27,7 @@ import Network.URI.Conduit
 import Network.URI.Conduit.File
 import qualified Data.DTD.Types as D
 import Data.DTD.Parse (readEID, uriToEID)
-import qualified Data.Conduit as C
+import Data.Conduit hiding (Source, Sink, Conduit)
 import qualified Data.Conduit.List as CL
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import qualified Data.IORef as I
@@ -90,7 +90,7 @@ loadSchemaAttrMap (DTDCache icache catalog sm) uri0 = do
         case resolveURI catalog Nothing (X.PublicID uri uri) of
             Nothing -> throwIO $ UnknownSchemaURI uri
             Just uri' -> do
-                doc <- C.runResourceT $ readURI sm uri' C.$$ X.sinkDoc X.def
+                doc <- runResourceT $ readURI sm uri' $$ X.sinkDoc X.def
                 let c = fromDocument doc
                 let includes =
                         (c $// element "{http://www.w3.org/2001/XMLSchema}include" >=> attribute "schemaLocation") ++
@@ -119,7 +119,7 @@ loadAttrMap (DTDCache icache catalog sm) ext = do
             case Map.lookup pubsys catalog of
                 Nothing -> liftIO $ throwIO $ UnknownExternalID ext
                 Just uri -> do
-                    ecomps <- liftIO $ try $ C.runResourceT $ readEID catalog (uriToEID uri) sm C.$$ CL.consume
+                    ecomps <- liftIO $ try $ runResourceT $ readEID catalog (uriToEID uri) sm $$ CL.consume
                     comps <- either (liftIO . throwIO . CannotLoadDTD (toNetworkURI uri)) return ecomps
                     let maps = toMaps comps
                     liftIO $ I.atomicModifyIORef icache $ \m ->

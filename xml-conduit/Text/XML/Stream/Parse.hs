@@ -108,9 +108,8 @@ import Prelude hiding (takeWhile, FilePath)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Map as Map
-import Data.Conduit
+import Data.Conduit hiding (Source, Sink, Conduit)
 import qualified Data.Conduit.Text as CT
-import qualified Data.Conduit.Util as CU
 import qualified Data.Conduit.List as CL
 import Control.Monad (ap, liftM)
 import qualified Data.Text as TS
@@ -180,9 +179,9 @@ tnameToName _ (NSLevel _ m) (TName (Just pref) name) =
 -- first checks for BOMs, removing them as necessary, and then check for the
 -- equivalent of <?xml for each of UTF-8, UTF-16LE/BE, and UTF-32LE/BE. It
 -- defaults to assuming UTF-8.
-detectUtf :: MonadThrow m => Pipe S.ByteString TS.Text () m ()
+detectUtf :: MonadThrow m => Pipe l S.ByteString TS.Text r m r
 detectUtf =
-    conduit id
+    injectLeftovers $ conduit id
   where
     conduit front = awaitE >>= either return (push front)
 
@@ -223,10 +222,10 @@ detectUtf =
 -- This relies on 'detectUtf' to determine character encoding, and 'parseText'
 -- to do the actual parsing.
 parseBytes :: MonadThrow m
-           => ParseSettings -> Conduit S.ByteString m Event
-parseBytes ps = detectUtf =$= parseText ps
+           => ParseSettings -> Pipe l S.ByteString Event r m r
+parseBytes ps = detectUtf >+> parseText ps
 
-dropBOM :: Monad m => Pipe TS.Text TS.Text r m r
+dropBOM :: Monad m => Pipe l TS.Text TS.Text r m r
 dropBOM =
     awaitE >>= either return push
   where
@@ -247,20 +246,20 @@ dropBOM =
 -- advantage of not relying on any C libraries.
 parseText :: MonadThrow m
           => ParseSettings
-          -> Pipe TS.Text Event () m ()
+          -> Pipe l TS.Text Event r m r
 parseText de =
     dropBOM
-        =$= tokenize
-        =$= toEventC
-        =$= addBeginEnd
+        >+> tokenize
+        >+> toEventC
+        >+> addBeginEnd
   where
-    tokenize = CU.sequence $ sinkToken de
+    tokenize = injectLeftovers $ CL.sequence $ sinkToken de
     addBeginEnd = yield EventBeginDocument >> addEnd
     addEnd = awaitE >>= either
         (\u -> yield EventEndDocument >> return u)
         (\e -> yield e >> addEnd)
 
-toEventC :: Monad m => Pipe Token Event r m r
+toEventC :: Monad m => Pipe l Token Event r m r
 toEventC =
     go [] []
   where
@@ -281,7 +280,7 @@ instance Default ParseSettings where
         { psDecodeEntities = decodeXmlEntities
         }
 
-sinkToken :: MonadThrow m => ParseSettings -> Sink TS.Text m Token
+sinkToken :: MonadThrow m => ParseSettings -> Pipe TS.Text TS.Text o u m Token
 sinkToken = sinkParser . parseToken . psDecodeEntities
 
 parseToken :: DecodeEntities -> Parser Token
@@ -454,7 +453,7 @@ data ContentType =
 -- | Grabs the next piece of content if available. This function skips over any
 -- comments and instructions and concatenates all content until the next start
 -- or end tag.
-contentMaybe :: MonadThrow m => Sink Event m (Maybe Text)
+contentMaybe :: MonadThrow m => Pipe Event Event o u m (Maybe Text)
 contentMaybe = do
     x <- CL.peek
     case pc' x of
@@ -486,7 +485,7 @@ contentMaybe = do
 
 -- | Grabs the next piece of content. If none if available, returns 'T.empty'.
 -- This is simply a wrapper around 'contentMaybe'.
-content :: MonadThrow m => Sink Event m Text
+content :: MonadThrow m => Pipe Event Event o u m Text
 content = do
     x <- contentMaybe
     case x of
@@ -505,8 +504,8 @@ content = do
 tag :: MonadThrow m
     => (Name -> Maybe a)
     -> (a -> AttrParser b)
-    -> (b -> Sink Event m c)
-    -> Sink Event m (Maybe c)
+    -> (b -> Pipe Event Event o u m c)
+    -> Pipe Event Event o u m (Maybe c)
 tag checkName attrParser f = do
     x <- dropWS
     case x of
@@ -555,8 +554,8 @@ tag checkName attrParser f = do
 tagPredicate :: MonadThrow m
              => (Name -> Bool)
              -> AttrParser a
-             -> (a -> Sink Event m b)
-             -> Sink Event m (Maybe b)
+             -> (a -> Pipe Event Event o u m b)
+             -> Pipe Event Event o u m (Maybe b)
 tagPredicate p attrParser = tag (\x -> if p x then Just () else Nothing) (const attrParser)
 
 -- | A simplified version of 'tag' which matches for specific tag names instead
@@ -566,19 +565,19 @@ tagPredicate p attrParser = tag (\x -> if p x then Just () else Nothing) (const 
 tagName :: MonadThrow m
      => Name
      -> AttrParser a
-     -> (a -> Sink Event m b)
-     -> Sink Event m (Maybe b)
+     -> (a -> Pipe Event Event o u m b)
+     -> Pipe Event Event o u m (Maybe b)
 tagName name = tagPredicate (== name)
 
 -- | A further simplified tag parser, which requires that no attributes exist.
-tagNoAttr :: MonadThrow m => Name -> Sink Event m a -> Sink Event m (Maybe a)
+tagNoAttr :: MonadThrow m => Name -> Pipe Event Event o u m a -> Pipe Event Event o u m (Maybe a)
 tagNoAttr name f = tagName name (return ()) $ const f
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
 --
 -- > orE a b = choose [a, b]
-orE :: Monad m => Sink Event m (Maybe a) -> Sink Event m (Maybe a) -> Sink Event m (Maybe a)
+orE :: Monad m => Pipe l Event o u m (Maybe a) -> Pipe l Event o u m (Maybe a) -> Pipe l Event o u m (Maybe a)
 orE a b = do
   x <- a
   case x of
@@ -588,8 +587,8 @@ orE a b = do
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
 choose :: Monad m
-       => [Sink Event m (Maybe a)]
-       -> Sink Event m (Maybe a)
+       => [Pipe l Event o u m (Maybe a)]
+       -> Pipe l Event o u m (Maybe a)
 choose [] = return Nothing
 choose (i:is) = do
     x <- i
@@ -602,8 +601,8 @@ choose (i:is) = do
 -- want to finally force something to happen.
 force :: MonadThrow m
       => String -- ^ Error message
-      -> Sink Event m (Maybe a)
-      -> Sink Event m a
+      -> Pipe l Event o u m (Maybe a)
+      -> Pipe l Event o u m a
 force msg i = do
     x <- i
     case x of
@@ -616,15 +615,15 @@ force msg i = do
 parseFile :: MonadResource m
           => ParseSettings
           -> FilePath
-          -> Source m Event
-parseFile ps fp = sourceFile (encodeString fp) $= parseBytes ps
+          -> Pipe l i Event u m ()
+parseFile ps fp = sourceFile (encodeString fp) >+> parseBytes ps
 
 -- | Parse an event stream from a lazy 'L.ByteString'.
 parseLBS :: MonadThrow m
          => ParseSettings
          -> L.ByteString
-         -> Source m Event
-parseLBS ps lbs = CL.sourceList (L.toChunks lbs) $= parseBytes ps
+         -> Pipe l i Event u m ()
+parseLBS ps lbs = CL.sourceList (L.toChunks lbs) >+> parseBytes ps
 
 data XmlException = XmlException
     { xmlErrorMessage :: String
@@ -706,7 +705,7 @@ ignoreAttrs :: AttrParser ()
 ignoreAttrs = AttrParser $ \_ -> Right ([], ())
 
 -- | Keep parsing elements as long as the parser returns 'Just'.
-many :: Monad m => Sink Event m (Maybe a) -> Sink Event m [a]
+many :: Monad m => Pipe l Event o u m (Maybe a) -> Pipe l Event o u m [a]
 many i =
     go id
   where

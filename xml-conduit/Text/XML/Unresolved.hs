@@ -57,25 +57,26 @@ import qualified Data.Text.Lazy as TL
 import Data.Char (isSpace)
 import qualified Data.ByteString.Lazy as L
 import System.IO.Unsafe (unsafePerformIO)
-import qualified Data.Conduit as C
+import Data.Conduit hiding (Source, Sink, Conduit)
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
 import Control.Exception (throw)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Resource (MonadUnsafeIO, runExceptionT)
+import Control.Monad.Trans.Resource (runExceptionT)
 import Control.Monad.ST (runST)
 import Data.Conduit.Lazy (lazyConsume)
 
 readFile :: P.ParseSettings -> FilePath -> IO Document
-readFile ps fp = C.runResourceT $ P.parseFile ps fp C.$$ fromEvents
+readFile ps fp = runResourceT $ P.parseFile ps fp $$ fromEvents
 
-sinkDoc :: C.MonadThrow m
-        => P.ParseSettings -> C.Sink ByteString m Document
-sinkDoc ps = P.parseBytes ps C.=$ fromEvents
+sinkDoc :: MonadThrow m
+        => P.ParseSettings
+        -> Pipe l ByteString o u m Document
+sinkDoc ps = P.parseBytes ps >+> fromEvents
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
 writeFile rs fp doc =
-    C.runResourceT $ renderBytes rs doc C.$$ CB.sinkFile (encodeString fp)
+    runResourceT $ renderBytes rs doc $$ CB.sinkFile (encodeString fp)
 
 renderLBS :: R.RenderSettings -> Document -> L.ByteString
 renderLBS rs doc =
@@ -89,7 +90,7 @@ renderLBS rs doc =
 parseLBS :: P.ParseSettings -> L.ByteString -> Either SomeException Document
 parseLBS ps lbs =
     runST $ runExceptionT
-          $ CL.sourceList (L.toChunks lbs) C.$$ sinkDoc ps
+          $ CL.sourceList (L.toChunks lbs) $$ sinkDoc ps
 
 parseLBS_ :: P.ParseSettings -> L.ByteString -> Document
 parseLBS_ ps lbs = either throw id $ parseLBS ps lbs
@@ -98,24 +99,24 @@ data InvalidEventStream = InvalidEventStream String
     deriving (Show, Typeable)
 instance Exception InvalidEventStream
 
-renderBuilder :: Monad m => R.RenderSettings -> Document -> C.Source m Builder
-renderBuilder rs doc = CL.sourceList (toEvents doc) C.$= R.renderBuilder rs
+renderBuilder :: Monad m => R.RenderSettings -> Document -> Pipe l i Builder u m ()
+renderBuilder rs doc = CL.sourceList (toEvents doc) >+> R.renderBuilder rs
 
-renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> C.Source m ByteString
-renderBytes rs doc = CL.sourceList (toEvents doc) C.$= R.renderBytes rs
+renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> Pipe l i ByteString u m ()
+renderBytes rs doc = CL.sourceList (toEvents doc) >+> R.renderBytes rs
 
-renderText :: (C.MonadThrow m, MonadUnsafeIO m) => R.RenderSettings -> Document -> C.Source m Text
-renderText rs doc = CL.sourceList (toEvents doc) C.$= R.renderText rs
+renderText :: (MonadThrow m, MonadUnsafeIO m) => R.RenderSettings -> Document -> Pipe l i Text u m ()
+renderText rs doc = CL.sourceList (toEvents doc) >+> R.renderText rs
 
-fromEvents :: C.MonadThrow m => C.Sink Event m Document
-fromEvents = do
+fromEvents :: MonadThrow m => Pipe l Event o u m Document
+fromEvents = injectLeftovers $ do
     skip EventBeginDocument
     d <- Document <$> goP <*> require goE <*> goM
     skip EventEndDocument
     y <- CL.head
     if y == Nothing
         then return d
-        else lift $ C.monadThrow $ InvalidEventStream $ "Trailing matter after epilogue: " ++ show y
+        else lift $ monadThrow $ InvalidEventStream $ "Trailing matter after epilogue: " ++ show y
   where
     skip e = do
         x <- CL.peek
@@ -135,7 +136,7 @@ fromEvents = do
             Just y -> return y
             Nothing -> do
                 y <- CL.head
-                lift $ C.monadThrow $ InvalidEventStream $ "Document must have a single root element, got: " ++ show y
+                lift $ monadThrow $ InvalidEventStream $ "Document must have a single root element, got: " ++ show y
     goP = Prologue <$> goM <*> goD <*> goM
     goM = many goM'
     goM' = do
@@ -163,7 +164,7 @@ fromEvents = do
             --
             -- Just (EventDeclaration _) -> dropTillDoctype
             Just EventEndDoctype -> return ()
-            _ -> lift $ C.monadThrow $ InvalidEventStream $ "Invalid event during doctype, got: " ++ show x
+            _ -> lift $ monadThrow $ InvalidEventStream $ "Invalid event during doctype, got: " ++ show x
     goE = do
         x <- CL.peek
         case x of
@@ -175,7 +176,7 @@ fromEvents = do
         y <- CL.head
         if y == Just (EventEndElement n)
             then return $ Element n as $ compressNodes ns
-            else lift $ C.monadThrow $ InvalidEventStream $ "Missing end element for " ++ show n ++ ", got: " ++ show y
+            else lift $ monadThrow $ InvalidEventStream $ "Missing end element for " ++ show n ++ ", got: " ++ show y
     goN = do
         x <- CL.peek
         case x of
@@ -224,12 +225,12 @@ parseText :: ParseSettings -> TL.Text -> Either SomeException Document
 parseText ps tl = runST
                 $ runExceptionT
                 $ CL.sourceList (TL.toChunks tl)
-           C.$$ sinkTextDoc ps
+           $$ sinkTextDoc ps
 
 parseText_ :: ParseSettings -> TL.Text -> Document
 parseText_ ps = either throw id . parseText ps
 
-sinkTextDoc :: C.MonadThrow m
+sinkTextDoc :: MonadThrow m
             => ParseSettings
-            -> C.Sink Text m Document
-sinkTextDoc ps = P.parseText ps C.=$ fromEvents
+            -> Pipe l Text o u m Document
+sinkTextDoc ps = P.parseText ps >+> fromEvents

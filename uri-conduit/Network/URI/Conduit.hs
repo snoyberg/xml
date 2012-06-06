@@ -30,7 +30,7 @@ module Network.URI.Conduit
 
 import qualified Network.URI as N
 import Data.Text (Text, cons, isSuffixOf, pack, unpack)
-import qualified Data.Conduit as C
+import Data.Conduit hiding (Source, Conduit, Sink)
 import Data.ByteString (ByteString)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -69,8 +69,8 @@ hasExtension URI { uriPath = p } t = (cons '.' t) `isSuffixOf` p
 
 data Scheme = Scheme
     { schemeNames :: Set.Set Text
-    , schemeReader :: forall m. C.MonadResource m => Maybe (URI -> C.Source m ByteString)
-    , schemeWriter :: forall m. C.MonadResource m => Maybe (URI -> C.Sink ByteString m ())
+    , schemeReader :: forall l i u m. MonadResource m => Maybe (URI -> Pipe l i ByteString u m ())
+    , schemeWriter :: forall l o r m. MonadResource m => Maybe (URI -> Pipe l ByteString o r m r)
     }
 
 type SchemeMap = Map.Map Text Scheme
@@ -91,22 +91,22 @@ data URIException = UnknownReadScheme URI
   deriving (Show, Typeable)
 instance Exception URIException
 
-readURI :: C.MonadResource m
+readURI :: MonadResource m
         => SchemeMap
         -> URI
-        -> C.Source m ByteString
+        -> Pipe l i ByteString u m ()
 readURI sm uri =
     case Map.lookup (uriScheme uri) sm >>= schemeReader of
-        Nothing -> lift $ C.monadThrow $ UnknownReadScheme uri
+        Nothing -> lift $ monadThrow $ UnknownReadScheme uri
         Just f -> f uri
 
-writeURI :: C.MonadResource m
+writeURI :: MonadResource m
          => SchemeMap
          -> URI
-         -> C.Sink ByteString m ()
+         -> Pipe l ByteString o r m r
 writeURI sm uri =
     case Map.lookup (uriScheme uri) sm >>= schemeWriter of
-        Nothing -> lift $ C.monadThrow $ UnknownWriteScheme uri
+        Nothing -> lift $ monadThrow $ UnknownWriteScheme uri
         Just f -> f uri
 
 toNetworkURI :: URI -> N.URI
@@ -145,9 +145,9 @@ relativeTo a b = fmap fromNetworkURI $ toNetworkURI a `N.relativeTo` toNetworkUR
 nullURI :: URI
 nullURI = fromNetworkURI N.nullURI
 
-copyURI :: C.MonadResource m
+copyURI :: MonadResource m
         => SchemeMap
         -> URI
         -> URI
         -> m ()
-copyURI sm src dst = readURI sm src C.$$ writeURI sm dst
+copyURI sm src dst = readURI sm src $$ writeURI sm dst

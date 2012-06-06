@@ -27,11 +27,9 @@ import Data.ByteString (ByteString)
 import Data.Default (Default (def))
 import qualified Data.Set as Set
 import Data.List (foldl')
-import qualified Data.Conduit as C
-import Data.Conduit.Internal (sinkToPipe)
+import Data.Conduit hiding (Source, Sink, Conduit)
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Text as CT
-import Control.Monad.Trans.Resource (MonadUnsafeIO)
 import Data.Monoid (mempty)
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
@@ -39,15 +37,15 @@ import Data.Monoid (mempty)
 -- optimally sized 'ByteString's with minimal buffer copying.
 --
 -- The output is UTF8 encoded.
-renderBytes :: MonadUnsafeIO m => RenderSettings -> C.Conduit Event m ByteString
-renderBytes rs = renderBuilder rs C.=$= builderToByteString
+renderBytes :: MonadUnsafeIO m => RenderSettings -> Pipe l Event ByteString r m r
+renderBytes rs = renderBuilder rs >+> builderToByteString
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder', 'builderToByteString' and 'renderBytes', so it
 -- produces optimally sized 'ByteString's with minimal buffer copying.
-renderText :: (C.MonadThrow m, MonadUnsafeIO m)
-           => RenderSettings -> C.Conduit Event m Text
-renderText rs = renderBytes rs C.=$= CT.decode CT.utf8
+renderText :: (MonadThrow m, MonadUnsafeIO m)
+           => RenderSettings -> Pipe l Event Text r m r
+renderText rs = renderBytes rs >+> CT.decode CT.utf8
 
 data RenderSettings = RenderSettings
     { rsPretty :: Bool
@@ -67,32 +65,32 @@ instance Default RenderSettings where
 -- | Render a stream of 'Event's into a stream of 'Builder's. Builders are from
 -- the blaze-builder package, and allow the create of optimally sized
 -- 'ByteString's with minimal buffer copying.
-renderBuilder :: Monad m => RenderSettings -> C.Conduit Event m Builder
-renderBuilder RenderSettings { rsPretty = True, rsNamespaces = n } = prettify C.=$= renderBuilder' n True
+renderBuilder :: Monad m => RenderSettings -> Pipe l Event Builder r m r
+renderBuilder RenderSettings { rsPretty = True, rsNamespaces = n } = prettify >+> renderBuilder' n True
 renderBuilder RenderSettings { rsPretty = False, rsNamespaces = n } = renderBuilder' n False
 
-renderBuilder' :: Monad m => [(Text, Text)] -> Bool -> C.Conduit Event m Builder
+renderBuilder' :: Monad m => [(Text, Text)] -> Bool -> Pipe l Event Builder r m r
 renderBuilder' namespaces0 isPretty = do
-    loop []
+    injectLeftovers $ loop []
   where
-    loop nslevels = C.await >>= maybe (return ()) (go nslevels)
+    loop nslevels = awaitE >>= either return (go nslevels)
 
     go nslevels e =
         case e of
             EventBeginElement n1 as -> do
-                mnext <- sinkToPipe CL.peek
+                mnext <- CL.peek
                 isClosed <-
                     case mnext of
                         Just (EventEndElement n2) | n1 == n2 -> do
-                            sinkToPipe $ CL.drop 1
+                            CL.drop 1
                             return True
                         _ -> return False
                 let (token, nslevels') = mkBeginToken isPretty isClosed namespaces0 nslevels n1 as
-                C.yield token
+                yield token
                 loop nslevels'
             _ -> do
                 let (token, nslevels') = eventToToken nslevels e
-                C.yield token
+                yield token
                 loop nslevels'
 
 eventToToken :: Stack -> Event -> (Builder, [NSLevel])
@@ -208,68 +206,65 @@ getPrefix ppref nsmap ns =
 
 -- | Convert a stream of 'Event's into a prettified one, adding extra
 -- whitespace. Note that this can change the meaning of your XML.
-prettify :: Monad m => C.Conduit Event m Event
-prettify = prettify' 0
+prettify :: Monad m => Pipe l Event Event r m r
+prettify = injectLeftovers $ prettify' 0
 
-prettify' :: Monad m => Int -> C.Conduit Event m Event
-prettify' level = do
-    me <- C.await
-    case me of
-        Nothing -> return ()
-        Just e -> go e
+prettify' :: Monad m => Int -> Pipe Event Event Event r m r
+prettify' level =
+    awaitE >>= either return go
   where
     go e@EventBeginDocument = do
-        C.yield e
-        C.yield $ EventContent $ ContentText "\n"
+        yield e
+        yield $ EventContent $ ContentText "\n"
         prettify' level
     go e@EventBeginElement{} = do
-        C.yield before
-        C.yield e
-        mnext <- sinkToPipe CL.peek
+        yield before
+        yield e
+        mnext <- CL.peek
         case mnext of
             Just next@EventEndElement{} -> do
-                sinkToPipe $ CL.drop 1
-                C.yield next
-                C.yield after
+                CL.drop 1
+                yield next
+                yield after
                 prettify' level
             _ -> do
-                C.yield after
+                yield after
                 prettify' $ level + 1
     go e@EventEndElement{} = do
         let level' = max 0 $ level - 1
-        C.yield $ before' level'
-        C.yield e
-        C.yield after
+        yield $ before' level'
+        yield e
+        yield after
         prettify' level'
     go (EventContent c) = do
-        cs <- sinkToPipe $ takeContents (c:)
+        cs <- takeContents (c:)
         let cs' = mapMaybe normalize cs
         case cs' of
             [] -> return ()
             _ -> do
-                C.yield before
-                mapM_ (C.yield . EventContent) cs'
-                C.yield after
+                yield before
+                mapM_ (yield . EventContent) cs'
+                yield after
         prettify' level
     go (EventCDATA t) = go $ EventContent $ ContentText t
     go e@EventInstruction{} = do
-        C.yield before
-        C.yield e
-        C.yield after
+        yield before
+        yield e
+        yield after
         prettify' level
     go (EventComment t) = do
-        C.yield before
-        C.yield $ EventComment $ T.concat
+        yield before
+        yield $ EventComment $ T.concat
             [ " "
             , T.unwords $ T.words t
             , " "
             ]
-        C.yield after
+        yield after
         prettify' level
 
-    go e@EventEndDocument = C.yield e >> prettify' level
-    go e@EventBeginDoctype{} = C.yield e >> prettify' level
-    go e@EventEndDoctype{} = C.yield e >> C.yield after >> prettify' level
+    go e@EventEndDocument = yield e >> prettify' level
+    go e@EventBeginDoctype{} = yield e >> prettify' level
+    go e@EventEndDoctype{} = yield e >> yield after >> prettify' level
 
     takeContents front = do
         me <- CL.peek

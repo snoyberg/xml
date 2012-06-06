@@ -93,12 +93,12 @@ import Data.Set (Set)
 
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
-import qualified Data.Conduit as C
+import Data.Conduit hiding (Source, Sink, Conduit)
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Exception (throw)
-import Control.Monad.Trans.Resource (MonadUnsafeIO, runExceptionT)
+import Control.Monad.Trans.Resource (runExceptionT)
 import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Lazy (lazyConsume)
 
@@ -182,7 +182,7 @@ fromXMLNode (X.NodeInstruction i) = Right $ NodeInstruction i
 readFile :: ParseSettings -> FilePath -> IO Document
 readFile ps fp = handle
     (throwIO . InvalidXMLFile fp)
-    (C.runResourceT $ CB.sourceFile (encodeString fp) C.$$ sinkDoc ps)
+    (runResourceT $ CB.sourceFile (encodeString fp) $$ sinkDoc ps)
 
 data XMLException = InvalidXMLFile FilePath SomeException
     deriving Typeable
@@ -200,45 +200,45 @@ parseLBS :: ParseSettings -> L.ByteString -> Either SomeException Document
 parseLBS ps lbs = runST
                 $ runExceptionT
                 $ CL.sourceList (L.toChunks lbs)
-           C.$$ sinkDoc ps
+           $$ sinkDoc ps
 
 parseLBS_ :: ParseSettings -> L.ByteString -> Document
 parseLBS_ ps = either throw id . parseLBS ps
 
-sinkDoc :: C.MonadThrow m
+sinkDoc :: MonadThrow m
         => ParseSettings
-        -> C.Sink ByteString m Document
-sinkDoc ps = P.parseBytes ps C.=$ fromEvents
+        -> Pipe l ByteString o u m Document
+sinkDoc ps = P.parseBytes ps >+> fromEvents
 
 parseText :: ParseSettings -> TL.Text -> Either SomeException Document
 parseText ps tl = runST
                 $ runExceptionT
                 $ CL.sourceList (TL.toChunks tl)
-           C.$$ sinkTextDoc ps
+           $$ sinkTextDoc ps
 
 parseText_ :: ParseSettings -> TL.Text -> Document
 parseText_ ps = either throw id . parseText ps
 
-sinkTextDoc :: C.MonadThrow m
+sinkTextDoc :: MonadThrow m
             => ParseSettings
-            -> C.Sink Text m Document
-sinkTextDoc ps = P.parseText ps C.=$ fromEvents
+            -> Pipe l Text o u m Document
+sinkTextDoc ps = P.parseText ps >+> fromEvents
 
-fromEvents :: C.MonadThrow m => C.Sink X.Event m Document
+fromEvents :: MonadThrow m => Pipe l X.Event o u m Document
 fromEvents = do
     d <- D.fromEvents
-    either (lift . C.monadThrow . UnresolvedEntityException) return $ fromXMLDocument d
+    either (lift . monadThrow . UnresolvedEntityException) return $ fromXMLDocument d
 
 data UnresolvedEntityException = UnresolvedEntityException (Set Text)
     deriving (Show, Typeable)
 instance Exception UnresolvedEntityException
 
-renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> C.Source m ByteString
+renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> Pipe l i ByteString u m ()
 renderBytes rs doc = D.renderBytes rs $ toXMLDocument doc
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
 writeFile rs fp doc =
-    C.runResourceT $ renderBytes rs doc C.$$ CB.sinkFile (encodeString fp)
+    runResourceT $ renderBytes rs doc $$ CB.sinkFile (encodeString fp)
 
 renderLBS :: R.RenderSettings -> Document -> L.ByteString
 renderLBS rs doc =
