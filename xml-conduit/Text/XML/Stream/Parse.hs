@@ -48,6 +48,7 @@
 module Text.XML.Stream.Parse
     ( -- * Parsing XML files
       parseBytes
+    , parseBytesPos
     , parseText
     , detectUtf
     , parseFile
@@ -81,13 +82,16 @@ module Text.XML.Stream.Parse
     , force
       -- * Exceptions
     , XmlException (..)
+      -- * Other types
+    , PositionRange
+    , EventPos
     ) where
 import Data.Attoparsec.Text
     ( char, Parser, takeWhile1, skipWhile, string
     , manyTill, takeWhile, try, anyChar
     )
 import qualified Control.Applicative as A
-import Data.Conduit.Attoparsec (sinkParser)
+import Data.Conduit.Attoparsec (conduitParserPos, PositionRange)
 import Data.XML.Types
     ( Name (..), Event (..), Content (..)
     , Instruction (..), ExternalID (..)
@@ -213,6 +217,8 @@ detectUtf =
                 [0x3C, 0x00, 0x3F, 0x00] -> (0, CT.utf16_le)
                 _                        -> (0, CT.utf8) -- Assuming UTF-8
 
+type EventPos = (Maybe PositionRange, Event)
+
 -- | Parses a byte stream into 'Event's. This function is implemented fully in
 -- Haskell using attoparsec-text for parsing. The produced error messages do
 -- not give line/column information, so you may prefer to stick with the parser
@@ -223,7 +229,11 @@ detectUtf =
 -- to do the actual parsing.
 parseBytes :: MonadThrow m
            => ParseSettings -> Pipe l S.ByteString Event r m r
-parseBytes ps = detectUtf >+> parseText ps
+parseBytes = mapOutput snd . parseBytesPos
+
+parseBytesPos :: MonadThrow m
+           => ParseSettings -> Pipe l S.ByteString EventPos r m r
+parseBytesPos ps = detectUtf >+> parseText ps
 
 dropBOM :: Monad m => Pipe l TS.Text TS.Text r m r
 dropBOM =
@@ -246,28 +256,28 @@ dropBOM =
 -- advantage of not relying on any C libraries.
 parseText :: MonadThrow m
           => ParseSettings
-          -> Pipe l TS.Text Event r m r
+          -> Pipe l TS.Text EventPos r m r
 parseText de =
     dropBOM
         >+> tokenize
         >+> toEventC
         >+> addBeginEnd
   where
-    tokenize = injectLeftovers $ CL.sequence $ sinkToken de
-    addBeginEnd = yield EventBeginDocument >> addEnd
+    tokenize = injectLeftovers $ conduitToken de
+    addBeginEnd = yield (Nothing, EventBeginDocument) >> addEnd
     addEnd = awaitE >>= either
-        (\u -> yield EventEndDocument >> return u)
+        (\u -> yield (Nothing, EventEndDocument) >> return u)
         (\e -> yield e >> addEnd)
 
-toEventC :: Monad m => Pipe l Token Event r m r
+toEventC :: Monad m => Pipe l (PositionRange, Token) EventPos r m r
 toEventC =
     go [] []
   where
     go es levels =
         awaitE >>= either return push
       where
-        push token =
-            mapM_ yield events >> go es' levels'
+        push (position, token) =
+            mapM_ (yield . ((,) (Just position))) events >> go es' levels'
           where
             (es', levels', events) = tokenToEvent es levels token
 
@@ -280,8 +290,8 @@ instance Default ParseSettings where
         { psDecodeEntities = decodeXmlEntities
         }
 
-sinkToken :: MonadThrow m => ParseSettings -> Pipe TS.Text TS.Text o u m Token
-sinkToken = sinkParser . parseToken . psDecodeEntities
+conduitToken :: MonadThrow m => ParseSettings -> Pipe TS.Text TS.Text (PositionRange, Token) r m r
+conduitToken = conduitParserPos . parseToken . psDecodeEntities
 
 parseToken :: DecodeEntities -> Parser Token
 parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False False

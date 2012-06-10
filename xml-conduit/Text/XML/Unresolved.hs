@@ -27,7 +27,7 @@ module Text.XML.Unresolved
     , renderBytes
     , renderText
       -- * Exceptions
-    , InvalidEventStream (InvalidEventStream)
+    , InvalidEventStream (..)
       -- * Settings
     , P.def
       -- ** Parse
@@ -67,12 +67,12 @@ import Control.Monad.ST (runST)
 import Data.Conduit.Lazy (lazyConsume)
 
 readFile :: P.ParseSettings -> FilePath -> IO Document
-readFile ps fp = runResourceT $ P.parseFile ps fp $$ fromEvents
+readFile ps fp = runResourceT $ CB.sourceFile (encodeString fp) $$ sinkDoc ps
 
 sinkDoc :: MonadThrow m
         => P.ParseSettings
         -> Pipe l ByteString o u m Document
-sinkDoc ps = P.parseBytes ps >+> fromEvents
+sinkDoc ps = P.parseBytesPos ps >+> fromEvents
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
 writeFile rs fp doc =
@@ -95,9 +95,28 @@ parseLBS ps lbs =
 parseLBS_ :: P.ParseSettings -> L.ByteString -> Document
 parseLBS_ ps lbs = either throw id $ parseLBS ps lbs
 
-data InvalidEventStream = InvalidEventStream String
-    deriving (Show, Typeable)
+data InvalidEventStream = ContentAfterRoot P.EventPos
+                        | InvalidInlineDoctype P.EventPos
+                        | MissingEndElement Name (Maybe P.EventPos)
+                        | UnterminatedInlineDoctype
+    deriving Typeable
 instance Exception InvalidEventStream
+instance Show InvalidEventStream where
+    show (ContentAfterRoot (pos, e)) = mShowPos pos ++ "Found content after root element: " ++ prettyShowE e
+    show (InvalidInlineDoctype (pos, e)) = mShowPos pos ++ "Invalid content inside doctype: " ++ prettyShowE e
+    show (MissingEndElement name Nothing) = "Documented ended while expected end element for: " ++ prettyShowName name
+    show (MissingEndElement name (Just (pos, e))) = mShowPos pos ++ "Expected end element for: " ++ prettyShowName name ++ ", but received: " ++ prettyShowE e
+    show UnterminatedInlineDoctype = "Unterminated doctype declaration"
+
+mShowPos :: Maybe P.PositionRange -> String
+mShowPos Nothing = ""
+mShowPos (Just pos) = show pos ++ ": "
+
+prettyShowE :: Event -> String
+prettyShowE = show -- FIXME
+
+prettyShowName :: Name -> String
+prettyShowName = show -- FIXME
 
 renderBuilder :: Monad m => R.RenderSettings -> Document -> Pipe l i Builder u m ()
 renderBuilder rs doc = CL.sourceList (toEvents doc) >+> R.renderBuilder rs
@@ -108,19 +127,20 @@ renderBytes rs doc = CL.sourceList (toEvents doc) >+> R.renderBytes rs
 renderText :: (MonadThrow m, MonadUnsafeIO m) => R.RenderSettings -> Document -> Pipe l i Text u m ()
 renderText rs doc = CL.sourceList (toEvents doc) >+> R.renderText rs
 
-fromEvents :: MonadThrow m => Pipe l Event o u m Document
+fromEvents :: MonadThrow m => Pipe l P.EventPos o u m Document
 fromEvents = injectLeftovers $ do
     skip EventBeginDocument
     d <- Document <$> goP <*> require goE <*> goM
     skip EventEndDocument
     y <- CL.head
-    if y == Nothing
-        then return d
-        else lift $ monadThrow $ InvalidEventStream $ "Trailing matter after epilogue: " ++ show y
+    case y of
+        Nothing -> return d
+        Just z ->
+            lift $ monadThrow $ ContentAfterRoot z
   where
     skip e = do
         x <- CL.peek
-        when (x == Just e) (CL.drop 1)
+        when (fmap snd x == Just e) (CL.drop 1)
     many f =
         go id
       where
@@ -135,22 +155,24 @@ fromEvents = injectLeftovers $ do
         case x of
             Just y -> return y
             Nothing -> do
-                y <- CL.head
-                lift $ monadThrow $ InvalidEventStream $ "Document must have a single root element, got: " ++ show y
+                my <- CL.head
+                case my of
+                    Nothing -> error "Text.XML.Unresolved:impossible"
+                    Just y -> lift $ monadThrow $ ContentAfterRoot y
     goP = Prologue <$> goM <*> goD <*> goM
     goM = many goM'
     goM' = do
         x <- CL.peek
         case x of
-            Just (EventInstruction i) -> dropReturn $ Just $ MiscInstruction i
-            Just (EventComment t) -> dropReturn $ Just $ MiscComment t
-            Just (EventContent (ContentText t))
+            Just (_, EventInstruction i) -> dropReturn $ Just $ MiscInstruction i
+            Just (_, EventComment t) -> dropReturn $ Just $ MiscComment t
+            Just (_, EventContent (ContentText t))
                 | T.all isSpace t -> CL.drop 1 >> goM'
             _ -> return Nothing
     goD = do
         x <- CL.peek
         case x of
-            Just (EventBeginDoctype name meid) -> do
+            Just (_, EventBeginDoctype name meid) -> do
                 CL.drop 1
                 dropTillDoctype
                 return (Just $ Doctype name meid)
@@ -163,28 +185,29 @@ fromEvents = injectLeftovers $ do
             -- be expanded again to support some form of EventDeclaration
             --
             -- Just (EventDeclaration _) -> dropTillDoctype
-            Just EventEndDoctype -> return ()
-            _ -> lift $ monadThrow $ InvalidEventStream $ "Invalid event during doctype, got: " ++ show x
+            Just (_, EventEndDoctype) -> return ()
+            Just epos -> lift $ monadThrow $ InvalidInlineDoctype epos
+            Nothing -> lift $ monadThrow UnterminatedInlineDoctype
     goE = do
         x <- CL.peek
         case x of
-            Just (EventBeginElement n as) -> Just <$> goE' n as
+            Just (_, EventBeginElement n as) -> Just <$> goE' n as
             _ -> return Nothing
     goE' n as = do
         CL.drop 1
         ns <- many goN
         y <- CL.head
-        if y == Just (EventEndElement n)
+        if fmap snd y == Just (EventEndElement n)
             then return $ Element n as $ compressNodes ns
-            else lift $ monadThrow $ InvalidEventStream $ "Missing end element for " ++ show n ++ ", got: " ++ show y
+            else lift $ monadThrow $ MissingEndElement n y
     goN = do
         x <- CL.peek
         case x of
-            Just (EventBeginElement n as) -> (Just . NodeElement) <$> goE' n as
-            Just (EventInstruction i) -> dropReturn $ Just $ NodeInstruction i
-            Just (EventContent c) -> dropReturn $ Just $ NodeContent c
-            Just (EventComment t) -> dropReturn $ Just $ NodeComment t
-            Just (EventCDATA t) -> dropReturn $ Just $ NodeContent $ ContentText t
+            Just (_, EventBeginElement n as) -> (Just . NodeElement) <$> goE' n as
+            Just (_, EventInstruction i) -> dropReturn $ Just $ NodeInstruction i
+            Just (_, EventContent c) -> dropReturn $ Just $ NodeContent c
+            Just (_, EventComment t) -> dropReturn $ Just $ NodeComment t
+            Just (_, EventCDATA t) -> dropReturn $ Just $ NodeContent $ ContentText t
             _ -> return Nothing
 
 toEvents :: Document -> [Event]

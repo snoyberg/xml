@@ -208,7 +208,7 @@ parseLBS_ ps = either throw id . parseLBS ps
 sinkDoc :: MonadThrow m
         => ParseSettings
         -> Pipe l ByteString o u m Document
-sinkDoc ps = P.parseBytes ps >+> fromEvents
+sinkDoc ps = P.parseBytesPos ps >+> fromEvents
 
 parseText :: ParseSettings -> TL.Text -> Either SomeException Document
 parseText ps tl = runST
@@ -224,7 +224,7 @@ sinkTextDoc :: MonadThrow m
             -> Pipe l Text o u m Document
 sinkTextDoc ps = P.parseText ps >+> fromEvents
 
-fromEvents :: MonadThrow m => Pipe l X.Event o u m Document
+fromEvents :: MonadThrow m => Pipe l P.EventPos o u m Document
 fromEvents = do
     d <- D.fromEvents
     either (lift . monadThrow . UnresolvedEntityException) return $ fromXMLDocument d
