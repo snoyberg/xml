@@ -17,6 +17,7 @@ import qualified Text.XML as X
 import Data.String (fromString)
 import qualified Data.Foldable as F
 import Data.Maybe (fromMaybe)
+import qualified Data.Map as Map
 
 xml :: QuasiQuoter
 xml = QuasiQuoter { quoteExp = strToExp }
@@ -76,11 +77,11 @@ docToExp scope (DocCond conds final) = do
         return (NormalG $ derefToExp scope deref, inside')
 
 mkAttrs :: Scope -> [(Maybe Deref, String, [Content])] -> Q Exp
-mkAttrs _ [] = [| [] |]
+mkAttrs _ [] = [| Map.empty |]
 mkAttrs scope ((mderef, name, value):rest) = do
     rest' <- mkAttrs scope rest
-    this <- [| ($(liftName name), T.concat $(fmap ListE $ mapM go value)) |]
-    let with = [| $(return this) : $(return rest') |]
+    this <- [| Map.insert $(liftName name) (T.concat $(fmap ListE $ mapM go value)) |]
+    let with = [| $(return this) $(return rest') |]
     case mderef of
         Nothing -> with
         Just deref -> [| if $(return $ derefToExp scope deref) then $(with) else $(return rest') |]

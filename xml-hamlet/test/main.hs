@@ -5,6 +5,7 @@ import qualified Text.XML as X
 import Test.HUnit
 import Test.Hspec
 import Test.Hspec.HUnit ()
+import qualified Data.Map as Map
 
 main :: IO ()
 main = hspecX [describe "xml-hamlet"
@@ -12,16 +13,16 @@ main = hspecX [describe "xml-hamlet"
 <foo>
         <baz>
 |] @?=
-        [ X.NodeElement $ X.Element "foo" []
-            [ X.NodeElement $ X.Element "baz" [] []
+        [ X.NodeElement $ X.Element "foo" Map.empty
+            [ X.NodeElement $ X.Element "baz" Map.empty []
             ]
         ]
     , it "handles raw text" $ [xml|
 <foo>
         <baz>bin
 |] @?=
-        [ X.NodeElement $ X.Element "foo" []
-            [ X.NodeElement $ X.Element "baz" []
+        [ X.NodeElement $ X.Element "foo" Map.empty
+            [ X.NodeElement $ X.Element "baz" Map.empty
                 [ X.NodeContent "bin"
                 ]
             ]
@@ -30,8 +31,8 @@ main = hspecX [describe "xml-hamlet"
 <foo>
         <baz>#{bin}
 |] @?=
-        [ X.NodeElement $ X.Element "foo" []
-            [ X.NodeElement $ X.Element "baz" []
+        [ X.NodeElement $ X.Element "foo" Map.empty
+            [ X.NodeElement $ X.Element "baz" Map.empty
                 [ X.NodeContent "bin"
                 ]
             ]
@@ -40,8 +41,8 @@ main = hspecX [describe "xml-hamlet"
 <foo>
         <baz>^{nodes}
 |] @?=
-        [ X.NodeElement $ X.Element "foo" []
-            [ X.NodeElement $ X.Element "baz" [] nodes
+        [ X.NodeElement $ X.Element "foo" Map.empty
+            [ X.NodeElement $ X.Element "baz" Map.empty nodes
             ]
         ]
     , it "handles attributes" $ [xml|
@@ -49,9 +50,9 @@ main = hspecX [describe "xml-hamlet"
     <bar here=there>
         <baz>
 |] @?=
-        [ X.NodeElement $ X.Element "foo" []
-            [ X.NodeElement $ X.Element "bar" [("here", "there")]
-                [ X.NodeElement $ X.Element "baz" [] []
+        [ X.NodeElement $ X.Element "foo" Map.empty
+            [ X.NodeElement $ X.Element "bar" (Map.singleton "here" "there")
+                [ X.NodeElement $ X.Element "baz" Map.empty []
                 ]
             ]
         ]
@@ -60,9 +61,9 @@ main = hspecX [describe "xml-hamlet"
     <bar here=there>
         <baz :False:false=false :True:true=#{true}>
 |] @?=
-        [ X.NodeElement $ X.Element "foo" []
-            [ X.NodeElement $ X.Element "bar" [("here", "there")]
-                [ X.NodeElement $ X.Element "baz" [("true", "true")] []
+        [ X.NodeElement $ X.Element "foo" Map.empty
+            [ X.NodeElement $ X.Element "bar" (Map.singleton "here" "there")
+                [ X.NodeElement $ X.Element "baz" (Map.singleton "true" "true") []
                 ]
             ]
         ]
@@ -70,18 +71,18 @@ main = hspecX [describe "xml-hamlet"
 $forall x <- xs
     <word>#{x}
     |] @?=
-        [ X.NodeElement $ X.Element "word" [] [X.NodeContent "foo"]
-        , X.NodeElement $ X.Element "word" [] [X.NodeContent "bar"]
-        , X.NodeElement $ X.Element "word" [] [X.NodeContent "baz"]
+        [ X.NodeElement $ X.Element "word" Map.empty [X.NodeContent "foo"]
+        , X.NodeElement $ X.Element "word" Map.empty [X.NodeContent "bar"]
+        , X.NodeElement $ X.Element "word" Map.empty [X.NodeContent "baz"]
         ]
     , it "handles with" $ [xml|
 $with ys <- xs
     $forall x <- ys
         <word>#{x}
     |] @?=
-        [ X.NodeElement $ X.Element "word" [] [X.NodeContent "foo"]
-        , X.NodeElement $ X.Element "word" [] [X.NodeContent "bar"]
-        , X.NodeElement $ X.Element "word" [] [X.NodeContent "baz"]
+        [ X.NodeElement $ X.Element "word" Map.empty [X.NodeContent "foo"]
+        , X.NodeElement $ X.Element "word" Map.empty [X.NodeContent "bar"]
+        , X.NodeElement $ X.Element "word" Map.empty [X.NodeContent "baz"]
         ]
     , it "handles maybe" $ [xml|
 $maybe _x <- Just five
@@ -93,8 +94,8 @@ $maybe _x <- Nothing
 $nothing
     <four>
     |] @?=
-        [ X.NodeElement $ X.Element "one" [] []
-        , X.NodeElement $ X.Element "four" [] []
+        [ X.NodeElement $ X.Element "one" Map.empty []
+        , X.NodeElement $ X.Element "four" Map.empty []
         ]
     , it "handles conditionals" $ [xml|
 $if True
@@ -114,16 +115,16 @@ $elseif False
 $else
     <seven>
 |] @?=
-        [ X.NodeElement $ X.Element "one" [] []
-        , X.NodeElement $ X.Element "four" [] []
-        , X.NodeElement $ X.Element "seven" [] []
+        [ X.NodeElement $ X.Element "one" Map.empty []
+        , X.NodeElement $ X.Element "four" Map.empty []
+        , X.NodeElement $ X.Element "seven" Map.empty []
         ]
     , it "recognizes clark notation" $ [xml|
 <{foo}bar {baz}bin="x">
-|] @?= [X.NodeElement $ X.Element "{foo}bar" [("{baz}bin", "x")] []]
+|] @?= [X.NodeElement $ X.Element "{foo}bar" (Map.singleton "{baz}bin" "x") []]
     , it "recognizes clark with URLs" $ [xml|
 <{http://www.example.com/foo/bar}baz>
-|] @?= [X.NodeElement $ X.Element "{http://www.example.com/foo/bar}baz" [] []]
+|] @?= [X.NodeElement $ X.Element "{http://www.example.com/foo/bar}baz" Map.empty []]
     , it "allow embedding comments" $[xml|^{comment}|] @?= comment
     , it "multiline tags" $ [xml|
 <foo bar=baz

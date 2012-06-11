@@ -1,5 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards #-}
 -- | DOM-based parsing and rendering.
 --
 -- This module requires that all entities be resolved at parsing. If you need
@@ -89,6 +91,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as L
 import Control.Monad.ST (runST)
 import qualified Data.Set as Set
+import qualified Data.Map as Map
 import Data.Set (Set)
 
 import qualified Data.Text.Lazy as TL
@@ -101,6 +104,15 @@ import Control.Exception (throw)
 import Control.Monad.Trans.Resource (runExceptionT)
 import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Lazy (lazyConsume)
+
+import qualified Text.Blaze as B
+import qualified Text.Blaze.Html as B
+import qualified Text.Blaze.Html5 as B5
+import qualified Text.Blaze.Internal as BI
+import Data.Monoid (mempty, mappend)
+import Data.String (fromString)
+import Data.List (foldl')
+import Control.Arrow (first)
 
 data Document = Document
     { documentPrologue :: Prologue
@@ -118,7 +130,7 @@ data Node
 
 data Element = Element
     { elementName :: Name
-    , elementAttributes :: [(Name, Text)]
+    , elementAttributes :: Map.Map Name Text
     , elementNodes :: [Node]
     }
   deriving (Show, Eq, Ord, Typeable)
@@ -135,7 +147,7 @@ toXMLElement :: Element -> X.Element
 toXMLElement (Element name as nodes) =
     X.Element name as' nodes'
   where
-    as' = map (\(x, y) -> (x, [X.ContentText y])) as
+    as' = map (\(x, y) -> (x, [X.ContentText y])) $ Map.toList as
     nodes' = map toXMLNode nodes
 
 toXMLNode :: Node -> X.Node
@@ -161,7 +173,8 @@ fromXMLElement (X.Element name as nodes) =
     enodes = map fromXMLNode nodes
     (lnodes, rnodes) = partitionEithers enodes
     eas = map go as
-    (las, ras) = partitionEithers eas
+    (las, ras') = partitionEithers eas
+    ras = Map.fromList ras'
     go (x, y) =
         case go' [] id y of
             Left es -> Left es
@@ -251,3 +264,53 @@ renderLBS rs doc =
 
 renderText :: R.RenderSettings -> Document -> TL.Text
 renderText rs = TLE.decodeUtf8 . renderLBS rs
+
+instance B.ToMarkup Document where
+    toMarkup (Document _ root _) = B5.docType >> B.toMarkup root
+
+-- | Note that the special element name
+-- @{http://www.snoyman.com/xml2html}ie-cond@ with the single attribute @cond@
+-- is used to indicate an IE conditional comment.
+instance B.ToMarkup Element where
+    toMarkup (Element "{http://www.snoyman.com/xml2html}ie-cond" attrs children)
+      | [("cond", cond)] <- Map.toList attrs =
+        B.preEscapedToMarkup ("<!--[if " :: T.Text)
+        `mappend` B.preEscapedToMarkup cond
+        `mappend` B.preEscapedToMarkup ("]>" :: T.Text)
+        `mappend` mapM_ B.toMarkup children
+        `mappend` B.preEscapedToMarkup ("<![endif]-->" :: T.Text)
+
+    toMarkup (Element name' attrs children) =
+        if isVoid
+            then foldl' (B.!) leaf attrs'
+            else foldl' (B.!) parent attrs' childrenHtml
+      where
+        childrenHtml :: B.Html
+        childrenHtml =
+            case (name `elem` ["style", "script"], children) of
+                (True, [NodeContent t]) -> B.preEscapedToMarkup t
+                _ -> mapM_ B.toMarkup children
+
+        isVoid = nameLocalName name' `Set.member` voidElems
+
+        parent :: B.Html -> B.Html
+        parent = BI.Parent tag open close
+        leaf :: B.Html
+        leaf = BI.Leaf tag open (fromString " />")
+
+        name = T.unpack $ nameLocalName name'
+        tag = fromString name
+        open = fromString $ '<' : name
+        close = fromString $ concat ["</", name, ">"]
+
+        attrs' :: [B.Attribute]
+        attrs' = map goAttr $ map (first nameLocalName) $ Map.toList attrs
+        goAttr (key, value) = B.customAttribute (B.textTag key) $ B.toValue value
+
+instance B.ToMarkup Node where
+    toMarkup (NodeElement e) = B.toMarkup e
+    toMarkup (NodeContent t) = B.toMarkup t
+    toMarkup _ = mempty
+
+voidElems :: Set.Set T.Text
+voidElems = Set.fromAscList $ T.words $ T.pack "area base br col command embed hr img input keygen link meta param source track wbr"

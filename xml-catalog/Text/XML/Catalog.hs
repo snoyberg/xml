@@ -40,27 +40,27 @@ loadCatalog sm uri = do
         c'' <- c'
         foldM (addNode mbase) c'' ns
       where
-        mbase = maybe mbase0 Just $ lookup "{http://www.w3.org/XML/1998/namespace}base" as
+        mbase = maybe mbase0 Just $ Map.lookup "{http://www.w3.org/XML/1998/namespace}base" as
         withBase = maybe id T.append mbase
 
         c' =
             case name of
                 "{urn:oasis:names:tc:entity:xmlns:xml:catalog}public" ->
-                    case (lookup "publicId" as, lookup "uri" as) of
+                    case (Map.lookup "publicId" as, Map.lookup "uri" as) of
                         (Just pid, Just ref) ->
                             case parseURIReference (withBase ref) >>= flip relativeTo uri of
                                 Just uri' -> return $ Map.insert (Public pid) uri' c
                                 Nothing -> return c
                         _ -> return c
                 "{urn:oasis:names:tc:entity:xmlns:xml:catalog}system" ->
-                    case (lookup "systemId" as, lookup "uri" as) of
+                    case (Map.lookup "systemId" as, Map.lookup "uri" as) of
                         (Just sid, Just ref) ->
                             case parseURIReference (withBase ref) >>= flip relativeTo uri of
                                 Just uri' -> return $ Map.insert (System sid) uri' c
                                 Nothing -> return c
                         _ -> return c
                 "{urn:oasis:names:tc:entity:xmlns:xml:catalog}nextCatalog" ->
-                    case lookup "catalog" as of
+                    case Map.lookup "catalog" as of
                         Just catalog ->
                             case parseURIReference (withBase catalog) >>= flip relativeTo uri of
                                 Just uri' -> do

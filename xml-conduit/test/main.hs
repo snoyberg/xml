@@ -23,6 +23,9 @@ import Control.Exception (toException)
 import Test.Hspec.HUnit ()
 
 import qualified Data.Conduit as C
+import qualified Data.Map as Map
+import Text.Blaze (toMarkup)
+import Text.Blaze.Renderer.String (renderMarkup)
 
 main :: IO ()
 main = hspecX $ do
@@ -73,6 +76,8 @@ main = hspecX $ do
         it "works" caseTopLevelNamespace
         it "works with prefix" caseTopLevelNamespacePrefix
         it "handles conflicts" caseTLNConflict
+    describe "blaze-html instances" $ do
+        it "works" caseBlazeHtml
 
 documentParseRender :: IO ()
 documentParseRender =
@@ -300,7 +305,7 @@ resolvedAllGood =
 
 resolvedMergeContent =
     Res.documentRoot (Res.parseLBS_ def xml) @=?
-    Res.Element "foo" [] [Res.NodeContent "bar&baz"]
+    Res.Element "foo" Map.empty [Res.NodeContent "bar&baz"]
   where
     xml = "<foo>bar&amp;baz</foo>"
 
@@ -328,9 +333,9 @@ testRenderComments =do
 resolvedInline :: Assertion
 resolvedInline = do
     Res.Document _ root _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"baz\">]><foo>&bar;</foo>"
-    root @?= Res.Element "foo" [] [Res.NodeContent "baz"]
+    root @?= Res.Element "foo" Map.empty [Res.NodeContent "baz"]
     Res.Document _ root2 _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"baz\">]><foo bar='&bar;'/>"
-    root2 @?= Res.Element "foo" [("bar", "baz")] []
+    root2 @?= Res.Element "foo" (Map.singleton "bar" "baz") []
 
 casePretty :: Assertion
 casePretty = do
@@ -354,15 +359,15 @@ casePretty = do
             ]
         doctype = Res.Doctype "foo" Nothing
         doc = Res.Document (Res.Prologue [] (Just doctype) []) root []
-        root = Res.Element "foo" [("bar", "bar"), ("baz", "baz")]
-                [ Res.NodeElement $ Res.Element "foo" [("bar", "bar"), ("baz", "baz"), ("bin", "bin")]
+        root = Res.Element "foo" (Map.fromList [("bar", "bar"), ("baz", "baz")])
+                [ Res.NodeElement $ Res.Element "foo" (Map.fromList [("bar", "bar"), ("baz", "baz"), ("bin", "bin")])
                     [ Res.NodeContent "  Hello World\n\n"
                     , Res.NodeContent "  "
                     ]
-                , Res.NodeElement $ Res.Element "foo" [] []
+                , Res.NodeElement $ Res.Element "foo" Map.empty []
                 , Res.NodeInstruction $ Res.Instruction "foo" "bar"
                 , Res.NodeComment "foo bar\n\r\nbaz    \tbin "
-                , Res.NodeElement $ Res.Element "bar" [] [Res.NodeContent "bar content"]
+                , Res.NodeElement $ Res.Element "bar" Map.empty [Res.NodeContent "bar content"]
                 ]
     pretty @=? S.concat (L.toChunks $ Res.renderLBS def { D.rsPretty = True } doc)
 
@@ -376,9 +381,9 @@ caseTopLevelNamespace = do
             ]
         rs = def { D.rsNamespaces = [("bar", "baz")] }
         doc = Res.Document (Res.Prologue [] Nothing [])
-                (Res.Element "foo" []
+                (Res.Element "foo" Map.empty
                     [ Res.NodeElement
-                        $ Res.Element "subfoo" [("{baz}bin", "")] []
+                        $ Res.Element "subfoo" (Map.singleton "{baz}bin" "") []
                     ])
                 []
     lbs @=? S.concat (L.toChunks $ Res.renderLBS rs doc)
@@ -393,9 +398,9 @@ caseTopLevelNamespacePrefix = do
             ]
         rs = def { D.rsNamespaces = [("bar", "baz")] }
         doc = Res.Document (Res.Prologue [] Nothing [])
-                (Res.Element "foo" []
+                (Res.Element "foo" Map.empty
                     [ Res.NodeElement
-                        $ Res.Element "subfoo" [(Name "bin" (Just "baz") (Just "bar"), "")] []
+                        $ Res.Element "subfoo" (Map.fromList [(Name "bin" (Just "baz") (Just "bar"), "")]) []
                     ])
                 []
     lbs @=? S.concat (L.toChunks $ Res.renderLBS rs doc)
@@ -410,9 +415,39 @@ caseTLNConflict = do
             ]
         rs = def { D.rsNamespaces = [("bar", "baz")] }
         doc = Res.Document (Res.Prologue [] Nothing [])
-                (Res.Element "foo" [(Name "x" (Just "something") (Just "bar"), "y")]
+                (Res.Element "foo" (Map.fromList [(Name "x" (Just "something") (Just "bar"), "y")])
                     [ Res.NodeElement
-                        $ Res.Element "subfoo" [(Name "bin" (Just "baz") (Just "bar"), "")] []
+                        $ Res.Element "subfoo" (Map.fromList [(Name "bin" (Just "baz") (Just "bar"), "")]) []
                     ])
                 []
     lbs @=? S.concat (L.toChunks $ Res.renderLBS rs doc)
+
+caseBlazeHtml :: Assertion
+caseBlazeHtml =
+    expected @=? str
+  where
+    str = renderMarkup $ toMarkup $ Res.Document (Res.Prologue [] Nothing []) root []
+    root :: Res.Element
+    root = Res.Element "html" Map.empty
+        [ Res.NodeElement $ Res.Element "head" Map.empty
+            [ Res.NodeElement $ Res.Element "title" Map.empty [Res.NodeContent "Test"]
+            , Res.NodeElement $ Res.Element "script" Map.empty
+                [Res.NodeContent "if (5 < 6 || 8 > 9) alert('Hello World!');"]
+            , Res.NodeElement $ Res.Element "{http://www.snoyman.com/xml2html}ie-cond" (Map.singleton "cond" "lt IE 7")
+                [Res.NodeElement $ Res.Element "link" (Map.singleton "href" "ie6.css") []]
+            , Res.NodeElement $ Res.Element "style" Map.empty
+                [Res.NodeContent "body > h1 { color: red }"]
+            ]
+        , Res.NodeElement $ Res.Element "body" Map.empty
+            [ Res.NodeElement $ Res.Element "h1" Map.empty [Res.NodeContent "Hello World!"]
+            ]
+        ]
+    expected :: String
+    expected = concat
+        [ "<!DOCTYPE HTML>\n"
+        , "<html><head><title>Test</title><script>if (5 < 6 || 8 > 9) alert('Hello World!');</script>"
+        , "<!--[if lt IE 7]><link href=\"ie6.css\" /><![endif]-->"
+        , "<style>body > h1 { color: red }</style>"
+        , "</head>"
+        , "<body><h1>Hello World!</h1></body></html>"
+        ]

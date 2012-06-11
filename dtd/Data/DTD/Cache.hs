@@ -166,7 +166,7 @@ applyDTD dc doc@(XU.Document pro@(X.Prologue _ mdoctype _) root epi) = do
     go (ents, attrs) (XU.Element name as ns) = do
         as' <- mapM (resolveAttr ents) as
         ns' <- mapM gon ns
-        Right $ X.Element name (as'' as') ns'
+        Right $ X.Element name (Map.fromList $ as'' as') ns'
       where
         as'' as' =
             case Map.lookup name attrs of

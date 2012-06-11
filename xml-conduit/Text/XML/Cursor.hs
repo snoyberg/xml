@@ -63,6 +63,7 @@ import           Data.Function                (on)
 import           Text.XML
 import qualified Control.Failure              as F
 import qualified Data.Text                    as T
+import qualified Data.Map                     as Map
 import qualified Text.XML.Cursor.Generic      as CG
 import           Text.XML.Cursor.Generic      (node, child, parent, descendant, orSelf)
 import           Data.Maybe                   (maybeToList)
@@ -181,7 +182,7 @@ content c = case node c of
 attribute :: Name -> Cursor -> [T.Text]
 attribute n c =
     case node c of
-        NodeElement e -> maybeToList $ lookup n $ elementAttributes e
+        NodeElement e -> maybeToList $ Map.lookup n $ elementAttributes e
         _ -> []
 
 -- | Select attributes on the current element (or nothing if it is not an element).  Namespace and case are ignored. XPath:
@@ -195,7 +196,7 @@ laxAttribute :: T.Text -> Cursor -> [T.Text]
 laxAttribute n c =
     case node c of
         NodeElement e -> do
-            (n', v) <- elementAttributes e
+            (n', v) <- Map.toList $ elementAttributes e
             guard $ (on (==) T.toCaseFold) n (nameLocalName n')
             return v
         _ -> []
@@ -204,14 +205,14 @@ laxAttribute n c =
 hasAttribute :: Name -> Axis
 hasAttribute n c =
     case node c of
-        NodeElement (Element _ as _) -> maybe [] (const [c]) $ lookup n as
+        NodeElement (Element _ as _) -> maybe [] (const [c]) $ Map.lookup n as
         _ -> []
 
 -- | Select only those element nodes containing the given attribute key/value pair.
 attributeIs :: Name -> T.Text -> Axis
 attributeIs n v c =
     case node c of
-        NodeElement (Element _ as _) -> if Just v == lookup n as then [c] else []
+        NodeElement (Element _ as _) -> if Just v == Map.lookup n as then [c] else []
         _ -> []
 
 force :: F.Failure e f => e -> [a] -> f a
