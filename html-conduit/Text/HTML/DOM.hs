@@ -109,7 +109,7 @@ eventConduit =
         ]
 
 sinkDoc :: MonadThrow m => Sink S.ByteString m X.Document
-sinkDoc = eventConduit =$ X.fromEvents
+sinkDoc = mapOutput ((,) Nothing) eventConduit =$ X.fromEvents
 
 readFile :: F.FilePath -> IO X.Document
 readFile fp = runResourceT $ sourceFile fp $$ sinkDoc

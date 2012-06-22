@@ -7,7 +7,7 @@ import qualified Text.HTML.DOM as H
 import qualified Text.XML as X
 
 main :: IO ()
-main = hspecX $ do
+main = hspec $ do
     describe "parses" $ do
         it "well-formed document" $
             X.parseLBS_ X.def "<foo><bar>baz</bar></foo>" @=?
