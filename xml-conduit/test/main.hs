@@ -28,7 +28,7 @@ import Text.Blaze (toMarkup)
 import Text.Blaze.Renderer.String (renderMarkup)
 
 main :: IO ()
-main = hspecX $ do
+main = hspec $ do
     describe "XML parsing and rendering" $ do
         it "is idempotent to parse and render a document" documentParseRender
         it "has valid parser combinators" combinators
