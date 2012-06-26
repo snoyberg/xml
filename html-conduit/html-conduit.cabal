@@ -37,6 +37,7 @@ test-suite test
                           , xml-conduit
                           , html-conduit
                           , bytestring
+                          , containers
 
 source-repository head
   type: git
