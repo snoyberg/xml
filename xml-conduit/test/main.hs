@@ -78,6 +78,8 @@ main = hspec $ do
         it "handles conflicts" caseTLNConflict
     describe "blaze-html instances" $ do
         it "works" caseBlazeHtml
+    describe "attribute reordering" $ do
+        it "works" caseAttrReorder
 
 documentParseRender :: IO ()
 documentParseRender =
@@ -451,3 +453,25 @@ caseBlazeHtml =
         , "</head>"
         , "<body><h1>Hello World!</h1></body></html>"
         ]
+
+caseAttrReorder :: Assertion
+caseAttrReorder = do
+    let lbs = S.concat
+            [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            , "<foo c=\"c\" b=\"b\" a=\"a\">"
+            , "<bar a=\"a\" b=\"b\" c=\"c\"/>"
+            , "</foo>"
+            ]
+        rs = def { Res.rsAttrOrder = \name m ->
+                        case name of
+                            "foo" -> reverse $ Map.toList m
+                            _ -> Map.toList m
+                 }
+        attrs = Map.fromList [("a", "a"), ("b", "b"), ("c", "c")]
+        doc = Res.Document (Res.Prologue [] Nothing [])
+                (Res.Element "foo" attrs
+                    [ Res.NodeElement
+                        $ Res.Element "bar" attrs []
+                    ])
+                []
+    lbs @=? S.concat (L.toChunks $ Res.renderLBS rs doc)

@@ -11,6 +11,7 @@ module Text.XML.Stream.Render
     , def
     , rsPretty
     , rsNamespaces
+    , rsAttrOrder
     , prettify
     ) where
 
@@ -54,12 +55,16 @@ data RenderSettings = RenderSettings
       -- of (prefix, namespace). This has absolutely no impact on the meaning
       -- of your documents, but can increase readability by moving commonly
       -- used namespace declarations to the top level.
+    , rsAttrOrder :: Name -> Map.Map Name Text -> [(Name, Text)]
+      -- ^ Specify how to turn the unordered attributes used by the "Text.XML"
+      -- module into an ordered list.
     }
 
 instance Default RenderSettings where
     def = RenderSettings
         { rsPretty = False
         , rsNamespaces = []
+        , rsAttrOrder = const Map.toList
         }
 
 -- | Render a stream of 'Event's into a stream of 'Builder's. Builders are from

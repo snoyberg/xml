@@ -58,6 +58,7 @@ module Text.XML
     , R.RenderSettings
     , R.rsPretty
     , R.rsNamespaces
+    , R.rsAttrOrder
       -- * Conversion
     , toXMLDocument
     , fromXMLDocument
@@ -141,20 +142,29 @@ readFile_ :: FIlePath -> ParseSettings -> IO Document
 -}
 
 toXMLDocument :: Document -> X.Document
-toXMLDocument (Document a b c) = X.Document a (toXMLElement b) c
+toXMLDocument = toXMLDocument' def
+
+toXMLDocument' :: R.RenderSettings -> Document -> X.Document
+toXMLDocument' rs (Document a b c) = X.Document a (toXMLElement' rs b) c
 
 toXMLElement :: Element -> X.Element
-toXMLElement (Element name as nodes) =
+toXMLElement = toXMLElement' def
+
+toXMLElement' :: R.RenderSettings -> Element -> X.Element
+toXMLElement' rs (Element name as nodes) =
     X.Element name as' nodes'
   where
-    as' = map (\(x, y) -> (x, [X.ContentText y])) $ Map.toList as
-    nodes' = map toXMLNode nodes
+    as' = map (\(x, y) -> (x, [X.ContentText y])) $ R.rsAttrOrder rs name as
+    nodes' = map (toXMLNode' rs) nodes
 
 toXMLNode :: Node -> X.Node
-toXMLNode (NodeElement e) = X.NodeElement $ toXMLElement e
-toXMLNode (NodeContent t) = X.NodeContent $ X.ContentText t
-toXMLNode (NodeComment c) = X.NodeComment c
-toXMLNode (NodeInstruction i) = X.NodeInstruction i
+toXMLNode = toXMLNode' def
+
+toXMLNode' :: R.RenderSettings -> Node -> X.Node
+toXMLNode' rs (NodeElement e) = X.NodeElement $ toXMLElement' rs e
+toXMLNode' _ (NodeContent t) = X.NodeContent $ X.ContentText t
+toXMLNode' _ (NodeComment c) = X.NodeComment c
+toXMLNode' _ (NodeInstruction i) = X.NodeInstruction i
 
 fromXMLDocument :: X.Document -> Either (Set Text) Document
 fromXMLDocument (X.Document a b c) =
@@ -247,7 +257,7 @@ data UnresolvedEntityException = UnresolvedEntityException (Set Text)
 instance Exception UnresolvedEntityException
 
 renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> Pipe l i ByteString u m ()
-renderBytes rs doc = D.renderBytes rs $ toXMLDocument doc
+renderBytes rs doc = D.renderBytes rs $ toXMLDocument' rs doc
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
 writeFile rs fp doc =

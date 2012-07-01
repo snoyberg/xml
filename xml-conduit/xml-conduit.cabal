@@ -1,5 +1,5 @@
 name:            xml-conduit
-version:         1.0.0
+version:         1.0.1
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michaels@suite-sol.com>, Aristid Breitkreuz <aristidb@googlemail.com>
