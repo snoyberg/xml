@@ -16,7 +16,7 @@ Library
   Build-depends:       base                     >= 4          && < 5
                      , text                     >= 0.11       && < 1.0
                      , containers               >= 0.2
-                     , xml-conduit              >= 0.8        && < 0.9
+                     , xml-conduit              >= 1.0        && < 1.1
                      , uri-conduit              >= 0.5        && < 0.6
                      , conduit                  >= 0.5        && < 0.6
                      , transformers             >= 0.2        && < 0.4

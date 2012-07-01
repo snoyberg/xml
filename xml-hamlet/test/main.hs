@@ -3,7 +3,7 @@
 import Text.Hamlet.XML
 import qualified Text.XML as X
 import Test.HUnit
-import Test.Hspec
+import Test.Hspec.Core
 import Test.Hspec.HUnit ()
 import qualified Data.Map as Map
 

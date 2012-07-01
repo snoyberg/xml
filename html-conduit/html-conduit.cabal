@@ -23,7 +23,7 @@ Library
                      , conduit                          >= 0.5            && < 0.6
                      , filesystem-conduit               >= 0.5            && < 0.6
                      , system-filepath                  >= 0.4            && < 0.5
-                     , xml-conduit                      >= 0.8            && < 0.9
+                     , xml-conduit                      >= 1.0            && < 1.1
                      , tagstream-conduit                >= 0.4            && < 0.5
                      , xml-types                        >= 0.3            && < 0.4
 

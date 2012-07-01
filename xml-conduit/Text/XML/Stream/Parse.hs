@@ -91,7 +91,7 @@ import Data.Attoparsec.Text
     , manyTill, takeWhile, try, anyChar
     )
 import qualified Control.Applicative as A
-import Data.Conduit.Attoparsec (conduitParserPos, PositionRange)
+import Data.Conduit.Attoparsec (conduitParser, PositionRange)
 import Data.XML.Types
     ( Name (..), Event (..), Content (..)
     , Instruction (..), ExternalID (..)
@@ -291,7 +291,7 @@ instance Default ParseSettings where
         }
 
 conduitToken :: MonadThrow m => ParseSettings -> Pipe TS.Text TS.Text (PositionRange, Token) r m r
-conduitToken = conduitParserPos . parseToken . psDecodeEntities
+conduitToken = conduitParser . parseToken . psDecodeEntities
 
 parseToken :: DecodeEntities -> Parser Token
 parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False False
