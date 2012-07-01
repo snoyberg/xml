@@ -464,8 +464,8 @@ caseAttrReorder = do
             ]
         rs = def { Res.rsAttrOrder = \name m ->
                         case name of
-                            "foo" -> reverse $ Map.toList m
-                            _ -> Map.toList m
+                            "foo" -> reverse $ Map.toAscList m
+                            _ -> Map.toAscList m
                  }
         attrs = Map.fromList [("a", "a"), ("b", "b"), ("c", "c")]
         doc = Res.Document (Res.Prologue [] Nothing [])
