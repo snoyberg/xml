@@ -96,6 +96,7 @@ parseLBS_ :: P.ParseSettings -> L.ByteString -> Document
 parseLBS_ ps lbs = either throw id $ parseLBS ps lbs
 
 data InvalidEventStream = ContentAfterRoot P.EventPos
+                        | MissingRootElement
                         | InvalidInlineDoctype P.EventPos
                         | MissingEndElement Name (Maybe P.EventPos)
                         | UnterminatedInlineDoctype
@@ -103,6 +104,7 @@ data InvalidEventStream = ContentAfterRoot P.EventPos
 instance Exception InvalidEventStream
 instance Show InvalidEventStream where
     show (ContentAfterRoot (pos, e)) = mShowPos pos ++ "Found content after root element: " ++ prettyShowE e
+    show MissingRootElement = "Missing root element"
     show (InvalidInlineDoctype (pos, e)) = mShowPos pos ++ "Invalid content inside doctype: " ++ prettyShowE e
     show (MissingEndElement name Nothing) = "Documented ended while expected end element for: " ++ prettyShowName name
     show (MissingEndElement name (Just (pos, e))) = mShowPos pos ++ "Expected end element for: " ++ prettyShowName name ++ ", but received: " ++ prettyShowE e
@@ -135,6 +137,7 @@ fromEvents = injectLeftovers $ do
     y <- CL.head
     case y of
         Nothing -> return d
+        Just (_, EventEndDocument) -> lift $ monadThrow MissingRootElement
         Just z ->
             lift $ monadThrow $ ContentAfterRoot z
   where
@@ -158,6 +161,7 @@ fromEvents = injectLeftovers $ do
                 my <- CL.head
                 case my of
                     Nothing -> error "Text.XML.Unresolved:impossible"
+                    Just (_, EventEndDocument) -> lift $ monadThrow MissingRootElement
                     Just y -> lift $ monadThrow $ ContentAfterRoot y
     goP = Prologue <$> goM <*> goD <*> goM
     goM = many goM'
