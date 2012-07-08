@@ -12,6 +12,7 @@ module Text.XML.Stream.Render
     , rsPretty
     , rsNamespaces
     , rsAttrOrder
+    , orderAttrs
     , prettify
     ) where
 
@@ -66,6 +67,27 @@ instance Default RenderSettings where
         , rsNamespaces = []
         , rsAttrOrder = const Map.toList
         }
+
+-- | Convenience function to create an ordering function suitable for
+-- use as the value of 'rsAttrOrder'. The ordering function is created
+-- from an explicit ordering of the attributes, specified as a list of
+-- tuples, as follows: In each tuple, the first component is the
+-- 'Name' of an element, and the second component is a list of
+-- attributes names. When the given element is rendered, the
+-- attributes listed, when present, appear first in the given order,
+-- followed by any other attributes in arbitrary order. If an element
+-- does not appear, all of its attributes are rendered in arbitrary
+-- order.
+orderAttrs :: [(Name, [Name])] ->
+              Name -> Map Name Text -> [(Name, Text)]
+orderAttrs orderSpec = order
+  where
+    order elt attrMap =
+      let initialAttrs = fromMaybe [] $ lookup elt orderSpec
+          mkPair attr = fmap ((,) attr) $ Map.lookup attr attrMap
+          otherAttrMap =
+            Map.filterWithKey (const . not . (`elem` initialAttrs)) attrMap
+      in mapMaybe mkPair initialAttrs ++ Map.toAscList otherAttrMap
 
 -- | Render a stream of 'Event's into a stream of 'Builder's. Builders are from
 -- the blaze-builder package, and allow the create of optimally sized

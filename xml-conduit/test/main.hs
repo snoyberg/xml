@@ -80,6 +80,8 @@ main = hspec $ do
         it "works" caseBlazeHtml
     describe "attribute reordering" $ do
         it "works" caseAttrReorder
+    describe "ordering attributes explicitly" $ do
+        it "works" caseOrderAttrs
 
 documentParseRender :: IO ()
 documentParseRender =
@@ -466,6 +468,26 @@ caseAttrReorder = do
                         case name of
                             "foo" -> reverse $ Map.toAscList m
                             _ -> Map.toAscList m
+                 }
+        attrs = Map.fromList [("a", "a"), ("b", "b"), ("c", "c")]
+        doc = Res.Document (Res.Prologue [] Nothing [])
+                (Res.Element "foo" attrs
+                    [ Res.NodeElement
+                        $ Res.Element "bar" attrs []
+                    ])
+                []
+    lbs @=? S.concat (L.toChunks $ Res.renderLBS rs doc)
+
+caseOrderAttrs :: Assertion
+caseOrderAttrs = do
+    let lbs = S.concat
+            [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            , "<foo c=\"c\" b=\"b\" a=\"a\">"
+            , "<bar a=\"a\" b=\"b\" c=\"c\"/>"
+            , "</foo>"
+            ]
+        rs = def { Res.rsAttrOrder = Res.orderAttrs
+                     [("foo", ["c", "b"])]
                  }
         attrs = Map.fromList [("a", "a"), ("b", "b"), ("c", "c")]
         doc = Res.Document (Res.Prologue [] Nothing [])
