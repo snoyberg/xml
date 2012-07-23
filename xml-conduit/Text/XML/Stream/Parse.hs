@@ -327,7 +327,11 @@ parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False
     parseDoctype = do
         _ <- string "DOCTYPE"
         skipSpace
-        i <- parseIdent
+        name <- parseName
+        let i =
+                case name of
+                    TName Nothing x -> x
+                    TName (Just x) y -> T.concat [x, ":", y]
         skipSpace
         eid <- fmap Just parsePublicID <|>
                fmap Just parseSystemID <|>
