@@ -79,6 +79,7 @@ import Data.XML.Types
     , ExternalID (..)
     )
 import Data.Typeable (Typeable)
+import Data.Data (Data)
 import Data.Text (Text)
 import qualified Text.XML.Stream.Parse as P
 import qualified Text.XML.Unresolved as D
@@ -121,21 +122,21 @@ data Document = Document
     , documentRoot :: Element
     , documentEpilogue :: [Miscellaneous]
     }
-  deriving (Show, Eq, Typeable)
+  deriving (Show, Eq, Typeable, Data)
 
 data Node
     = NodeElement Element
     | NodeInstruction Instruction
     | NodeContent Text
     | NodeComment Text
-  deriving (Show, Eq, Ord, Typeable)
+  deriving (Show, Eq, Ord, Typeable, Data)
 
 data Element = Element
     { elementName :: Name
     , elementAttributes :: Map.Map Name Text
     , elementNodes :: [Node]
     }
-  deriving (Show, Eq, Ord, Typeable)
+  deriving (Show, Eq, Ord, Typeable, Data)
 
 {-
 readFile :: FilePath -> ParseSettings -> IO (Either SomeException Document)
