@@ -100,6 +100,8 @@ data DTDComponent =
                                 -- the top-level flow of the DTD
    | DTDInstruction Instruction -- ^ A processing instruction
    | DTDComment Text            -- ^ A comment
+   | DTDCondSecBegin PERef
+   | DTDCondSecEnd
   deriving (Show, Eq, Typeable)
 
 -- | A declaration of an entity. An entity is a textual substitution

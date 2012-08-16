@@ -135,9 +135,17 @@ dtdComponent = choice $ map try
   , DTDAttList     <$> attList
   , DTDNotation    <$> notation
   , DTDInstruction <$> instruction
+  , DTDCondSecBegin <$> condSecBegin
+  , condSecEnd
   ] ++ -- no try needed for last choice
   [ DTDComment     <$> comment
   ]
+
+condSecBegin :: Parser PERef
+condSecBegin = "<![" .*> pERef <*. "["
+
+condSecEnd :: Parser DTDComponent
+condSecEnd = "]]>" .*> return DTDCondSecEnd
 
 -- | Parse a processing instruction.
 instruction :: Parser Instruction

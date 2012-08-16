@@ -3,7 +3,6 @@ import System.Environment (getArgs)
 import Data.DTD.Cache
 import qualified Text.XML as X
 import qualified Text.XML.Unresolved as XU
-import qualified Data.ByteString.Lazy as L
 import Control.Monad
 import Filesystem.Path.CurrentOS (decodeString)
 

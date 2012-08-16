@@ -33,7 +33,7 @@ import Control.Applicative ((*>), (<*), (<|>), many)
 import qualified Data.IORef as I
 import Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Data.Attoparsec.Text as A
-import Control.Monad (liftM)
+import Control.Monad (liftM, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 
 type ResolveMonad m = ReaderT ResolveReader m
@@ -104,9 +104,7 @@ streamUnresolved =
 resolveEnum :: (MonadBaseControl IO m, MonadThrow m, MonadIO m, MonadUnsafeIO m)
             => ResolveReader
             -> Pipe l U.DTDComponent DTDComponent r m r
-resolveEnum rr =
-      transPipe (evalStateT' rr)
-    $ CL.concatMapM resolvef
+resolveEnum rr = transPipe (evalStateT' rr) $ awaitForever resolvef
 
 evalStateT' :: Monad m
             => ResolveReader
@@ -147,51 +145,50 @@ initState = ResolveState Map.empty Map.empty
 
 resolvef :: (MonadBaseControl IO m, MonadThrow m, MonadIO m, MonadUnsafeIO m)
          => U.DTDComponent
-         -> ResolveMonad m [DTDComponent]
+         -> Pipe l U.DTDComponent DTDComponent u (ResolveMonad m) ()
 
 -- passthrough, no modification needed
-resolvef (U.DTDNotation x) = return [DTDNotation x]
-resolvef (U.DTDInstruction x) = return [DTDInstruction x]
-resolvef (U.DTDComment x) = return [DTDComment x]
+resolvef (U.DTDNotation x) = yield $ DTDNotation x
+resolvef (U.DTDInstruction x) = yield $ DTDInstruction x
+resolvef (U.DTDComment x) = yield $ DTDComment x
 resolvef (U.DTDEntityDecl (U.ExternalGeneralEntityDecl a b c)) =
-    return [DTDEntityDecl $ ExternalGeneralEntityDecl a b c]
+    yield $ DTDEntityDecl $ ExternalGeneralEntityDecl a b c
 
 -- look up the EntityValues
 resolvef (U.DTDEntityDecl (U.InternalGeneralEntityDecl a b)) = do
-    rs <- get
+    rs <- lift get
     case resolveEntityValue rs b of
-        Left e -> throwError' e
-        Right t -> return [DTDEntityDecl $ InternalGeneralEntityDecl a t]
+        Left e -> lift $ throwError' e
+        Right t -> yield $ DTDEntityDecl $ InternalGeneralEntityDecl a t
 
 -- store external entities
-resolvef (U.DTDEntityDecl (U.ExternalParameterEntityDecl name eid)) = do
-    modify $ \rs -> rs { rsRefEid = insertNoReplace name eid $ rsRefEid rs }
-    return []
+resolvef (U.DTDEntityDecl (U.ExternalParameterEntityDecl name eid)) =
+    lift $ modify $ \rs -> rs { rsRefEid = insertNoReplace name eid $ rsRefEid rs }
 
 -- store internal entities
 resolvef (U.DTDEntityDecl (U.InternalParameterEntityDecl name vals)) = do
-    rs <- get
-    t <- either throwError' return $ resolveEntityValue rs vals
-    put $ rs { rsRefText = insertNoReplace name t $ rsRefText rs }
-    return []
+    rs <- lift get
+    t <- either (lift . throwError') return $ resolveEntityValue rs vals
+    lift $ put $ rs { rsRefText = insertNoReplace name t $ rsRefText rs }
 
 -- pull in perefs
 resolvef (U.DTDPERef p) = do
-    rs <- get
+    rs <- lift get
     case Map.lookup p $ rsRefEid rs of
-        Nothing -> throwError' $ UnknownPERef p
+        Nothing -> lift $ throwError' $ UnknownPERef p
         Just eid -> do
-            rr <- ask
+            rr <- lift ask
             case resolveURI (rrCatalog rr) (Just $ rrBase rr) eid of
-                Nothing -> throwError' $ CannotResolveExternalID eid
+                Nothing -> lift $ throwError' $ CannotResolveExternalID eid
                 Just uri -> do
                     let rr' = rr { rrBase = uri }
-                    runResourceT $ readerToEnum rr' $$ CL.consume
+                    x <- lift $ runResourceT $ readerToEnum rr' $$ CL.consume -- FIXME could be more efficient
+                    mapM_ yield x
 
 -- element declarations
 resolvef (U.DTDElementDecl (U.ElementDecl name' c)) = do
-    name <- either resolvePERefText return name'
-    c' <-
+    name <- lift $ either resolvePERefText return name'
+    c' <- lift $
         case c of
             U.ContentEmpty -> return ContentEmpty
             U.ContentAny -> return ContentAny
@@ -208,13 +205,32 @@ resolvef (U.DTDElementDecl (U.ElementDecl name' c)) = do
                             U.ContentElement cm -> resolveContentModel cm
                             U.ContentMixed cm -> return $ ContentMixed cm
                     x -> throwError' $ InvalidContentDecl p t x
-    return [DTDElementDecl $ ElementDecl name c']
+    yield $ DTDElementDecl $ ElementDecl name c'
 
 -- attribute list
 resolvef (U.DTDAttList (U.AttList name' xs)) = do
-    name <- either resolvePERefText return name'
-    ys <- mapM resolveAttDeclPERef xs
-    return [DTDAttList $ AttList name $ concat ys]
+    name <- lift $ either resolvePERefText return name'
+    ys <- lift $ mapM resolveAttDeclPERef xs
+    yield $ DTDAttList $ AttList name $ concat ys
+
+-- conditional sections
+resolvef (U.DTDCondSecBegin peref) = do
+    value <- lift $ resolvePERefText peref
+    toInclude <-
+        case value of
+            "INCLUDE" -> return True
+            "IGNORE" -> return False
+            _ -> lift $ throwError' $ InvalidConditionalSectionValue value
+    let loop = await >>= maybe
+            (lift $ throwError' MissingConditionalSectionEnd)
+            go
+        go U.DTDCondSecEnd = return ()
+        go e = do
+            when toInclude $ resolvef e
+            loop
+    loop
+
+resolvef U.DTDCondSecEnd = lift $ throwError' UnexpectedConditionalSectionEnd
 
 resolveAttDeclPERef :: (MonadIO m, MonadThrow m) => U.AttDeclPERef -> ResolveMonad m [AttDecl]
 resolveAttDeclPERef (U.ADPDecl (U.AttDecl name typ def)) = do
@@ -280,6 +296,9 @@ data ResolveException'
     | InvalidAttType U.PERef T.Text (A.Result U.AttType)
     | RecursiveContentDeclPERef U.PERef
     | ResolveOther SomeException
+    | UnexpectedConditionalSectionEnd
+    | InvalidConditionalSectionValue T.Text
+    | MissingConditionalSectionEnd
   deriving (Show, Typeable)
 instance Exception ResolveException'
 
