@@ -28,7 +28,7 @@ import Network.URI.Conduit.File (decodeString, fileScheme)
 import Data.Conduit hiding (Source, Sink, Conduit)
 import qualified Data.Conduit.Internal as CI
 import Text.XML.Stream.Parse (detectUtf)
-import Data.Conduit.Attoparsec (sinkParser)
+import Data.Conduit.Attoparsec (conduitParser)
 import Control.Applicative ((*>), (<*), (<|>), many)
 import qualified Data.IORef as I
 import Control.Monad.Trans.Control (MonadBaseControl)
@@ -94,7 +94,7 @@ uriToEID = SystemID . T.pack . show . toNetworkURI
 
 streamUnresolved :: MonadThrow m => Pipe l T.Text [U.DTDComponent] r m r
 streamUnresolved =
-    injectLeftovers $ CL.sequence $ sinkParser p
+    mapOutput snd $ injectLeftovers $ conduitParser p
   where
     p = (UP.ws >> UP.skipWS >> return []) <|>
         (UP.textDecl >> return []) <|>
