@@ -1,6 +1,6 @@
-Name:                uri-enumerator-http
-Version:             0.2.0
-Synopsis:            uri-enumerator backend for the http/https schemes
+Name:                uri-conduit-http
+Version:             0.5.0
+Synopsis:            uri-conduit backend for the http/https schemes
 Homepage:            http://github.com/snoyberg/xml
 License:             BSD3
 License-file:        LICENSE
@@ -9,19 +9,19 @@ Maintainer:          michaels@suite-sol.com
 Category:            Text
 Build-type:          Simple
 Cabal-version:       >=1.6
-Description:         uri-enumerator backend for the http/https schemes
+Description:         uri-conduit backend for the http/https schemes
 
 Library
-  Exposed-modules:     Network.URI.Enumerator.HTTP
+  Exposed-modules:     Network.URI.Conduit.HTTP
   Build-depends:       base                     >= 4          && < 5
-                     , enumerator               >= 0.4.14     && < 0.5
+                     , conduit                  >= 0.5        && < 0.6
+                     , resourcet                >= 0.3        && < 0.4
                      , text                     >= 0.5        && < 1.0
-                     , transformers             >= 0.2        && < 0.3
+                     , transformers
                      , bytestring               >= 0.9        && < 0.10
                      , network                  >= 2.2        && < 2.4
                      , containers               >= 0.2        && < 0.5
                      , monad-control            >= 0.3        && < 0.4
-                     , uri-enumerator           >= 0.2        && < 0.3
-                     , failure                  >= 0.1.0.1    && < 0.2
-                     , http-types               >= 0.6.5.1    && < 0.7
-                     , http-enumerator          >= 0.7.2      && < 0.8
+                     , uri-conduit              >= 0.5.1      && < 0.6
+                     , http-types               >= 0.6.5.1    && < 0.8
+                     , http-conduit             >= 1.5        && < 1.6
