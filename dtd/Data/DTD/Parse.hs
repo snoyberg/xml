@@ -214,13 +214,16 @@ resolvef (U.DTDAttList (U.AttList name' xs)) = do
     yield $ DTDAttList $ AttList name $ concat ys
 
 -- conditional sections
-resolvef (U.DTDCondSecBegin peref) = do
-    value <- lift $ resolvePERefText peref
+resolvef (U.DTDCondSecBegin x) = do
     toInclude <-
-        case value of
-            "INCLUDE" -> return True
-            "IGNORE" -> return False
-            _ -> lift $ throwError' $ InvalidConditionalSectionValue value
+        case x of
+            Left peref -> do
+                value <- lift $ resolvePERefText peref
+                case value of
+                    "INCLUDE" -> return True
+                    "IGNORE" -> return False
+                    _ -> lift $ throwError' $ InvalidConditionalSectionValue value
+            Right y -> return y
     let loop = await >>= maybe
             (lift $ throwError' MissingConditionalSectionEnd)
             go

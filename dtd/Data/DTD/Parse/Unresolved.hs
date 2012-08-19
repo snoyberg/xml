@@ -141,8 +141,10 @@ dtdComponent = choice $ map try
   [ DTDComment     <$> comment
   ]
 
-condSecBegin :: Parser PERef
-condSecBegin = "<![" .*> pERef <*. "["
+condSecBegin :: Parser (Either PERef Bool)
+condSecBegin = "INCLUDE" .*> pure (Right True)
+           <|> "IGNORE"  .*> pure (Right False)
+           <|> "<![" .*> (Left <$> pERef) <*. "["
 
 condSecEnd :: Parser DTDComponent
 condSecEnd = "]]>" .*> return DTDCondSecEnd

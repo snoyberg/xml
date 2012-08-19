@@ -100,7 +100,7 @@ data DTDComponent =
                                 -- the top-level flow of the DTD
    | DTDInstruction Instruction -- ^ A processing instruction
    | DTDComment Text            -- ^ A comment
-   | DTDCondSecBegin PERef
+   | DTDCondSecBegin (Either PERef Bool)
    | DTDCondSecEnd
   deriving (Show, Eq, Typeable)
 
