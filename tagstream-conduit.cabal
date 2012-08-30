@@ -24,7 +24,7 @@ source-repository head
   location: git://github.com/yihuang/tagstream-conduit
 
 Library
-  GHC-Options:       -Wall
+  GHC-Options:       -Wall -O2
   Exposed-modules:     Text.HTML.TagStream
                      , Text.HTML.TagStream.ByteString
                      , Text.HTML.TagStream.Text
