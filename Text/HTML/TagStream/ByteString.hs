@@ -1,18 +1,27 @@
-{-# LANGUAGE OverloadedStrings, TupleSections #-}
-module Text.HTML.TagStream.Parser where
+{-# LANGUAGE OverloadedStrings, TupleSections, ViewPatterns #-}
+module Text.HTML.TagStream.ByteString where
 
 import Control.Applicative
+import Control.Monad (unless)
+
+import Data.Monoid (mconcat)
 import Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as S
 import Data.Attoparsec.Char8
-import Blaze.ByteString.Builder (toByteString)
+import Data.Conduit (GInfConduit, awaitE, yield)
+
+import qualified Blaze.ByteString.Builder as B
 import Text.HTML.TagStream.Types
-import Text.HTML.TagStream.Utils (cons, append)
+import Text.HTML.TagStream.Utils (splitAccum)
+
+type Token = Token' ByteString
+type Attr = Attr' ByteString
 
 {--
  - match quoted string, can fail.
  -}
 quoted :: Char -> Parser ByteString
-quoted q = append <$> takeTill (in2 ('\\',q))
+quoted q = S.append <$> takeTill (in2 ('\\',q))
                   <*> ( char q *> pure ""
                         <|> char '\\' *> atLeast 1 (quoted q) )
 
@@ -32,8 +41,8 @@ attrValue = quotedOr $ takeTill ((=='>') ||. isSpace)
  -}
 attrName :: Parser ByteString
 attrName = quotedOr $
-             cons <$> satisfy (/='>')
-                  <*> takeTill (in3 ('/','>','=') ||. isSpace)
+             S.cons <$> satisfy (/='>')
+                    <*> takeTill (in3 ('/','>','=') ||. isSpace)
 
 {--
  - tag end, return self-close or not, can fail.
@@ -68,7 +77,7 @@ attrs = loop []
  -}
 comment :: Parser Token
 comment = Comment <$> comment'
-  where comment' = append <$> takeTill (=='-')
+  where comment' = S.append <$> takeTill (=='-')
                           <*> ( string "-->" *> return ""
                                 <|> atLeast 1 comment' )
 
@@ -77,7 +86,7 @@ comment = Comment <$> comment'
  -}
 special :: Parser Token
 special = Special
-          <$> ( cons <$> satisfy (not . ((=='-') ||. isSpace))
+          <$> ( S.cons <$> satisfy (not . ((=='-') ||. isSpace))
                      <*> takeTill ((=='>') ||. isSpace)
                      <* skipSpace )
           <*> takeTill (=='>') <* char '>'
@@ -106,7 +115,7 @@ tag = do
  - record incomplete tag for streamline processing.
  -}
 incomplete :: Parser Token
-incomplete = Incomplete . cons '<' <$> takeByteString
+incomplete = Incomplete . S.cons '<' <$> takeByteString
 
 {--
  - parse text node. consume at least one char, to make sure progress.
@@ -123,9 +132,9 @@ token = char '<' *> (tag <|> incomplete)
  -}
 tillScriptEnd :: Token -> Parser [Token]
 tillScriptEnd t = reverse <$> loop [t]
-              <|> (:[]) . Incomplete . append script <$> takeByteString
+              <|> (:[]) . Incomplete . S.append script <$> takeByteString
   where
-    script = toByteString $ showToken id t
+    script = B.toByteString $ showToken id t
     loop acc = (:acc) <$> scriptEnd
            <|> (text >>= loop . (:acc))
     scriptEnd = string "</script>" *> return (TagClose "script")
@@ -151,7 +160,7 @@ decode = parseOnly html
 
 atLeast :: Int -> Parser ByteString -> Parser ByteString
 atLeast 0 p = p
-atLeast n p = cons <$> anyChar <*> atLeast (n-1) p
+atLeast n p = S.cons <$> anyChar <*> atLeast (n-1) p
 
 cond :: a -> a -> Bool -> a
 cond a1 a2 b = if b then a1 else a2
@@ -170,4 +179,44 @@ boolP p = p *> pure True <|> pure False
 
 maybeP :: Parser a -> Parser (Maybe a)
 maybeP p = Just <$> p <|> return Nothing
+-- }}}
+
+-- {{{ encode tokens
+cc :: [ByteString] -> B.Builder
+cc = mconcat . map B.fromByteString
+
+showToken :: (ByteString -> ByteString) -> Token -> B.Builder
+showToken hl (TagOpen name as close) =
+    cc $ [hl "<", name]
+      ++ map showAttr as
+      ++ [hl (if close then "/>" else ">")]
+  where
+    showAttr :: Attr -> ByteString
+    showAttr (key, value) = S.concat $ [" ", key, hl "=\""] ++ map escape (S.unpack value) ++ [hl "\""]
+    escape '"' = "\\\""
+    escape '\\' = "\\\\"
+    escape c = S.singleton c
+showToken hl (TagClose name) = cc [hl "</", name, hl ">"]
+showToken _ (Text s) = B.fromByteString s
+showToken hl (Comment s) = cc [hl "<!--", s, hl "-->"]
+showToken hl (Special name s) = cc [hl "<!", name, " ", s, hl ">"]
+showToken _ (Incomplete s) = B.fromByteString s
+-- }}}
+
+-- {{{ Stream
+tokenStream :: Monad m => GInfConduit ByteString m Token
+tokenStream =
+    loop S.empty
+  where
+    loop accum = awaitE >>= either (close accum) (push accum)
+
+    push accum input =
+        case parseOnly html (accum `S.append` input) of
+            Right (splitAccum -> (accum', tokens)) -> mapM_ yield tokens >> loop accum'
+            Left err -> fail err
+
+    close s r = do
+        unless (S.null s) $ yield $ Text s
+        return r
+
 -- }}}

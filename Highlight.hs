@@ -11,6 +11,12 @@ import qualified Data.Conduit.List as CL
 import Blaze.ByteString.Builder (Builder)
 import Data.Conduit.Blaze (builderToByteString)
 
+encodeHL :: (ByteString -> ByteString) -> [Token] -> ByteString
+encodeHL hl = B.toByteString . mconcat . map (showToken hl)
+
+encode :: [Token] -> ByteString
+encode = encodeHL id
+
 color :: Color -> ByteString -> ByteString
 color c s = S.concat [ S.pack $ setSGRCode [SetColor Foreground Dull c]
                      , s

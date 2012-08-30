@@ -1,15 +1,5 @@
 module Text.HTML.TagStream
-  ( tokenStream
-  , Token
-  , Token'(..)
-  , Attr
-  , Attr'
-  , showToken
-  , encode
-  , encodeHL
-  , decode
+  ( module Text.HTML.TagStream.Types
   ) where
 
 import Text.HTML.TagStream.Types
-import Text.HTML.TagStream.Stream
-import Text.HTML.TagStream.Parser

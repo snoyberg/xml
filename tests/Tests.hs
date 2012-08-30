@@ -3,44 +3,76 @@
 module Main where
 
 import Control.Applicative
+
+import Data.String (IsString)
+import Data.Monoid (Monoid(..))
+import Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as S
+import Data.Text (Text)
+import qualified Data.Text as T
+import qualified Data.Conduit as C
+import qualified Data.Conduit.List as CL
+
 import Test.Hspec.Monadic
 import Test.Hspec.HUnit ()
 import Test.Hspec.QuickCheck (prop)
 import Test.HUnit hiding (Test)
 import Test.QuickCheck
-import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as S
-import qualified Data.Conduit as C
-import qualified Data.Conduit.List as CL
+
 import Text.HTML.TagStream
+import qualified Text.HTML.TagStream.ByteString as S
+import qualified Text.HTML.TagStream.Text as T
 
 main :: IO ()
-main = hspecX $ do
-    describe "Property" $ do
+main = hspec $ do
+    describe "[ByteString] Property" $ do
          prop "Text nodes can't be empty" propTextNotEmpty
          prop "Parse results can't empty" propResultNotEmpty
-    describe "One pass parse" onePassTests
-    describe "Streamline parse" streamlineTests
+    describe "[Text] Property" $ do
+         prop "Text nodes can't be empty" propTextNotEmptyText
+         prop "Parse results can't empty" propResultNotEmptyText
+    describe "[ByteString]One pass parse" onePassTests
+    describe "[ByteString]Streamline parse" streamlineTests
+    describe "[Text]One pass parse" onePassTestsText
+    describe "[Text]Streamline parse" streamlineTestsText
 
 propTextNotEmpty :: ByteString -> Bool
-propTextNotEmpty = either (const False) text_not_empty . decode
+propTextNotEmpty = either (const False) text_not_empty . S.decode
   where text_not_empty = all not_empty
         not_empty (Text s) = S.length s > 0
         not_empty _ = True
 
 propResultNotEmpty :: ByteString -> Bool
-propResultNotEmpty s = either (const False) not_empty . decode $ s
+propResultNotEmpty s = either (const False) not_empty . S.decode $ s
   where not_empty tokens = (S.null s && null tokens)
                         || (not (S.null s) && not (null tokens))
 
-onePassTests :: Specs
+propTextNotEmptyText :: Text -> Bool
+propTextNotEmptyText = either (const False) text_not_empty . T.decode
+  where text_not_empty = all not_empty
+        not_empty (Text s) = not (T.null s)
+        not_empty _ = True
+
+propResultNotEmptyText :: Text -> Bool
+propResultNotEmptyText s = either (const False) not_empty . T.decode $ s
+  where not_empty tokens = (T.null s && null tokens)
+                        || (not (T.null s) && not (null tokens))
+
+onePassTests :: Spec
 onePassTests = mapM_ one testcases
   where
     one (str, tokens) = it (S.unpack str) $ do
-        result <- combineText <$> assertDecode str
+        result <- combineText <$> assertDecodeBS str
         assertEqual "one-pass parse result incorrect" tokens result
 
-streamlineTests :: Specs
+onePassTestsText :: Spec
+onePassTestsText = mapM_ one testcases
+  where
+    one (str, tokens) = it (T.unpack str) $ do
+        result <- combineText <$> assertDecodeText str
+        assertEqual "one-pass parse result incorrect" tokens result
+
+streamlineTests :: Spec
 streamlineTests = mapM_ one testcases
   where
     isIncomplete (Incomplete _) = True
@@ -50,11 +82,25 @@ streamlineTests = mapM_ one testcases
         let tokens' = reverse . dropWhile isIncomplete  . reverse $ tokens
         result <- combineText <$> C.runResourceT (
                       CL.sourceList (map S.singleton (S.unpack str))
-                      C.$= tokenStream
+                      C.$= S.tokenStream
                       C.$$ CL.consume )
         assertEqual "streamline parse result incorrect" tokens' result
 
-testcases :: [(ByteString, [Token])]
+streamlineTestsText :: Spec
+streamlineTestsText = mapM_ one testcases
+  where
+    isIncomplete (Incomplete _) = True
+    isIncomplete _ = False
+    one (str, tokens) = it (T.unpack str) $ do
+        -- streamline parse result don't contain the trailing Incomplete token.
+        let tokens' = reverse . dropWhile isIncomplete  . reverse $ tokens
+        result <- combineText <$> C.runResourceT (
+                      CL.sourceList (map T.singleton (T.unpack str))
+                      C.$= T.tokenStream
+                      C.$$ CL.consume )
+        assertEqual "streamline parse result incorrect" tokens' result
+
+testcases :: IsString s => [(s, [Token' s])]
 testcases =
   -- attributes {{{
   [ ( "<span readonly title=foo class=\"foo bar\" style='display:none;'>"
@@ -158,21 +204,32 @@ testString :: Gen String
 testString = listOf testChar
 testBS :: Gen ByteString
 testBS = S.pack <$> testString
+testText :: Gen Text
+testText = T.pack <$> testString
 
 instance Arbitrary ByteString where
     arbitrary = testBS
+instance Arbitrary Text where
+    arbitrary = testText
 
 assertEither :: Either String a -> Assertion
 assertEither = either (assertFailure . ("Left:"++)) (const $ return ())
 
-assertDecode :: ByteString -> IO [Token]
-assertDecode s = do
-    let result = decode s
+assertDecodeBS :: ByteString -> IO [S.Token]
+assertDecodeBS s = do
+    let result = S.decode s
     assertEither result
     let (Right tokens) = result
     return tokens
 
-combineText :: [Token] -> [Token]
+assertDecodeText :: Text -> IO [T.Token]
+assertDecodeText s = do
+    let result = T.decode s
+    assertEither result
+    let (Right tokens) = result
+    return tokens
+
+combineText :: Monoid s => [Token' s] -> [Token' s]
 combineText [] = []
-combineText (Text t1 : Text t2 : xs) = combineText $ Text (S.append t1 t2) : xs
+combineText (Text t1 : Text t2 : xs) = combineText $ Text (mappend t1 t2) : xs
 combineText (x:xs) = x : combineText xs
