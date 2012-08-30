@@ -22,8 +22,8 @@ type Attr = Attr' ByteString
  -}
 quoted :: Char -> Parser ByteString
 quoted q = S.append <$> takeTill (in2 ('\\',q))
-                  <*> ( char q *> pure ""
-                        <|> char '\\' *> atLeast 1 (quoted q) )
+                    <*> ( char q *> pure ""
+                      <|> char '\\' *> atLeast 1 (quoted q) )
 
 quotedOr :: Parser ByteString -> Parser ByteString
 quotedOr p = maybeP (satisfy (in2 ('"','\''))) >>=
@@ -78,8 +78,8 @@ attrs = loop []
 comment :: Parser Token
 comment = Comment <$> comment'
   where comment' = S.append <$> takeTill (=='-')
-                          <*> ( string "-->" *> return ""
-                                <|> atLeast 1 comment' )
+                            <*> ( string "-->" *> return ""
+                              <|> atLeast 1 comment' )
 
 {--
  - tags begine with <! , e.g. <!DOCTYPE ...>
@@ -87,8 +87,8 @@ comment = Comment <$> comment'
 special :: Parser Token
 special = Special
           <$> ( S.cons <$> satisfy (not . ((=='-') ||. isSpace))
-                     <*> takeTill ((=='>') ||. isSpace)
-                     <* skipSpace )
+                       <*> takeTill ((=='>') ||. isSpace)
+                       <* skipSpace )
           <*> takeTill (=='>') <* char '>'
 
 {--
@@ -96,9 +96,9 @@ special = Special
  -}
 tag :: Parser Token
 tag = do
-    t <- string "/"     *> return TagTypeClose
-         <|> string "!" *> return TagTypeSpecial
-         <|> return TagTypeNormal
+    t <-    string "/"     *> return TagTypeClose
+        <|> string "!" *> return TagTypeSpecial
+        <|> return TagTypeNormal
     case t of
         TagTypeClose ->
             TagClose <$> takeTill (=='>')
@@ -125,7 +125,7 @@ text = Text <$> atLeast 1 (takeTill (=='<'))
 
 token :: Parser Token
 token = char '<' *> (tag <|> incomplete)
-        <|> text
+    <|> text
 
 {--
  - treat script tag specially, can't fail.
