@@ -1,6 +1,6 @@
 import Data.Maybe
 import System.Environment
-import Text.HTML.TagStream
+import qualified Text.HTML.TagStream.ByteString as S
 import qualified Data.Conduit as C
 import qualified Data.Conduit.Binary as C
 import qualified Data.Conduit.List as CL
@@ -11,6 +11,6 @@ main = do
     filename <- maybe (fail "pass file path") return (listToMaybe args)
     _ <- C.runResourceT $
            C.sourceFile filename
-           C.$= tokenStream
+           C.$= S.tokenStream
            C.$$ CL.consume
     return ()

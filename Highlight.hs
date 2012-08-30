@@ -1,21 +1,17 @@
-import Data.Maybe
 import System.IO
 import System.Environment
-import Text.HTML.TagStream
+import System.Console.ANSI
+
+import Data.Maybe
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S
-import System.Console.ANSI
+
+import Data.Conduit.Blaze (builderToByteString)
 import qualified Data.Conduit as C
 import qualified Data.Conduit.Binary as CB
 import qualified Data.Conduit.List as CL
-import Blaze.ByteString.Builder (Builder)
-import Data.Conduit.Blaze (builderToByteString)
 
-encodeHL :: (ByteString -> ByteString) -> [Token] -> ByteString
-encodeHL hl = B.toByteString . mconcat . map (showToken hl)
-
-encode :: [Token] -> ByteString
-encode = encodeHL id
+import qualified Text.HTML.TagStream.ByteString as S
 
 color :: Color -> ByteString -> ByteString
 color c s = S.concat [ S.pack $ setSGRCode [SetColor Foreground Dull c]
@@ -29,7 +25,7 @@ main = do
     filename <- maybe (fail "Highlight file") return (listToMaybe args)
     C.runResourceT $
         CB.sourceFile filename
-        C.$= tokenStream
-        C.$= CL.map (showToken (color Red))
+        C.$= S.tokenStream
+        C.$= CL.map (S.showToken (color Red))
         C.$= builderToByteString
         C.$$ CB.sinkHandle stdout
