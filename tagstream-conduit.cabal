@@ -1,5 +1,5 @@
 Name:                tagstream-conduit
-Version:             0.5.0
+Version:             0.5.1
 Synopsis:            streamlined html tag parser
 Description:
     Tag-stream is a library for parsing HTML//XML to a token stream.
@@ -17,6 +17,8 @@ Build-type:          Simple
 Extra-source-files:    tests/Tests.hs
                      , Highlight.hs
                      , Parse.hs
+                     , HighlightText.hs
+                     , ParseText.hs
 Cabal-version:       >=1.8
 
 source-repository head
