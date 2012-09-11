@@ -31,6 +31,7 @@ Library
                      , Text.HTML.TagStream.ByteString
                      , Text.HTML.TagStream.Text
                      , Text.HTML.TagStream.Types
+                     , Text.HTML.TagStream.Utils
   Build-depends:       base >= 4 && < 5
                      , bytestring
                      , text
