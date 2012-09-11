@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, CPP #-}
 module Text.HTML.DOM
     ( eventConduit
     , sinkDoc
@@ -8,6 +8,9 @@ module Text.HTML.DOM
 
 import Prelude hiding (readFile)
 import qualified Data.ByteString as S
+#if MIN_VERSION_tagstream_conduit(0,5,0)
+import qualified Text.HTML.TagStream.ByteString as TS
+#endif
 import qualified Text.HTML.TagStream as TS
 import qualified Data.XML.Types as XT
 import Data.Conduit
