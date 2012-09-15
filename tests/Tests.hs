@@ -13,8 +13,7 @@ import qualified Data.Text as T
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 
-import Test.Hspec.Monadic
-import Test.Hspec.HUnit ()
+import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
 import Test.HUnit hiding (Test)
 import Test.QuickCheck
