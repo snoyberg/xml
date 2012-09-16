@@ -50,6 +50,6 @@ test-suite test
                      , conduit >= 0.0.2
                      , QuickCheck
                      , HUnit
-                     , hspec
+                     , hspec >= 1.3
                      , tagstream-conduit
     ghc-options:     -Wall
