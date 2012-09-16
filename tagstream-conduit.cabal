@@ -1,5 +1,5 @@
 Name:                tagstream-conduit
-Version:             0.5.2
+Version:             0.5.3
 Synopsis:            streamlined html tag parser
 Description:
     Tag-stream is a library for parsing HTML//XML to a token stream.
