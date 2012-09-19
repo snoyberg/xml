@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE CPP #-}
 module Network.URI.Conduit
     ( -- * Base datatypes
       URI (..)
@@ -140,7 +141,11 @@ fromNetworkURI u = URI
         }
 
 relativeTo :: URI -> URI -> Maybe URI
+#if MIN_VERSION_network(2,4,0)
+relativeTo a b = Just $ fromNetworkURI $ toNetworkURI a `N.relativeTo` toNetworkURI b
+#else
 relativeTo a b = fmap fromNetworkURI $ toNetworkURI a `N.relativeTo` toNetworkURI b
+#endif
 
 nullURI :: URI
 nullURI = fromNetworkURI N.nullURI
