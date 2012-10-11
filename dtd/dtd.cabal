@@ -1,5 +1,5 @@
 Name:                dtd
-Version:             0.6.1.1
+Version:             0.6.1.2
 Synopsis:            Parse and render DTD files
 Homepage:            http://github.com/snoyberg/xml
 License:             BSD3
@@ -33,5 +33,5 @@ Library
                      , resourcet                >= 0.3        && < 0.5
                      , conduit                  >= 0.5        && < 0.6
                      , attoparsec-conduit       >= 0.5        && < 0.6
-                     , lifted-base              >= 0.1        && < 0.2
+                     , lifted-base              >= 0.1
   Ghc-options: -Wall
