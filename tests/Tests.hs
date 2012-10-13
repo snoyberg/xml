@@ -1,15 +1,15 @@
-{-# LANGUAGE FlexibleInstances, OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances, OverloadedStrings, ViewPatterns #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Main where
 
 import Control.Applicative
 
-import Data.String (IsString)
 import Data.Monoid (Monoid(..))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 
@@ -57,10 +57,14 @@ propResultNotEmptyText s = either (const False) not_empty . T.decode $ s
   where not_empty tokens = (T.null s && null tokens)
                         || (not (T.null s) && not (null tokens))
 
+encodeTokenUtf8 :: Token' Text -> Token' ByteString
+encodeTokenUtf8 = fmap T.encodeUtf8
+
 onePassTests :: Spec
 onePassTests = mapM_ one testcases
   where
-    one (str, tokens) = it (S.unpack str) $ do
+    one (T.encodeUtf8 -> str, map encodeTokenUtf8 -> tokens) =
+      it (S.unpack str) $ do
         result <- combineText <$> assertDecodeBS str
         assertEqual "one-pass parse result incorrect" tokens result
 
@@ -76,7 +80,8 @@ streamlineTests = mapM_ one testcases
   where
     isIncomplete (Incomplete _) = True
     isIncomplete _ = False
-    one (str, tokens) = it (S.unpack str) $ do
+    one (T.encodeUtf8 -> str, map encodeTokenUtf8 -> tokens) =
+      it (S.unpack str) $ do
         -- streamline parse result don't contain the trailing Incomplete token.
         let tokens' = reverse . dropWhile isIncomplete  . reverse $ tokens
         result <- combineText <$> C.runResourceT (
@@ -90,16 +95,17 @@ streamlineTestsText = mapM_ one testcases
   where
     isIncomplete (Incomplete _) = True
     isIncomplete _ = False
-    one (str, tokens) = it (T.unpack str) $ do
+    one (T.encodeUtf8 -> str, tokens) =
+      it (S.unpack str) $ do
         -- streamline parse result don't contain the trailing Incomplete token.
         let tokens' = reverse . dropWhile isIncomplete  . reverse $ tokens
         result <- combineText <$> C.runResourceT (
-                      CL.sourceList (map T.singleton (T.unpack str))
-                      C.$= T.tokenStream
+                      CL.sourceList (map S.singleton (S.unpack str))
+                      C.$= T.tokenStreamBS
                       C.$$ CL.consume )
         assertEqual "streamline parse result incorrect" tokens' result
 
-testcases :: IsString s => [(s, [Token' s])]
+testcases :: [(Text, [Token' Text])]
 testcases =
   -- attributes {{{
   [ ( "<span readonly title=foo class=\"foo bar\" style='display:none;'>"
