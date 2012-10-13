@@ -4,7 +4,7 @@ module Text.HTML.TagStream.Text where
 import Prelude hiding (mapM)
 import Control.Applicative
 import Control.Monad (unless, when, liftM)
-import Control.Monad.Trans (lift)
+import Control.Monad.Trans.Class (lift)
 
 import Data.Traversable (mapM)
 import Data.Maybe (fromMaybe)

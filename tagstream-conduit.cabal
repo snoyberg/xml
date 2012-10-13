@@ -35,10 +35,13 @@ Library
   Build-depends:       base >= 4 && < 5
                      , bytestring
                      , text
+                     , case-insensitive
+                     , transformers >= 0.3
                      , conduit >= 0.5 && < 0.6
                      , attoparsec
                      , blaze-builder
                      , blaze-builder-conduit >= 0.5 && < 0.6
+                     , attoparsec-conduit >= 0.5
 
 test-suite test
     hs-source-dirs: tests
