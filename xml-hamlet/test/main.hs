@@ -3,13 +3,13 @@
 import Text.Hamlet.XML
 import qualified Text.XML as X
 import Test.HUnit
-import Test.Hspec.Core
-import Test.Hspec.HUnit ()
+import Test.Hspec
 import qualified Data.Map as Map
 
 main :: IO ()
-main = hspecX [describe "xml-hamlet"
-    [ it "handles plain tags" $ [xml|
+main = hspec $ do
+  describe "xml-hamlet" $ do
+    it "handles plain tags" $ [xml|
 <foo>
         <baz>
 |] @?=
@@ -17,7 +17,7 @@ main = hspecX [describe "xml-hamlet"
             [ X.NodeElement $ X.Element "baz" Map.empty []
             ]
         ]
-    , it "handles raw text" $ [xml|
+    it "handles raw text" $ [xml|
 <foo>
         <baz>bin
 |] @?=
@@ -27,7 +27,7 @@ main = hspecX [describe "xml-hamlet"
                 ]
             ]
         ]
-    , it "handles variables" $ [xml|
+    it "handles variables" $ [xml|
 <foo>
         <baz>#{bin}
 |] @?=
@@ -37,7 +37,7 @@ main = hspecX [describe "xml-hamlet"
                 ]
             ]
         ]
-    , it "handles embed" $ [xml|
+    it "handles embed" $ [xml|
 <foo>
         <baz>^{nodes}
 |] @?=
@@ -45,7 +45,7 @@ main = hspecX [describe "xml-hamlet"
             [ X.NodeElement $ X.Element "baz" Map.empty nodes
             ]
         ]
-    , it "handles attributes" $ [xml|
+    it "handles attributes" $ [xml|
 <foo>
     <bar here=there>
         <baz>
@@ -56,7 +56,7 @@ main = hspecX [describe "xml-hamlet"
                 ]
             ]
         ]
-    , it "handles attributes" $ [xml|
+    it "handles attributes" $ [xml|
 <foo>
     <bar here=there>
         <baz :False:false=false :True:true=#{true}>
@@ -67,7 +67,7 @@ main = hspecX [describe "xml-hamlet"
                 ]
             ]
         ]
-    , it "handles forall" $ [xml|
+    it "handles forall" $ [xml|
 $forall x <- xs
     <word>#{x}
     |] @?=
@@ -75,7 +75,7 @@ $forall x <- xs
         , X.NodeElement $ X.Element "word" Map.empty [X.NodeContent "bar"]
         , X.NodeElement $ X.Element "word" Map.empty [X.NodeContent "baz"]
         ]
-    , it "handles with" $ [xml|
+    it "handles with" $ [xml|
 $with ys <- xs
     $forall x <- ys
         <word>#{x}
@@ -84,7 +84,7 @@ $with ys <- xs
         , X.NodeElement $ X.Element "word" Map.empty [X.NodeContent "bar"]
         , X.NodeElement $ X.Element "word" Map.empty [X.NodeContent "baz"]
         ]
-    , it "handles maybe" $ [xml|
+    it "handles maybe" $ [xml|
 $maybe _x <- Just five
     <one>
 $nothing
@@ -97,7 +97,7 @@ $nothing
         [ X.NodeElement $ X.Element "one" Map.empty []
         , X.NodeElement $ X.Element "four" Map.empty []
         ]
-    , it "handles conditionals" $ [xml|
+    it "handles conditionals" $ [xml|
 $if True
     <one>
 $else
@@ -119,19 +119,18 @@ $else
         , X.NodeElement $ X.Element "four" Map.empty []
         , X.NodeElement $ X.Element "seven" Map.empty []
         ]
-    , it "recognizes clark notation" $ [xml|
+    it "recognizes clark notation" $ [xml|
 <{foo}bar {baz}bin="x">
 |] @?= [X.NodeElement $ X.Element "{foo}bar" (Map.singleton "{baz}bin" "x") []]
-    , it "recognizes clark with URLs" $ [xml|
+    it "recognizes clark with URLs" $ [xml|
 <{http://www.example.com/foo/bar}baz>
 |] @?= [X.NodeElement $ X.Element "{http://www.example.com/foo/bar}baz" Map.empty []]
-    , it "allow embedding comments" $[xml|^{comment}|] @?= comment
-    , it "multiline tags" $ [xml|
+    it "allow embedding comments" $[xml|^{comment}|] @?= comment
+    it "multiline tags" $ [xml|
 <foo bar=baz
      bin=bin>content
 |] @?= [xml|<foo bar=baz bin=bin>content|]
-    , it "short circuiting of attributes" $ [xml|<foo :False:x=#{undefined}>|] @?= [xml|<foo>|]
-    ]]
+    it "short circuiting of attributes" $ [xml|<foo :False:x=#{undefined}>|] @?= [xml|<foo>|]
   where
     bin = "bin"
     nodes = [X.NodeInstruction $ X.Instruction "ifoo" "ibar"]

@@ -5,7 +5,7 @@
 import           Control.Monad.IO.Class       (liftIO)
 import           Data.XML.Types
 import           Test.HUnit                   hiding (Test)
-import           Test.Hspec.Monadic
+import           Test.Hspec
 import qualified Data.ByteString.Char8        as S
 import qualified Data.ByteString.Lazy.Char8   as L
 import qualified Text.XML.Unresolved          as D
@@ -20,7 +20,6 @@ import Control.Monad
 import qualified Data.Text as T
 import qualified Data.Set as Set
 import Control.Exception (toException)
-import Test.Hspec.HUnit ()
 
 import qualified Data.Conduit as C
 import qualified Data.Map as Map
