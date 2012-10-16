@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 import Test.HUnit hiding (Test)
-import Test.Hspec.Monadic
-import Test.Hspec.HUnit ()
+import Test.Hspec
 import Data.ByteString.Lazy.Char8 ()
 import qualified Text.HTML.DOM as H
 import qualified Text.XML as X
