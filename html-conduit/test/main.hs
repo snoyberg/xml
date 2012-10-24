@@ -33,6 +33,9 @@ main = hspec $ do
         it "invalid entities" $
             X.parseLBS_ X.def "<foo><bar>baz&amp;foobar;</bar></foo>" @=?
             H.parseLBS        "<foo><bar>baz&foobar;</foo>"
+        it "multiple root elements" $
+            X.parseLBS_ X.def "<html><foo><bar>baz&amp;foobar;</bar></foo><foo/></html>" @=?
+            H.parseLBS        "<foo><bar>baz&foobar;</foo><foo>"
     describe "HTML parsing" $ do
         it "XHTML" $
             let html = "<html><head><title>foo</title></head><body><p>Hello World</p></body></html>"

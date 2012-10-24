@@ -28,8 +28,12 @@ import Data.Conduit.Filesystem (sourceFile)
 import qualified Data.ByteString.Lazy as L
 import Control.Monad.Trans.Resource (runExceptionT_)
 import Data.Functor.Identity (runIdentity)
+import Data.Maybe (mapMaybe)
 
 -- | Converts a stream of bytes to a stream of properly balanced @Event@s.
+--
+-- Note that there may be multiple (or not) root elements. @sinkDoc@ addresses
+-- that case.
 eventConduit :: Monad m => Conduit S.ByteString m XT.Event
 eventConduit =
     TS.tokenStream =$= go []
@@ -112,7 +116,21 @@ eventConduit =
         ]
 
 sinkDoc :: MonadThrow m => Sink S.ByteString m X.Document
-sinkDoc = mapOutput ((,) Nothing) eventConduit =$ X.fromEvents
+sinkDoc =
+    fmap stripDummy $ mapOutput ((,) Nothing) eventConduit =$ addDummyWrapper =$ X.fromEvents
+  where
+    addDummyWrapper = do
+        yield (Nothing, XT.EventBeginElement "html" [])
+        awaitForever yield
+        yield (Nothing, XT.EventEndElement "html")
+
+    stripDummy doc@(X.Document pro (X.Element _ _ nodes) epi) =
+        case mapMaybe toElement nodes of
+            [root] -> X.Document pro root epi
+            _ -> doc
+
+    toElement (X.NodeElement e) = Just e
+    toElement _ = Nothing
 
 readFile :: F.FilePath -> IO X.Document
 readFile fp = runResourceT $ sourceFile fp $$ sinkDoc
