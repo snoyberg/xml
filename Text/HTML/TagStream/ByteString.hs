@@ -1,4 +1,6 @@
 {-# LANGUAGE OverloadedStrings, TupleSections, ViewPatterns #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE TypeFamilies #-}
 module Text.HTML.TagStream.ByteString where
 
 import Control.Applicative
@@ -8,7 +10,7 @@ import Data.Monoid (mconcat)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S
 import Data.Attoparsec.Char8
-import Data.Conduit (GInfConduit, awaitE, yield)
+import Data.Conduit
 
 import qualified Blaze.ByteString.Builder as B
 import Text.HTML.TagStream.Types
@@ -204,11 +206,20 @@ showToken _ (Incomplete s) = B.fromByteString s
 -- }}}
 
 -- {{{ Stream
-tokenStream :: Monad m => GInfConduit ByteString m Token
+tokenStream :: Monad m
+#if MIN_VERSION_conduit(1, 0, 0)
+            => MonadConduit ByteString m Token
+#else
+            => GInfConduit ByteString m Token
+#endif
 tokenStream =
     loop S.empty
   where
+#if MIN_VERSION_conduit(1, 0, 0)
+    loop accum = await >>= maybe (close accum ()) (push accum)
+#else
     loop accum = awaitE >>= either (close accum) (push accum)
+#endif
 
     push accum input =
         case parseOnly html (accum `S.append` input) of

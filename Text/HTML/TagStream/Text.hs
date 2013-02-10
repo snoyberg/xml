@@ -1,4 +1,6 @@
 {-# LANGUAGE OverloadedStrings, TupleSections, ViewPatterns #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE TypeFamilies #-}
 module Text.HTML.TagStream.Text where
 
 import Prelude hiding (mapM)
@@ -18,8 +20,12 @@ import qualified Data.Text.Lazy.Builder as B
 import qualified Data.CaseInsensitive as CI
 import qualified Data.Attoparsec.ByteString.Char8 as S
 import Data.Attoparsec.Text
-import Data.Conduit (GInfConduit, GLInfConduit, awaitE, yield, ($=), ($$), MonadThrow)
+import Data.Conduit
+#if MIN_VERSION_conduit(1, 0, 0)
+import Data.Conduit.Internal (streamFromPipe, unConduitM)
+#else
 import Data.Conduit.Internal (pipeL)
+#endif
 import qualified Data.Conduit.List as C
 import qualified Data.Conduit.Attoparsec as C
 import qualified Data.Conduit.Text as C
@@ -218,11 +224,20 @@ showToken _ (Incomplete s) = B.fromText s
 -- }}}
 
 -- {{{ Stream
-tokenStream :: Monad m => GInfConduit Text m Token
+tokenStream :: Monad m
+#if MIN_VERSION_conduit(1, 0, 0)
+            => MonadConduit Text m Token
+#else
+            => GInfConduit Text m Token
+#endif
 tokenStream =
     loop T.empty
   where
+#if MIN_VERSION_conduit(1, 0, 0)
+    loop accum = await >>= maybe (close accum ()) (push accum)
+#else
     loop accum = awaitE >>= either (close accum) (push accum)
+#endif
 
     push accum input =
         case parseOnly html (accum `T.append` input) of
@@ -236,7 +251,12 @@ tokenStream =
 -- | like `tokenStream', but it process `ByteString' input, decode it according to xml version tag.
 --
 -- Only support utf-8 and iso8859 for now.
-tokenStreamBS :: MonadThrow m => GLInfConduit ByteString m Token
+tokenStreamBS :: MonadThrow m
+#if MIN_VERSION_conduit(1, 0, 0)
+              => MonadConduit ByteString m Token
+#else
+              => GLInfConduit ByteString m Token
+#endif
 tokenStreamBS = do
     -- try to peek the first tag to find the xml encoding.
     tk <- C.sinkParser (skipBOM *> S.skipSpace *> S.char '<' *> S.tag)
@@ -250,9 +270,18 @@ tokenStreamBS = do
     let codec = fromMaybe C.utf8 (mencoding >>= getCodec . CI.mk)
 
     when yieldToken $
-        lift (mapM (decodeBS codec) tk) >>= yield
+#if MIN_VERSION_conduit(1, 0, 0)
+        liftStreamMonad
+#else
+        lift
+#endif
+        (mapM (decodeBS codec) tk) >>= yield
 
+#if MIN_VERSION_conduit(1, 0, 0)
+    streamFromPipe $ unConduitM $ C.decode codec =$= tokenStream
+#else
     C.decode codec `pipeL` tokenStream
+#endif
   where
     skipBOM :: S.Parser ()
     skipBOM =
