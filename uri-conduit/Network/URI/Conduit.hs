@@ -31,7 +31,7 @@ module Network.URI.Conduit
 
 import qualified Network.URI as N
 import Data.Text (Text, cons, isSuffixOf, pack, unpack)
-import Data.Conduit hiding (Source, Conduit, Sink)
+import Data.Conduit
 import Data.ByteString (ByteString)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -70,8 +70,8 @@ hasExtension URI { uriPath = p } t = (cons '.' t) `isSuffixOf` p
 
 data Scheme = Scheme
     { schemeNames :: Set.Set Text
-    , schemeReader :: forall l i u m. MonadResource m => Maybe (URI -> Pipe l i ByteString u m ())
-    , schemeWriter :: forall l o r m. MonadResource m => Maybe (URI -> Pipe l ByteString o r m r)
+    , schemeReader :: forall m i. MonadResource m => Maybe (URI -> Conduit i m ByteString)
+    , schemeWriter :: forall m o. MonadResource m => Maybe (URI -> Conduit ByteString m o)
     }
 
 type SchemeMap = Map.Map Text Scheme
@@ -95,7 +95,7 @@ instance Exception URIException
 readURI :: MonadResource m
         => SchemeMap
         -> URI
-        -> Pipe l i ByteString u m ()
+        -> Producer m ByteString
 readURI sm uri =
     case Map.lookup (uriScheme uri) sm >>= schemeReader of
         Nothing -> lift $ monadThrow $ UnknownReadScheme uri
@@ -104,7 +104,7 @@ readURI sm uri =
 writeURI :: MonadResource m
          => SchemeMap
          -> URI
-         -> Pipe l ByteString o r m r
+         -> Consumer ByteString m ()
 writeURI sm uri =
     case Map.lookup (uriScheme uri) sm >>= schemeWriter of
         Nothing -> lift $ monadThrow $ UnknownWriteScheme uri

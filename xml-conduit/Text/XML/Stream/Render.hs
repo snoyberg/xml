@@ -29,7 +29,7 @@ import Data.ByteString (ByteString)
 import Data.Default (Default (def))
 import qualified Data.Set as Set
 import Data.List (foldl')
-import Data.Conduit hiding (Source, Sink, Conduit)
+import Data.Conduit
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Text as CT
 import Data.Monoid (mempty)
@@ -39,15 +39,15 @@ import Data.Monoid (mempty)
 -- optimally sized 'ByteString's with minimal buffer copying.
 --
 -- The output is UTF8 encoded.
-renderBytes :: MonadUnsafeIO m => RenderSettings -> Pipe l Event ByteString r m r
-renderBytes rs = renderBuilder rs >+> builderToByteString
+renderBytes :: MonadUnsafeIO m => RenderSettings -> Conduit Event m ByteString
+renderBytes rs = renderBuilder rs =$= builderToByteString
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder', 'builderToByteString' and 'renderBytes', so it
 -- produces optimally sized 'ByteString's with minimal buffer copying.
 renderText :: (MonadThrow m, MonadUnsafeIO m)
-           => RenderSettings -> Pipe l Event Text r m r
-renderText rs = renderBytes rs >+> CT.decode CT.utf8
+           => RenderSettings -> Conduit Event m Text
+renderText rs = renderBytes rs =$= CT.decode CT.utf8
 
 data RenderSettings = RenderSettings
     { rsPretty :: Bool
@@ -92,15 +92,15 @@ orderAttrs orderSpec = order
 -- | Render a stream of 'Event's into a stream of 'Builder's. Builders are from
 -- the blaze-builder package, and allow the create of optimally sized
 -- 'ByteString's with minimal buffer copying.
-renderBuilder :: Monad m => RenderSettings -> Pipe l Event Builder r m r
-renderBuilder RenderSettings { rsPretty = True, rsNamespaces = n } = prettify >+> renderBuilder' n True
+renderBuilder :: Monad m => RenderSettings -> Conduit Event m Builder
+renderBuilder RenderSettings { rsPretty = True, rsNamespaces = n } = prettify =$= renderBuilder' n True
 renderBuilder RenderSettings { rsPretty = False, rsNamespaces = n } = renderBuilder' n False
 
-renderBuilder' :: Monad m => [(Text, Text)] -> Bool -> Pipe l Event Builder r m r
+renderBuilder' :: Monad m => [(Text, Text)] -> Bool -> Conduit Event m Builder
 renderBuilder' namespaces0 isPretty = do
-    injectLeftovers $ loop []
+    loop []
   where
-    loop nslevels = awaitE >>= either return (go nslevels)
+    loop nslevels = await >>= maybe (return ()) (go nslevels)
 
     go nslevels e =
         case e of
@@ -233,12 +233,12 @@ getPrefix ppref nsmap ns =
 
 -- | Convert a stream of 'Event's into a prettified one, adding extra
 -- whitespace. Note that this can change the meaning of your XML.
-prettify :: Monad m => Pipe l Event Event r m r
-prettify = injectLeftovers $ prettify' 0
+prettify :: Monad m => Conduit Event m Event
+prettify = prettify' 0
 
-prettify' :: Monad m => Int -> Pipe Event Event Event r m r
+prettify' :: Monad m => Int -> Conduit Event m Event
 prettify' level =
-    awaitE >>= either return go
+    await >>= maybe (return ()) go
   where
     go e@EventBeginDocument = do
         yield e

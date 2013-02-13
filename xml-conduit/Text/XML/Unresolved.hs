@@ -57,12 +57,11 @@ import qualified Data.Text.Lazy as TL
 import Data.Char (isSpace)
 import qualified Data.ByteString.Lazy as L
 import System.IO.Unsafe (unsafePerformIO)
-import Data.Conduit hiding (Source, Sink, Conduit)
+import Data.Conduit
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
 import Control.Exception (throw)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Resource (runExceptionT)
 import Control.Monad.ST (runST)
 import Data.Conduit.Lazy (lazyConsume)
 
@@ -71,8 +70,8 @@ readFile ps fp = runResourceT $ CB.sourceFile (encodeString fp) $$ sinkDoc ps
 
 sinkDoc :: MonadThrow m
         => P.ParseSettings
-        -> Pipe l ByteString o u m Document
-sinkDoc ps = P.parseBytesPos ps >+> fromEvents
+        -> Consumer ByteString m Document
+sinkDoc ps = P.parseBytesPos ps =$= fromEvents
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
 writeFile rs fp doc =
@@ -120,17 +119,17 @@ prettyShowE = show -- FIXME
 prettyShowName :: Name -> String
 prettyShowName = show -- FIXME
 
-renderBuilder :: Monad m => R.RenderSettings -> Document -> Pipe l i Builder u m ()
-renderBuilder rs doc = CL.sourceList (toEvents doc) >+> R.renderBuilder rs
+renderBuilder :: Monad m => R.RenderSettings -> Document -> Producer m Builder
+renderBuilder rs doc = CL.sourceList (toEvents doc) =$= R.renderBuilder rs
 
-renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> Pipe l i ByteString u m ()
-renderBytes rs doc = CL.sourceList (toEvents doc) >+> R.renderBytes rs
+renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> Producer m ByteString
+renderBytes rs doc = CL.sourceList (toEvents doc) =$= R.renderBytes rs
 
-renderText :: (MonadThrow m, MonadUnsafeIO m) => R.RenderSettings -> Document -> Pipe l i Text u m ()
-renderText rs doc = CL.sourceList (toEvents doc) >+> R.renderText rs
+renderText :: (MonadThrow m, MonadUnsafeIO m) => R.RenderSettings -> Document -> Producer m Text
+renderText rs doc = CL.sourceList (toEvents doc) =$= R.renderText rs
 
-fromEvents :: MonadThrow m => Pipe l P.EventPos o u m Document
-fromEvents = injectLeftovers $ do
+fromEvents :: MonadThrow m => Consumer P.EventPos m Document
+fromEvents = do
     skip EventBeginDocument
     d <- Document <$> goP <*> require goE <*> goM
     skip EventEndDocument
@@ -259,5 +258,5 @@ parseText_ ps = either throw id . parseText ps
 
 sinkTextDoc :: MonadThrow m
             => ParseSettings
-            -> Pipe l Text o u m Document
-sinkTextDoc ps = P.parseText ps >+> fromEvents
+            -> Consumer Text m Document
+sinkTextDoc ps = P.parseText ps =$= fromEvents

@@ -99,7 +99,7 @@ import Data.Set (Set)
 
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
-import Data.Conduit hiding (Source, Sink, Conduit)
+import Data.Conduit
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
 import System.IO.Unsafe (unsafePerformIO)
@@ -232,8 +232,8 @@ parseLBS_ ps = either throw id . parseLBS ps
 
 sinkDoc :: MonadThrow m
         => ParseSettings
-        -> Pipe l ByteString o u m Document
-sinkDoc ps = P.parseBytesPos ps >+> fromEvents
+        -> Consumer ByteString m Document
+sinkDoc ps = P.parseBytesPos ps =$= fromEvents
 
 parseText :: ParseSettings -> TL.Text -> Either SomeException Document
 parseText ps tl = runST
@@ -246,10 +246,10 @@ parseText_ ps = either throw id . parseText ps
 
 sinkTextDoc :: MonadThrow m
             => ParseSettings
-            -> Pipe l Text o u m Document
-sinkTextDoc ps = P.parseText ps >+> fromEvents
+            -> Consumer Text m Document
+sinkTextDoc ps = P.parseText ps =$= fromEvents
 
-fromEvents :: MonadThrow m => Pipe l P.EventPos o u m Document
+fromEvents :: MonadThrow m => Consumer P.EventPos m Document
 fromEvents = do
     d <- D.fromEvents
     either (lift . monadThrow . UnresolvedEntityException) return $ fromXMLDocument d
@@ -258,7 +258,7 @@ data UnresolvedEntityException = UnresolvedEntityException (Set Text)
     deriving (Show, Typeable)
 instance Exception UnresolvedEntityException
 
-renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> Pipe l i ByteString u m ()
+renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> Producer m ByteString
 renderBytes rs doc = D.renderBytes rs $ toXMLDocument' rs doc
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
