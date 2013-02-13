@@ -208,7 +208,7 @@ showToken _ (Incomplete s) = B.fromByteString s
 -- {{{ Stream
 tokenStream :: Monad m
 #if MIN_VERSION_conduit(1, 0, 0)
-            => MonadConduit ByteString m Token
+            => Conduit ByteString m Token
 #else
             => GInfConduit ByteString m Token
 #endif

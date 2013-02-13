@@ -22,7 +22,7 @@ import qualified Data.Attoparsec.ByteString.Char8 as S
 import Data.Attoparsec.Text
 import Data.Conduit
 #if MIN_VERSION_conduit(1, 0, 0)
-import Data.Conduit.Internal (streamFromPipe, unConduitM)
+import Data.Conduit.Internal (unConduitM)
 #else
 import Data.Conduit.Internal (pipeL)
 #endif
@@ -226,7 +226,7 @@ showToken _ (Incomplete s) = B.fromText s
 -- {{{ Stream
 tokenStream :: Monad m
 #if MIN_VERSION_conduit(1, 0, 0)
-            => MonadConduit Text m Token
+            => Conduit Text m Token
 #else
             => GInfConduit Text m Token
 #endif
@@ -253,7 +253,7 @@ tokenStream =
 -- Only support utf-8 and iso8859 for now.
 tokenStreamBS :: MonadThrow m
 #if MIN_VERSION_conduit(1, 0, 0)
-              => MonadConduit ByteString m Token
+              => Conduit ByteString m Token
 #else
               => GLInfConduit ByteString m Token
 #endif
@@ -269,16 +269,10 @@ tokenStreamBS = do
 
     let codec = fromMaybe C.utf8 (mencoding >>= getCodec . CI.mk)
 
-    when yieldToken $
-#if MIN_VERSION_conduit(1, 0, 0)
-        liftStreamMonad
-#else
-        lift
-#endif
-        (mapM (decodeBS codec) tk) >>= yield
+    when yieldToken $ lift (mapM (decodeBS codec) tk) >>= yield
 
 #if MIN_VERSION_conduit(1, 0, 0)
-    streamFromPipe $ unConduitM $ C.decode codec =$= tokenStream
+    C.decode codec =$= tokenStream
 #else
     C.decode codec `pipeL` tokenStream
 #endif
