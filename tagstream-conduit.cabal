@@ -37,10 +37,10 @@ Library
                      , text
                      , case-insensitive
                      , transformers >= 0.3
-                     , conduit >= 0.5 && < 0.6
+                     , conduit >= 0.5 && < 1.1
                      , attoparsec
                      , blaze-builder
-                     , blaze-builder-conduit >= 0.5 && < 0.6
+                     , blaze-builder-conduit >= 0.5 && < 1.1
                      , attoparsec-conduit >= 0.5
 
 test-suite test
