@@ -1,5 +1,5 @@
 name:            xml-conduit
-version:         1.1.0
+version:         1.1.0.2
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michaels@suite-sol.com>, Aristid Breitkreuz <aristidb@googlemail.com>
@@ -43,8 +43,8 @@ library
                    , data-default
                    , system-filepath           >= 0.4      && < 0.5
                    , monad-control             >= 0.3      && < 0.4
-                   , blaze-markup              >= 0.5      && < 0.6
-                   , blaze-html                >= 0.5      && < 0.6
+                   , blaze-markup              >= 0.5
+                   , blaze-html                >= 0.5
     exposed-modules: Text.XML.Stream.Parse
                      Text.XML.Stream.Render
                      Text.XML.Unresolved
