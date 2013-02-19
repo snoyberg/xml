@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
 -- | DOM-based XML parsing and rendering.
 --
 -- In this module, attribute values and content nodes can contain either raw
