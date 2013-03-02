@@ -116,6 +116,7 @@ import qualified Data.Map as Map
 import Data.Conduit
 import qualified Data.Conduit.Text as CT
 import qualified Data.Conduit.List as CL
+import qualified Data.Conduit.Internal as CI
 import Control.Monad (ap, liftM)
 import qualified Data.Text as TS
 import Data.List (foldl')
@@ -521,8 +522,8 @@ content = do
 tag :: MonadThrow m
     => (Name -> Maybe a)
     -> (a -> AttrParser b)
-    -> (b -> Consumer Event m c)
-    -> Consumer Event m (Maybe c)
+    -> (b -> CI.ConduitM Event o m c)
+    -> CI.ConduitM Event o m (Maybe c)
 tag checkName attrParser f = do
     x <- dropWS
     case x of
@@ -571,8 +572,8 @@ tag checkName attrParser f = do
 tagPredicate :: MonadThrow m
              => (Name -> Bool)
              -> AttrParser a
-             -> (a -> Consumer Event m b)
-             -> Consumer Event m (Maybe b)
+             -> (a -> CI.ConduitM Event o m b)
+             -> CI.ConduitM Event o m (Maybe b)
 tagPredicate p attrParser = tag (\x -> if p x then Just () else Nothing) (const attrParser)
 
 -- | A simplified version of 'tag' which matches for specific tag names instead
@@ -582,15 +583,15 @@ tagPredicate p attrParser = tag (\x -> if p x then Just () else Nothing) (const 
 tagName :: MonadThrow m
      => Name
      -> AttrParser a
-     -> (a -> Consumer Event m b)
-     -> Consumer Event m (Maybe b)
+     -> (a -> CI.ConduitM Event o m b)
+     -> CI.ConduitM Event o m (Maybe b)
 tagName name = tagPredicate (== name)
 
 -- | A further simplified tag parser, which requires that no attributes exist.
 tagNoAttr :: MonadThrow m
           => Name
-          -> Consumer Event m a
-          -> Consumer Event m (Maybe a)
+          -> CI.ConduitM Event o m a
+          -> CI.ConduitM Event o m (Maybe a)
 tagNoAttr name f = tagName name (return ()) $ const f
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
@@ -624,8 +625,8 @@ choose (i:is) = do
 -- want to finally force something to happen.
 force :: MonadThrow m
       => String -- ^ Error message
-      -> Consumer Event m (Maybe a)
-      -> Consumer Event m a
+      -> CI.ConduitM Event o m (Maybe a)
+      -> CI.ConduitM Event o m a
 force msg i = do
     x <- i
     case x of
