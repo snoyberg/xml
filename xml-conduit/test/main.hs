@@ -17,11 +17,13 @@ import           Text.XML.Stream.Parse        (def)
 import Text.XML.Cursor ((&/), (&//), (&.//), ($|), ($/), ($//), ($.//))
 import Data.Text(Text)
 import Control.Monad
+import Control.Monad.Trans.Class (lift)
 import qualified Data.Text as T
 import qualified Data.Set as Set
 import Control.Exception (toException)
 
 import qualified Data.Conduit as C
+import qualified Data.Conduit.List as CL
 import qualified Data.Map as Map
 import Text.Blaze (toMarkup)
 import Text.Blaze.Renderer.String (renderMarkup)
@@ -38,6 +40,7 @@ main = hspec $ do
         it "ignores the BOM" parseIgnoreBOM
         it "strips duplicated attributes" stripDuplicateAttributes
         it "displays comments" testRenderComments
+        it "conduit parser" testConduitParser
     describe "XML Cursors" $ do
         it "has correct parent" cursorParent
         it "has correct ancestor" cursorAncestor
@@ -189,6 +192,27 @@ testOrE = C.runResourceT $ P.parseLBS def input C.$$ do
         , "<success/>"
         , "</hello>"
         ]
+
+testConduitParser :: Assertion
+testConduitParser = C.runResourceT $ do
+    x <- P.parseLBS def input
+        C.$= (P.force "need hello" $ P.tagNoAttr "hello" f)
+        C.$$ CL.consume
+    liftIO $ x @?= [1, 1, 1]
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<item/>"
+        , "<item/>"
+        , "<item/>"
+        , "</hello>"
+        ]
+    f :: C.MonadThrow m => C.Conduit Event m Int
+    f = do
+        ma <- P.tagNoAttr "item" (return 1)
+        maybe (return ()) (\a -> C.yield a >> f) ma
 
 
 name :: [Cu.Cursor] -> [Text]
