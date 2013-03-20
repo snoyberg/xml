@@ -36,7 +36,7 @@ Library
                      , bytestring
                      , text
                      , case-insensitive
-                     , transformers >= 0.3
+                     , transformers >= 0.2
                      , conduit >= 0.5 && < 1.1
                      , attoparsec
                      , blaze-builder
