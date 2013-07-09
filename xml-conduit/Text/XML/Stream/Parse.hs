@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE ImpredicativeTypes #-}
+{-# LANGUAGE BangPatterns #-}
 -- | This module provides both a native Haskell solution for parsing XML
 -- documents into a stream of events, and a set of parser combinators for
 -- dealing with a stream of events.
@@ -277,7 +278,7 @@ toEventC :: Monad m => Conduit (PositionRange, Token) m EventPos
 toEventC =
     go [] []
   where
-    go es levels =
+    go !es !levels =
         await >>= maybe (return ()) push
       where
         push (position, token) =
