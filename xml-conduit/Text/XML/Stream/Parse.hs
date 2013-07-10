@@ -153,11 +153,10 @@ tokenToEvent es n (TokenBeginElement name as isClosed _) =
         | Just t <- lookup e es = ContentText t
     resolve c = c
     n' = if isClosed then n else l' : n
-    fixAttName level (name', val) = (tnameToName True level name', val)
-    begin = EventBeginElement (tnameToName False l' name)
-          $ map (fixAttName l')
-          $ as' []
-    end = EventEndElement $ tnameToName False l' name
+    fixAttName (name', val) = (tnameToName True l' name', val)
+    elementName = tnameToName False l' name
+    begin = EventBeginElement elementName $ map fixAttName $ as' []
+    end = EventEndElement elementName
 tokenToEvent es n (TokenEndElement name) =
     (es, n', [EventEndElement $ tnameToName False l name])
   where
@@ -302,10 +301,10 @@ parseToken :: DecodeEntities -> Parser Token
 parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False False
   where
     parseLt =
-        (char '?' >> parseInstr) <|>
-        (char '!' >> (parseComment <|> parseCdata <|> parseDoctype)) <|>
+        parseBegin <|>
         (char '/' >> parseEnd) <|>
-        parseBegin
+        (char '!' >> (parseComment <|> parseCdata <|> parseDoctype)) <|>
+        (char '?' >> parseInstr)
     parseInstr = do
         name <- parseIdent
         if name == "xml"
@@ -405,21 +404,15 @@ parseAttribute de = do
     val <- squoted <|> dquoted
     return (key, val)
   where
-    squoted = do
-        char' '\''
-        manyTill (parseContent de False True) (char '\'')
-    dquoted = do
-        char' '"'
-        manyTill (parseContent de True False) (char '"')
+    squoted = char '\'' *> manyTill (parseContent de False True) (char '\'')
+    dquoted = char  '"' *> manyTill (parseContent de True False) (char  '"')
 
 parseName :: Parser TName
-parseName = do
-    i1 <- parseIdent
-    mi2 <- (char ':' >> fmap Just parseIdent) <|> return Nothing
-    return $
-        case mi2 of
-            Nothing -> TName Nothing i1
-            Just i2 -> TName (Just i1) i2
+parseName =
+  name <$> parseIdent <*> A.optional (char ':' >> parseIdent)
+  where
+    name i1 Nothing = TName Nothing i1
+    name i1 (Just i2) = TName (Just i1) i2
 
 parseIdent :: Parser Text
 parseIdent =
@@ -434,7 +427,7 @@ parseIdent =
     valid '"' = False
     valid '\'' = False
     valid '/' = False
-    valid c  = not $ isSpace c
+    valid c  = not $ isXMLSpace c
 
 parseContent :: DecodeEntities
              -> Bool -- break on double quote
@@ -458,7 +451,20 @@ parseContent de breakDouble breakSingle =
     valid _  = True
 
 skipSpace :: Parser ()
-skipSpace = skipWhile isSpace
+skipSpace = skipWhile isXMLSpace
+
+-- | Determines whether a character is an XML white space. The list of
+-- white spaces is given by
+--
+-- >  S ::= (#x20 | #x9 | #xD | #xA)+
+--
+-- in <http://www.w3.org/TR/2008/REC-xml-20081126/#sec-common-syn>.
+isXMLSpace :: Char -> Bool
+isXMLSpace ' ' = True
+isXMLSpace '\t' = True
+isXMLSpace '\r' = True
+isXMLSpace '\n' = True
+isXMLSpace _ = False
 
 newline :: Parser ()
 newline = ((char '\r' >> char '\n') <|> char '\n') >> return ()
