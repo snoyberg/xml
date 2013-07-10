@@ -199,9 +199,8 @@ detectUtf =
     getEncoding front bs'
         | S.length bs < 4 =
             Left (bs `S.append`)
-        | otherwise = do
-            let decode = CT.decode codec
-             in Right (bsOut, decode)
+        | otherwise =
+            Right (bsOut, CT.decode codec)
       where
         bs = front bs'
         bsOut = S.append (S.drop toDrop x) y
@@ -281,7 +280,7 @@ toEventC =
         await >>= maybe (return ()) push
       where
         push (position, token) =
-            mapM_ (yield . ((,) (Just position))) events >> go es' levels'
+            mapM_ (yield . (,) (Just position)) events >> go es' levels'
           where
             (es', levels', events) = tokenToEvent es levels token
 
