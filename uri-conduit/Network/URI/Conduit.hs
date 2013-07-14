@@ -39,6 +39,7 @@ import Control.Failure (Failure (..))
 import Control.Exception (Exception)
 import Data.Typeable (Typeable)
 import Control.Monad.Trans.Class (lift)
+import Control.DeepSeq (NFData(rnf))
 
 data URI = URI
     { uriScheme :: Text
@@ -49,12 +50,19 @@ data URI = URI
     }
     deriving (Show, Eq, Ord)
 
+instance NFData URI where
+  rnf (URI a b c d e) = rnf a `seq` rnf b `seq` rnf c `seq`
+                        rnf d `seq` rnf e `seq` ()
+
 data URIAuth = URIAuth
     { uriUserInfo :: Text
     , uriRegName :: Text
     , uriPort :: Text
     }
     deriving (Show, Eq, Ord)
+
+instance NFData URIAuth where
+  rnf (URIAuth a b c) = rnf a `seq` rnf b `seq` rnf c `seq` ()
 
 parseURI :: Failure URIException m => Text -> m URI
 parseURI t = maybe (failure $ InvalidURI t) (return . fromNetworkURI) $ N.parseURI $ unpack t
