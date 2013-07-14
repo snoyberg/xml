@@ -25,3 +25,4 @@ Library
                      , monad-control            >= 0.3        && < 0.4
                      , system-filepath          >= 0.4.3      && < 0.5
                      , system-fileio            >= 0.3.3      && < 0.4
+                     , deepseq                  >= 1.1.0.0
