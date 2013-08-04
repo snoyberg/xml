@@ -35,7 +35,7 @@ library
                    , bytestring                >= 0.9
                    , text                      >= 0.7      && < 0.12
                    , containers                >= 0.2
-                   , xml-types                 >= 0.3.3    && < 0.4
+                   , xml-types                 >= 0.3.4    && < 0.4
                    , attoparsec                >= 0.10
                    , blaze-builder             >= 0.2      && < 0.4
                    , transformers              >= 0.2      && < 0.4
@@ -45,6 +45,7 @@ library
                    , monad-control             >= 0.3      && < 0.4
                    , blaze-markup              >= 0.5
                    , blaze-html                >= 0.5
+                   , deepseq                   >= 1.1.0.0
     exposed-modules: Text.XML.Stream.Parse
                      Text.XML.Stream.Render
                      Text.XML.Unresolved
