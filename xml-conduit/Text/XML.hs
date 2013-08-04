@@ -81,6 +81,7 @@ import Data.XML.Types
     )
 import Data.Typeable (Typeable)
 import Data.Data (Data)
+import Control.DeepSeq(NFData(rnf))
 import Data.Text (Text)
 import qualified Text.XML.Stream.Parse as P
 import qualified Text.XML.Unresolved as D
@@ -125,6 +126,9 @@ data Document = Document
     }
   deriving (Show, Eq, Typeable, Data)
 
+instance NFData Document where
+  rnf (Document a b c) = rnf a `seq` rnf b `seq` rnf c `seq` ()
+
 data Node
     = NodeElement Element
     | NodeInstruction Instruction
@@ -132,12 +136,21 @@ data Node
     | NodeComment Text
   deriving (Show, Eq, Ord, Typeable, Data)
 
+instance NFData Node where
+  rnf (NodeElement e) = rnf e `seq` ()
+  rnf (NodeInstruction i) = rnf i `seq` ()
+  rnf (NodeContent t) = rnf t `seq` ()
+  rnf (NodeComment t) = rnf t `seq` ()
+
 data Element = Element
     { elementName :: Name
     , elementAttributes :: Map.Map Name Text
     , elementNodes :: [Node]
     }
   deriving (Show, Eq, Ord, Typeable, Data)
+
+instance NFData Element where
+  rnf (Element a b c) = rnf a `seq` rnf b `seq` rnf c `seq` ()
 
 {-
 readFile :: FilePath -> ParseSettings -> IO (Either SomeException Document)
