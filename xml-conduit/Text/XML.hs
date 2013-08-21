@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -126,8 +127,10 @@ data Document = Document
     }
   deriving (Show, Eq, Typeable, Data)
 
+#if MIN_VERSION_containers(0, 4, 2)
 instance NFData Document where
   rnf (Document a b c) = rnf a `seq` rnf b `seq` rnf c `seq` ()
+#endif
 
 data Node
     = NodeElement Element
@@ -136,11 +139,13 @@ data Node
     | NodeComment Text
   deriving (Show, Eq, Ord, Typeable, Data)
 
+#if MIN_VERSION_containers(0, 4, 2)
 instance NFData Node where
   rnf (NodeElement e) = rnf e `seq` ()
   rnf (NodeInstruction i) = rnf i `seq` ()
   rnf (NodeContent t) = rnf t `seq` ()
   rnf (NodeComment t) = rnf t `seq` ()
+#endif
 
 data Element = Element
     { elementName :: Name
@@ -149,8 +154,10 @@ data Element = Element
     }
   deriving (Show, Eq, Ord, Typeable, Data)
 
+#if MIN_VERSION_containers(0, 4, 2)
 instance NFData Element where
   rnf (Element a b c) = rnf a `seq` rnf b `seq` rnf c `seq` ()
+#endif
 
 {-
 readFile :: FilePath -> ParseSettings -> IO (Either SomeException Document)
