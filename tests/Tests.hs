@@ -201,6 +201,10 @@ testcases =
     , [TagOpen "script" [] False, Text "// '\r\n", TagClose "script"]
     )
   -- }}}
+  -- issue 10 https://github.com/yihuang/tagstream-conduit/issues/10
+  , ( "<foo>  hello</foo>"
+    , [TagOpen "foo" [] False, Text "  hello", TagClose "foo"]
+    )
   ]
 
 testChar :: Gen Char

@@ -110,7 +110,6 @@ tag = do
         TagTypeNormal -> do
             name <- takeTill (in3 ('<','>','/') ||. isSpace)
             (as, close) <- attrs
-            skipSpace
             return $ TagOpen name as close
 
 {--
