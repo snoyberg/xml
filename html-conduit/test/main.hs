@@ -36,6 +36,9 @@ main = hspec $ do
         it "multiple root elements" $
             X.parseLBS_ X.def "<html><foo><bar>baz&amp;foobar;</bar></foo><foo/></html>" @=?
             H.parseLBS        "<foo><bar>baz&foobar;</foo><foo>"
+        it "doesn't strip whitespace" $
+            X.parseLBS_ X.def "<foo>  hello</foo>" @=?
+            H.parseLBS        "<foo>  hello</foo>"
     describe "HTML parsing" $ do
         it "XHTML" $
             let html = "<html><head><title>foo</title></head><body><p>Hello World</p></body></html>"
