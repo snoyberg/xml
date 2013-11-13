@@ -300,10 +300,10 @@ parseToken :: DecodeEntities -> Parser Token
 parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False False
   where
     parseLt =
-        parseBegin <|>
-        (char '/' >> parseEnd) <|>
+        (char '?' >> parseInstr) <|>
         (char '!' >> (parseComment <|> parseCdata <|> parseDoctype)) <|>
-        (char '?' >> parseInstr)
+        parseBegin <|>
+        (char '/' >> parseEnd)
     parseInstr = do
         name <- parseIdent
         if name == "xml"
