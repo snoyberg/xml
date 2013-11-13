@@ -84,6 +84,7 @@ main = hspec $ do
         it "works" caseAttrReorder
     describe "ordering attributes explicitly" $ do
         it "works" caseOrderAttrs
+    it "parsing CDATA" caseParseCdata
 
 documentParseRender :: IO ()
 documentParseRender =
@@ -520,3 +521,13 @@ caseOrderAttrs = do
                     ])
                 []
     lbs @=? S.concat (L.toChunks $ Res.renderLBS rs doc)
+
+caseParseCdata :: Assertion
+caseParseCdata = do
+    let lbs = "<a><![CDATA[www.google.com]]></a>"
+        doc = Res.Document (Res.Prologue [] Nothing [])
+                (Res.Element "a" Map.empty
+                    [ Res.NodeContent "www.google.com"
+                    ])
+                []
+    Res.parseLBS_ def lbs @?= doc
