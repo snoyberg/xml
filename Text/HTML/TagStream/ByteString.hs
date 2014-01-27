@@ -3,18 +3,22 @@
 {-# LANGUAGE TypeFamilies #-}
 module Text.HTML.TagStream.ByteString where
 
-import Control.Applicative
-import Control.Monad (unless)
-
-import Data.Monoid (mconcat)
-import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as S
-import Data.Attoparsec.Char8
-import Data.Conduit
-
 import qualified Blaze.ByteString.Builder as B
-import Text.HTML.TagStream.Types
-import Text.HTML.TagStream.Utils (splitAccum)
+import           Control.Applicative
+import           Control.Monad (unless)
+import           Data.Attoparsec.Char8
+import           Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as S
+import           Data.Conduit
+import qualified Data.Conduit.List as CL
+import           Data.Default
+import           Data.Monoid
+import           Data.Text.Encoding
+import qualified Text.XML.Stream.Parse as XML
+
+import           Text.HTML.TagStream.Entities
+import           Text.HTML.TagStream.Types
+import           Text.HTML.TagStream.Utils (splitAccum)
 
 type Token = Token' ByteString
 type Attr = Attr' ByteString
@@ -123,6 +127,23 @@ incomplete = Incomplete . S.cons '<' <$> takeByteString
  -}
 text :: Parser Token
 text = Text <$> atLeast 1 (takeTill (=='<'))
+
+-- | Decode the HTML entities e.g. @&amp;@ in some text into @&@.
+decodeEntities :: ByteString -> ByteString
+decodeEntities =
+  makeEntityDecoder
+    Dec { decToS     = B.toByteString
+        , decBreak   = S.break
+        , decBuilder = B.fromByteString
+        , decDrop    = S.drop
+        , decEntity  = decodeEntity
+        , decUncons  = S.uncons }
+  where decodeEntity entity =
+          S.concat
+          $ map encodeUtf8
+          $ CL.sourceList ["&",entity,";"]
+          $= XML.parseBytes def { XML.psDecodeEntities = XML.decodeHtmlEntities }
+          $$ XML.content
 
 token :: Parser Token
 token = char '<' *> (tag <|> incomplete)

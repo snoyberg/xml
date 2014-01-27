@@ -3,36 +3,40 @@
 {-# LANGUAGE TypeFamilies #-}
 module Text.HTML.TagStream.Text where
 
-import Prelude hiding (mapM)
-import Control.Applicative
-import Control.Monad (unless, when, liftM)
-import Control.Monad.Trans.Class (lift)
+import           Control.Applicative
+import           Control.Monad (unless, when, liftM)
+import           Control.Monad.Trans.Class (lift)
+import           Data.Char
+import qualified Data.Conduit.List as CL
+import           Data.Default
+import           Prelude hiding (mapM)
 
-import Data.Traversable (mapM)
-import Data.Maybe (fromMaybe)
-import Data.Monoid (mconcat)
-import Data.Char (isSpace)
-import Data.ByteString (ByteString)
-import Data.Text (Text)
+import qualified Data.Attoparsec.ByteString.Char8 as S
+import           Data.Attoparsec.Text
+import           Data.ByteString (ByteString)
+import qualified Data.CaseInsensitive as CI
+import           Data.Conduit
+import           Data.Maybe (fromMaybe)
+import           Data.Monoid (mconcat)
+import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as L
 import qualified Data.Text.Lazy.Builder as B
-import qualified Data.CaseInsensitive as CI
-import qualified Data.Attoparsec.ByteString.Char8 as S
-import Data.Attoparsec.Text
-import Data.Conduit
+import           Data.Traversable (mapM)
+import qualified Text.XML.Stream.Parse as XML
 #if MIN_VERSION_conduit(1, 0, 0)
-import Data.Conduit.Internal (unConduitM)
+import           Data.Conduit.Internal (unConduitM)
 #else
-import Data.Conduit.Internal (pipeL)
+import           Data.Conduit.Internal (pipeL)
 #endif
 import qualified Data.Conduit.List as C
 import qualified Data.Conduit.Attoparsec as C
 import qualified Data.Conduit.Text as C
 
 import qualified Text.HTML.TagStream.ByteString as S
-import Text.HTML.TagStream.Types
-import Text.HTML.TagStream.Utils (splitAccum)
+import           Text.HTML.TagStream.Entities
+import           Text.HTML.TagStream.Types
+import           Text.HTML.TagStream.Utils (splitAccum)
 
 type Token = Token' Text
 type Attr = Attr' Text
@@ -141,6 +145,23 @@ incomplete = Incomplete . T.cons '<' <$> takeText
  -}
 text :: Parser Token
 text = Text <$> atLeast 1 (takeTill (=='<'))
+
+-- | Decode the HTML entities e.g. @&amp;@ in some text into @&@.
+decodeEntities :: Text -> Text
+decodeEntities =
+  makeEntityDecoder
+    Dec { decToS     = L.toStrict . B.toLazyText
+        , decBreak   = T.break
+        , decBuilder = B.fromText
+        , decDrop    = T.drop
+        , decEntity  = decodeEntity
+        , decUncons  = T.uncons }
+  where decodeEntity entity =
+          T.concat
+          $ CL.sourceList ["&",entity,";"]
+          $= XML.parseText def { XML.psDecodeEntities = XML.decodeHtmlEntities }
+          $= CL.map snd
+          $$ XML.content
 
 token :: Parser Token
 token = char '<' *> (tag <|> incomplete)
