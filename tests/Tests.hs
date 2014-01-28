@@ -65,14 +65,14 @@ onePassTests = mapM_ one testcases
   where
     one (T.encodeUtf8 -> str, map encodeTokenUtf8 -> tokens) =
       it (S.unpack str) $ do
-        result <- combineText S.decodeEntities <$> assertDecodeBS str
+        result <- combineText <$> assertDecodeBS str
         assertEqual "one-pass parse result incorrect" tokens result
 
 onePassTestsText :: Spec
 onePassTestsText = mapM_ one testcases
   where
     one (str, tokens) = it (T.unpack str) $ do
-        result <- combineText T.decodeEntities <$> assertDecodeText str
+        result <- combineText <$> assertDecodeText str
         assertEqual "one-pass parse result incorrect" tokens result
 
 streamlineTests :: Spec
@@ -84,7 +84,7 @@ streamlineTests = mapM_ one testcases
       it (S.unpack str) $ do
         -- streamline parse result don't contain the trailing Incomplete token.
         let tokens' = reverse . dropWhile isIncomplete  . reverse $ tokens
-        result <- combineText S.decodeEntities <$> C.runResourceT (
+        result <- combineText <$> C.runResourceT (
                       CL.sourceList (map S.singleton (S.unpack str))
                       C.$= S.tokenStream
                       C.$$ CL.consume )
@@ -99,7 +99,7 @@ streamlineTestsText = mapM_ one testcases
       it (S.unpack str) $ do
         -- streamline parse result don't contain the trailing Incomplete token.
         let tokens' = reverse . dropWhile isIncomplete  . reverse $ tokens
-        result <- combineText T.decodeEntities <$> C.runResourceT (
+        result <- combineText <$> C.runResourceT (
                       CL.sourceList (map S.singleton (S.unpack str))
                       C.$= T.tokenStreamBS
                       C.$$ CL.consume )
@@ -205,8 +205,6 @@ testcases =
   , ( "<foo>  hello</foo>"
     , [TagOpen "foo" [] False, Text "  hello", TagClose "foo"]
     )
-  , ( "<p>foo&quot;</p>"
-    , [TagOpen "p" [] False,Text "foo\"",TagClose "p"])
   , ( "<a>&foo bar &quot;mu &lt;zot&gt; &#60; &#97; &#; &#a; &hello;</a>"
     , [TagOpen "a" [] False, Text " bar \"mu <zot> < a   ",TagClose "a"])
   ]
@@ -242,10 +240,8 @@ assertDecodeText s = do
     let (Right tokens) = result
     return tokens
 
-combineText :: Monoid s => (s -> s) -> [Token' s] -> [Token' s]
-combineText decode = map (onText decode) . go
+combineText :: Monoid s => [Token' s] -> [Token' s]
+combineText = go
   where go [] = []
         go (Text t1 : Text t2 : xs) = go $ Text (mappend t1 t2) : xs
         go (x:xs) = x : go xs
-        onText f (Text t) = Text (f t)
-        onText _ x = x

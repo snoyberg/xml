@@ -12,6 +12,7 @@ import qualified Data.ByteString.Char8 as S
 import           Data.Conduit
 import qualified Data.Conduit.List as CL
 import           Data.Default
+import           Data.Functor.Identity (runIdentity)
 import           Data.Monoid
 import           Data.Text.Encoding
 import qualified Text.XML.Stream.Parse as XML
@@ -129,9 +130,9 @@ text :: Parser Token
 text = Text <$> atLeast 1 (takeTill (=='<'))
 
 -- | Decode the HTML entities e.g. @&amp;@ in some text into @&@.
-decodeEntities :: ByteString -> ByteString
-decodeEntities =
-  makeEntityDecoder
+decodeEntitiesBS :: Monad m => Conduit Token m Token
+decodeEntitiesBS =
+  decodeEntities
     Dec { decToS     = B.toByteString
         , decBreak   = S.break
         , decBuilder = B.fromByteString
@@ -174,7 +175,10 @@ html = tokens <|> pure []
             _ -> (t:) <$> html
 
 decode :: ByteString -> Either String [Token]
-decode = parseOnly html
+decode = fmap decodeEntitiesBS' . parseOnly html
+  where
+    decodeEntitiesBS' tokens = runIdentity $ mapM_ yield tokens $$ decodeEntitiesBS =$ CL.consume
+
 
 {--
  - Utils {{{
@@ -233,7 +237,7 @@ tokenStream :: Monad m
             => GInfConduit ByteString m Token
 #endif
 tokenStream =
-    loop S.empty
+    loop S.empty =$= decodeEntitiesBS
   where
 #if MIN_VERSION_conduit(1, 0, 0)
     loop accum = await >>= maybe (close accum ()) (push accum)

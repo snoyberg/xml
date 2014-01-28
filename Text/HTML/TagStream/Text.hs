@@ -16,6 +16,7 @@ import           Data.Attoparsec.Text
 import           Data.ByteString (ByteString)
 import qualified Data.CaseInsensitive as CI
 import           Data.Conduit
+import           Data.Functor.Identity (runIdentity)
 import           Data.Maybe (fromMaybe)
 import           Data.Monoid (mconcat)
 import           Data.Text (Text)
@@ -147,9 +148,9 @@ text :: Parser Token
 text = Text <$> atLeast 1 (takeTill (=='<'))
 
 -- | Decode the HTML entities e.g. @&amp;@ in some text into @&@.
-decodeEntities :: Text -> Text
-decodeEntities =
-  makeEntityDecoder
+decodeEntitiesText :: Monad m => Conduit Token m Token
+decodeEntitiesText =
+  decodeEntities
     Dec { decToS     = L.toStrict . B.toLazyText
         , decBreak   = T.break
         , decBuilder = B.fromText
@@ -192,7 +193,9 @@ html = tokens <|> pure []
             _ -> (t:) <$> html
 
 decode :: Text -> Either String [Token]
-decode = parseOnly html
+decode = fmap decodeEntitiesText' . parseOnly html
+  where
+    decodeEntitiesText' tokens = runIdentity $ mapM_ yield tokens $$ decodeEntitiesText =$ CL.consume
 
 {--
  - Utils {{{
@@ -251,7 +254,7 @@ tokenStream :: Monad m
             => GInfConduit Text m Token
 #endif
 tokenStream =
-    loop T.empty
+    loop T.empty =$= decodeEntitiesText
   where
 #if MIN_VERSION_conduit(1, 0, 0)
     loop accum = await >>= maybe (close accum ()) (push accum)
