@@ -21,7 +21,11 @@ import qualified Data.Conduit.List as CL
 import Data.Maybe (fromMaybe, isJust)
 import Control.Arrow (first)
 
-decodeEntities' :: (Monad m,Monoid string,Eq string,IsString string,Monoid builder,Show string)
+decodeEntities' :: (Monad m
+                   ,Monoid string
+                   ,IsString string
+                   ,Monoid builder
+                   ,Eq string)
                 => Dec builder string
                 -> Conduit string m string
 decodeEntities' dec =
@@ -36,7 +40,11 @@ decodeEntities' dec =
             then loop (mappend remainder)
             else yield remainder
 
-decodeEntities :: (Monad m,Monoid string,Eq string,IsString string,Monoid builder,Show string)
+decodeEntities :: (Monad m
+                  ,Monoid builder
+                  ,Monoid string
+                  ,IsString string
+                  ,Eq string)
                => Dec builder string
                -> Conduit (Token' string) m (Token' string)
 decodeEntities dec =
@@ -69,7 +77,7 @@ data Dec builder string = Dec
   }
 
 -- | Decode the entities in a string type with a decoder.
-makeEntityDecoder :: (Eq string,IsString string,Monoid builder,Show string)
+makeEntityDecoder :: (IsString string,Monoid builder,Eq string)
                   => Dec builder string -> string -> (string, string)
 makeEntityDecoder Dec{..} = first decToS . go
   where
