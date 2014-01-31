@@ -16,10 +16,29 @@ import Data.Monoid
 import Data.String
 import Data.Conduit
 import Text.HTML.TagStream.Types
-import qualified Data.Text as T
+
 import qualified Data.Conduit.List as CL
 import Data.Maybe (fromMaybe, isJust)
 import Control.Arrow (first)
+
+-- | A conduit to decode entities from a stream of tokens into a new stream of tokens.
+decodeEntities :: (Monad m
+                  ,Monoid builder
+                  ,Monoid string
+                  ,IsString string
+                  ,Eq string)
+               => Dec builder string
+               -> Conduit (Token' string) m (Token' string)
+decodeEntities dec =
+    start
+  where
+    start = await >>= maybe (return ()) (\token -> start' token >> start)
+    start' (Text t) = (yield t >> yieldWhileText) =$= decodeEntities' dec =$= CL.mapMaybe go
+    start' token = yield token
+
+    go t
+        | t == ""   = Nothing
+        | otherwise = Just (Text t)
 
 decodeEntities' :: (Monad m
                    ,Monoid string
@@ -40,24 +59,7 @@ decodeEntities' dec =
             then loop (mappend remainder)
             else yield remainder
 
-decodeEntities :: (Monad m
-                  ,Monoid builder
-                  ,Monoid string
-                  ,IsString string
-                  ,Eq string)
-               => Dec builder string
-               -> Conduit (Token' string) m (Token' string)
-decodeEntities dec =
-    start
-  where
-    start = await >>= maybe (return ()) (\token -> start' token >> start)
-    start' (Text t) = (yield t >> yieldWhileText) =$= decodeEntities' dec =$= CL.mapMaybe go
-    start' token = yield token
-
-    go t
-        | t == ""   = Nothing
-        | otherwise = Just (Text t)
-
+-- | Yield contiguous text tokens as strings.
 yieldWhileText :: Monad m => Conduit (Token' string) m string
 yieldWhileText =
     loop
@@ -72,12 +74,12 @@ data Dec builder string = Dec
   , decBreak   :: (Char -> Bool) -> string -> (string,string)
   , decBuilder :: string -> builder
   , decDrop    :: Int -> string -> string
-  , decEntity  :: string -> string
+  , decEntity  :: string -> Maybe string
   , decUncons  :: string -> Maybe (Char,string)
   }
 
 -- | Decode the entities in a string type with a decoder.
-makeEntityDecoder :: (IsString string,Monoid builder,Eq string)
+makeEntityDecoder :: (IsString string,Monoid builder,Eq string,Monoid string)
                   => Dec builder string -> string -> (string, string)
 makeEntityDecoder Dec{..} = first decToS . go
   where
@@ -87,15 +89,21 @@ makeEntityDecoder Dec{..} = first decToS . go
         (before,restPlusAmp@(decDrop 1 -> rest)) ->
           case decBreak (not . (\c -> isNameChar c || c == '#')) rest of
             (_,"") -> (decBuilder before, restPlusAmp)
-            (entity,after) ->
-                let before1 = decBuilder before
-                    decoded = decBuilder (decEntity entity)
-                    (before2, after') =
-                        case decUncons after of
-                            Just (';',validAfter) -> first (decoded <>) (go validAfter)
-                            Just (_invalid,_rest) -> first (decoded <>) (go after)
-                            Nothing -> (mempty, s)
-                 in (before1 <> before2, after')
+            (entity,after) -> (before1 <> before2, after')
+              where
+                before1 = decBuilder before
+                (before2, after') =
+                  case mdecoded of
+                    Nothing -> first ((decBuilder "&" <> decBuilder entity) <>) (go after)
+                    Just (decBuilder -> decoded) ->
+                      case decUncons after of
+                        Just (';',validAfter) -> first (decoded <>) (go validAfter)
+                        Just (_invalid,_rest) -> first (decoded <>) (go after)
+                        Nothing -> (mempty, s)
+                mdecoded =
+                  if entity == mempty
+                     then Nothing
+                     else decEntity entity
 
 -- | Is the character a valid Name starter?
 isNameStart :: Char -> Bool

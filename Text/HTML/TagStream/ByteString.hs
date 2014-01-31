@@ -140,8 +140,7 @@ decodeEntitiesBS =
         , decEntity  = decodeEntity
         , decUncons  = S.uncons }
   where decodeEntity entity =
-          S.concat
-          $ map encodeUtf8
+          fmap encodeUtf8
           $ CL.sourceList ["&",entity,";"]
           $= XML.parseBytes def { XML.psDecodeEntities = XML.decodeHtmlEntities }
           $$ XML.content
