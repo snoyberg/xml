@@ -26,7 +26,6 @@ import qualified Data.Text.Lazy.Builder as B
 import           Data.Traversable (mapM)
 import qualified Text.XML.Stream.Parse as XML
 #if MIN_VERSION_conduit(1, 0, 0)
-import           Data.Conduit.Internal (unConduitM)
 #else
 import           Data.Conduit.Internal (pipeL)
 #endif
