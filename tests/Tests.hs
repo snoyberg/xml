@@ -2,23 +2,23 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Main where
 
-import Control.Applicative
+import           Control.Applicative
 
-import Data.Monoid (Monoid(..))
-import Data.ByteString (ByteString)
+import           Data.Monoid (Monoid(..),(<>))
+import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S
-import Data.Text (Text)
+import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 
-import Test.Hspec
-import Test.Hspec.QuickCheck (prop)
-import Test.HUnit hiding (Test)
-import Test.QuickCheck
+import           Test.Hspec
+import           Test.Hspec.QuickCheck (prop)
+import           Test.HUnit hiding (Test)
+import           Test.QuickCheck
 
-import Text.HTML.TagStream
+import           Text.HTML.TagStream
 import qualified Text.HTML.TagStream.ByteString as S
 import qualified Text.HTML.TagStream.Text as T
 
@@ -205,7 +205,28 @@ testcases =
   , ( "<foo>  hello</foo>"
     , [TagOpen "foo" [] False, Text "  hello", TagClose "foo"]
     )
+
+  -- Text entity decoding
+  , text "" ""
+  , text "&" "&"
+  , text "& hello" "& hello"
+  , text "&amp" "&amp"
+  , text "&amp;" "&"
+  , text "&quot;" "\""
+  , text "&unknown;" "&unknown;"
+  , text "a &unknown b" "a &unknown b"
+  , text "\"&unknown\"" "\"&unknown\""
+  , text "foo &bar; mu" "foo &bar; mu"
+  , text "&foo; &bar &quot;mu&lt; zot &hello;" "&foo; &bar \"mu< zot &hello;"
+  , text "&lt;p&gt;" "<p>"
+  , text "&#60;" "<"
+  , text "a&#97;a" "aaa"
+  , text "foo &" "foo &"
+  , text "foo &amp" "foo &amp"
+  , text "foo &amp;" "foo &"
   ]
+  where text b a = ("<p>" <> b <> "</p>"
+                   ,concat [[TagOpen "p" [] False],[Text a | not (T.null a)],[TagClose "p"]])
 
 testChar :: Gen Char
 testChar = growingElements "<>/=\"' \t\r\nabcde\\"
@@ -239,6 +260,7 @@ assertDecodeText s = do
     return tokens
 
 combineText :: Monoid s => [Token' s] -> [Token' s]
-combineText [] = []
-combineText (Text t1 : Text t2 : xs) = combineText $ Text (mappend t1 t2) : xs
-combineText (x:xs) = x : combineText xs
+combineText = go
+  where go [] = []
+        go (Text t1 : Text t2 : xs) = go $ Text (mappend t1 t2) : xs
+        go (x:xs) = x : go xs

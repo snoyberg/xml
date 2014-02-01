@@ -3,18 +3,23 @@
 {-# LANGUAGE TypeFamilies #-}
 module Text.HTML.TagStream.ByteString where
 
-import Control.Applicative
-import Control.Monad (unless)
-
-import Data.Monoid (mconcat)
-import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as S
-import Data.Attoparsec.Char8
-import Data.Conduit
-
 import qualified Blaze.ByteString.Builder as B
-import Text.HTML.TagStream.Types
-import Text.HTML.TagStream.Utils (splitAccum)
+import           Control.Applicative
+import           Control.Monad (unless)
+import           Data.Attoparsec.Char8
+import           Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as S
+import           Data.Conduit
+import qualified Data.Conduit.List as CL
+import           Data.Default
+import           Data.Functor.Identity (runIdentity)
+import           Data.Monoid
+import           Data.Text.Encoding
+import qualified Text.XML.Stream.Parse as XML
+
+import           Text.HTML.TagStream.Entities
+import           Text.HTML.TagStream.Types
+import           Text.HTML.TagStream.Utils (splitAccum)
 
 type Token = Token' ByteString
 type Attr = Attr' ByteString
@@ -124,6 +129,22 @@ incomplete = Incomplete . S.cons '<' <$> takeByteString
 text :: Parser Token
 text = Text <$> atLeast 1 (takeTill (=='<'))
 
+-- | Decode the HTML entities e.g. @&amp;@ in some text into @&@.
+decodeEntitiesBS :: Monad m => Conduit Token m Token
+decodeEntitiesBS =
+  decodeEntities
+    Dec { decToS     = B.toByteString
+        , decBreak   = S.break
+        , decBuilder = B.fromByteString
+        , decDrop    = S.drop
+        , decEntity  = decodeEntity
+        , decUncons  = S.uncons }
+  where decodeEntity entity =
+          fmap encodeUtf8
+          $ CL.sourceList ["&",entity,";"]
+          $= XML.parseBytes def { XML.psDecodeEntities = XML.decodeHtmlEntities }
+          $$ XML.content
+
 token :: Parser Token
 token = char '<' *> (tag <|> incomplete)
     <|> text
@@ -153,7 +174,10 @@ html = tokens <|> pure []
             _ -> (t:) <$> html
 
 decode :: ByteString -> Either String [Token]
-decode = parseOnly html
+decode = fmap decodeEntitiesBS' . parseOnly html
+  where
+    decodeEntitiesBS' tokens = runIdentity $ mapM_ yield tokens $$ decodeEntitiesBS =$ CL.consume
+
 
 {--
  - Utils {{{
@@ -212,7 +236,7 @@ tokenStream :: Monad m
             => GInfConduit ByteString m Token
 #endif
 tokenStream =
-    loop S.empty
+    loop S.empty =$= decodeEntitiesBS
   where
 #if MIN_VERSION_conduit(1, 0, 0)
     loop accum = await >>= maybe (close accum ()) (push accum)
