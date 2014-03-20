@@ -24,7 +24,7 @@ import qualified Data.Set as Set
 import qualified Text.XML as X
 import Text.XML.Stream.Parse (decodeHtmlEntities)
 import qualified Filesystem.Path.CurrentOS as F
-import Data.Conduit.Filesystem (sourceFile)
+import Data.Conduit.Binary (sourceFile)
 import qualified Data.ByteString.Lazy as L
 import Control.Monad.Trans.Resource (runExceptionT_)
 import Data.Functor.Identity (runIdentity)
@@ -133,7 +133,7 @@ sinkDoc =
     toElement _ = Nothing
 
 readFile :: F.FilePath -> IO X.Document
-readFile fp = runResourceT $ sourceFile fp $$ sinkDoc
+readFile fp = runResourceT $ sourceFile (F.encodeString fp) $$ sinkDoc
 
 parseLBS :: L.ByteString -> X.Document
 parseLBS lbs = runIdentity $ runExceptionT_ $ CL.sourceList (L.toChunks lbs) $$ sinkDoc
