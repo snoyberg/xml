@@ -1,6 +1,6 @@
 Name:                uri-conduit
-Version:             1.1.1.1
-Synopsis:            Read and write URIs
+Version:             1.1.1.2
+Synopsis:            Read and write URIs (deprecated)
 Homepage:            http://github.com/snoyberg/xml
 License:             BSD3
 License-file:        LICENSE

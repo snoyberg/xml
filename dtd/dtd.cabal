@@ -1,6 +1,6 @@
 Name:                dtd
-Version:             1.1.0.1
-Synopsis:            Parse and render DTD files
+Version:             1.1.0.2
+Synopsis:            Parse and render DTD files (deprecated)
 Homepage:            http://github.com/snoyberg/xml
 License:             BSD3
 License-file:        LICENSE
