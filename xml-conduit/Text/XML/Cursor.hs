@@ -58,10 +58,11 @@ module Text.XML.Cursor
     , forceM
     ) where
 
+import           Control.Exception            (Exception)
 import           Control.Monad
 import           Data.Function                (on)
 import           Text.XML
-import qualified Control.Failure              as F
+import           Control.Monad.Trans.Resource (MonadThrow, monadThrow)
 import qualified Data.Text                    as T
 import qualified Data.Map                     as Map
 import qualified Text.XML.Cursor.Generic      as CG
@@ -215,10 +216,10 @@ attributeIs n v c =
         NodeElement (Element _ as _) -> if Just v == Map.lookup n as then [c] else []
         _ -> []
 
-force :: F.Failure e f => e -> [a] -> f a
-force e [] = F.failure e
+force :: (Exception e, MonadThrow f) => e -> [a] -> f a
+force e [] = monadThrow e
 force _ (x:_) = return x
 
-forceM :: F.Failure e f => e -> [f a] -> f a
-forceM e [] = F.failure e
+forceM :: (Exception e, MonadThrow f) => e -> [f a] -> f a
+forceM e [] = monadThrow e
 forceM _ (x:_) = x

@@ -1,8 +1,11 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+import           Control.Exception            (Exception)
 import           Control.Monad.IO.Class       (liftIO)
+import           Data.Typeable                (Typeable)
 import           Data.XML.Types
 import           Test.HUnit                   hiding (Test)
 import           Test.Hspec
@@ -301,13 +304,17 @@ cursorDeep = do
   (cursor $/ Cu.element "bar2" &/ Cu.element "baz2" >=> Cu.attribute "attr") @?= ["y"]
   null (cursor $| Cu.element "foo") @?= False
 cursorForce = do
-  Cu.force () [] @?= (Nothing :: Maybe Integer)
-  Cu.force () [1] @?= Just (1 :: Int)
-  Cu.force () [1,2] @?= Just (1 :: Int)
+  Cu.force DummyEx [] @?= (Nothing :: Maybe Integer)
+  Cu.force DummyEx [1] @?= Just (1 :: Int)
+  Cu.force DummyEx [1,2] @?= Just (1 :: Int)
 cursorForceM = do
-  Cu.forceM () [] @?= (Nothing :: Maybe Integer)
-  Cu.forceM () [Just 1, Nothing] @?= Just (1 :: Int)
-  Cu.forceM () [Nothing, Just (1 :: Int)] @?= Nothing
+  Cu.forceM DummyEx [] @?= (Nothing :: Maybe Integer)
+  Cu.forceM DummyEx [Just 1, Nothing] @?= Just (1 :: Int)
+  Cu.forceM DummyEx [Nothing, Just (1 :: Int)] @?= Nothing
+
+data DummyEx = DummyEx
+    deriving (Show, Typeable)
+instance Exception DummyEx
 
 showEq :: (Show a, Show b) => Either a b -> Either a b -> Assertion
 showEq x y = show x @=? show y
