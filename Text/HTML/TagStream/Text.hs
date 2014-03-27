@@ -6,6 +6,7 @@ module Text.HTML.TagStream.Text where
 import           Control.Applicative
 import           Control.Monad (unless, when, liftM)
 import           Control.Monad.Trans.Class (lift)
+import           Control.Monad.Trans.Resource (MonadThrow)
 import           Data.Char
 import qualified Data.Conduit.List as CL
 import           Data.Default
