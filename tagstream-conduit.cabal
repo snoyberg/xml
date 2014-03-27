@@ -60,4 +60,5 @@ test-suite test
                      , HUnit
                      , hspec >= 1.3
                      , tagstream-conduit
+                     , resourcet
     ghc-options:     -Wall

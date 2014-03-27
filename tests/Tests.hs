@@ -11,6 +11,7 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Conduit as C
+import qualified Control.Monad.Trans.Resource as C
 import qualified Data.Conduit.List as CL
 
 import           Test.Hspec
