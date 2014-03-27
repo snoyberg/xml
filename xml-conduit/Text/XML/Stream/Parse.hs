@@ -93,6 +93,7 @@ import Data.Attoparsec.Text
     , manyTill, takeWhile, try, anyChar
     )
 import qualified Control.Applicative as A
+import Control.Monad.Trans.Resource (MonadThrow, monadThrow, MonadResource)
 import Data.Conduit.Attoparsec (conduitParser, PositionRange)
 import Data.XML.Types
     ( Name (..), Event (..), Content (..)

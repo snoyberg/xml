@@ -89,6 +89,7 @@ import qualified Text.XML.Unresolved as D
 import qualified Text.XML.Stream.Render as R
 import qualified Data.Text as T
 import Data.Either (partitionEithers)
+import Control.Monad.Trans.Resource (MonadThrow, monadThrow, runExceptionT, runResourceT)
 import Prelude hiding (readFile, writeFile, FilePath)
 import Filesystem.Path.CurrentOS (FilePath, encodeString)
 import Control.Exception (SomeException, Exception, throwIO, handle)
@@ -279,7 +280,7 @@ data UnresolvedEntityException = UnresolvedEntityException (Set Text)
     deriving (Show, Typeable)
 instance Exception UnresolvedEntityException
 
-renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> Producer m ByteString
+--renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> Producer m ByteString
 renderBytes rs doc = D.renderBytes rs $ toXMLDocument' rs doc
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()

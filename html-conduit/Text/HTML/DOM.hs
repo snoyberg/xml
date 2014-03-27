@@ -6,6 +6,7 @@ module Text.HTML.DOM
     , parseLBS
     ) where
 
+import Control.Monad.Trans.Resource
 import Prelude hiding (readFile)
 import qualified Data.ByteString as S
 #if MIN_VERSION_tagstream_conduit(0,5,0)

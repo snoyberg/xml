@@ -26,6 +26,7 @@ import qualified Data.Set as Set
 import Control.Exception (toException)
 
 import qualified Data.Conduit as C
+import qualified Control.Monad.Trans.Resource as C
 import qualified Data.Conduit.List as CL
 import qualified Data.Map as Map
 import Text.Blaze (toMarkup)

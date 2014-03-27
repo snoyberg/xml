@@ -33,20 +33,23 @@ import Data.Conduit
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Text as CT
 import Data.Monoid (mempty)
+import Control.Monad.Trans.Resource (MonadThrow)
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder' and 'builderToByteString', so it produces
 -- optimally sized 'ByteString's with minimal buffer copying.
 --
 -- The output is UTF8 encoded.
-renderBytes :: MonadUnsafeIO m => RenderSettings -> Conduit Event m ByteString
+--renderBytes :: Monad m => RenderSettings -> Conduit Event m ByteString
 renderBytes rs = renderBuilder rs =$= builderToByteString
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder', 'builderToByteString' and 'renderBytes', so it
 -- produces optimally sized 'ByteString's with minimal buffer copying.
-renderText :: (MonadThrow m, MonadUnsafeIO m)
+{-
+renderText :: (MonadThrow m)
            => RenderSettings -> Conduit Event m Text
+-}
 renderText rs = renderBytes rs =$= CT.decode CT.utf8
 
 data RenderSettings = RenderSettings

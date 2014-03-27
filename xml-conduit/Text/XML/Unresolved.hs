@@ -63,6 +63,7 @@ import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
 import Control.Exception (throw)
 import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Resource (MonadThrow, monadThrow, runExceptionT, runResourceT)
 import Control.Monad.ST (runST)
 import Data.Conduit.Lazy (lazyConsume)
 
@@ -123,10 +124,10 @@ prettyShowName = show -- FIXME
 renderBuilder :: Monad m => R.RenderSettings -> Document -> Producer m Builder
 renderBuilder rs doc = CL.sourceList (toEvents doc) =$= R.renderBuilder rs
 
-renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> Producer m ByteString
+--renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> Producer m ByteString
 renderBytes rs doc = CL.sourceList (toEvents doc) =$= R.renderBytes rs
 
-renderText :: (MonadThrow m, MonadUnsafeIO m) => R.RenderSettings -> Document -> Producer m Text
+--renderText :: (MonadThrow m, MonadUnsafeIO m) => R.RenderSettings -> Document -> Producer m Text
 renderText rs doc = CL.sourceList (toEvents doc) =$= R.renderText rs
 
 fromEvents :: MonadThrow m => Consumer P.EventPos m Document
