@@ -1,9 +1,14 @@
 {-# LANGUAGE OverloadedStrings, CPP #-}
 module Text.HTML.DOM
-    ( eventConduit
+    ( TextDecoder
+    , eventConduit
+    , eventConduitWith
     , sinkDoc
+    , sinkDocWith
     , readFile
+    , readFileWith
     , parseLBS
+    , parseLBSWith
     ) where
 
 import Control.Monad.Trans.Resource
@@ -31,17 +36,30 @@ import Control.Monad.Trans.Resource (runExceptionT_)
 import Data.Functor.Identity (runIdentity)
 import Data.Maybe (mapMaybe)
 
+-- | Use with one of "Data.Text.Encoding" functions
+type TextDecoder = (S.ByteString -> Text)
+
+-- | Default page encoding is assumed to be UTF8
+defaultTextDecoder :: TextDecoder
+defaultTextDecoder = decodeUtf8With lenientDecode
 -- | Converts a stream of bytes to a stream of properly balanced @Event@s.
 --
 -- Note that there may be multiple (or not) root elements. @sinkDoc@ addresses
 -- that case.
 eventConduit :: Monad m => Conduit S.ByteString m XT.Event
-eventConduit =
+eventConduit = eventConduitWith defaultTextDecoder
+
+-- | Converts a stream of bytes to a stream of properly balanced @Event@s.
+--
+-- Note that there may be multiple (or not) root elements. @sinkDoc@ addresses
+-- that case.
+eventConduitWith :: Monad m => TextDecoder -> Conduit S.ByteString m XT.Event
+eventConduitWith decoder =
     TS.tokenStream =$= go []
   where
     go stack = do
         mx <- await
-        case fmap (entities . fmap' (decodeUtf8With lenientDecode)) mx of
+        case fmap (entities . fmap' decoder) mx of
             Nothing -> closeStack stack
             Just (TS.TagOpen local attrs isClosed) -> do
                 let name = toName local
@@ -117,8 +135,12 @@ eventConduit =
         ]
 
 sinkDoc :: MonadThrow m => Sink S.ByteString m X.Document
-sinkDoc =
-    fmap stripDummy $ mapOutput ((,) Nothing) eventConduit =$ addDummyWrapper =$ X.fromEvents
+sinkDoc = sinkDocWith defaultTextDecoder
+
+sinkDocWith :: MonadThrow m => TextDecoder -> Sink S.ByteString m X.Document
+sinkDocWith decoder =
+    fmap stripDummy $ mapOutput ((,) Nothing) (eventConduitWith decoder)
+                    =$ addDummyWrapper =$ X.fromEvents
   where
     addDummyWrapper = do
         yield (Nothing, XT.EventBeginElement "html" [])
@@ -134,7 +156,17 @@ sinkDoc =
     toElement _ = Nothing
 
 readFile :: F.FilePath -> IO X.Document
-readFile fp = runResourceT $ sourceFile (F.encodeString fp) $$ sinkDoc
+readFile = readFileWith defaultTextDecoder
+
+readFileWith :: TextDecoder -> F.FilePath -> IO X.Document
+readFileWith decoder fp = runResourceT $  sourceFile (F.encodeString fp)
+                                       $$ sinkDocWith decoder
 
 parseLBS :: L.ByteString -> X.Document
-parseLBS lbs = runIdentity $ runExceptionT_ $ CL.sourceList (L.toChunks lbs) $$ sinkDoc
+parseLBS = parseLBSWith defaultTextDecoder
+
+-- Specify ByteString to Text decoder to use
+parseLBSWith :: TextDecoder -> L.ByteString -> X.Document
+parseLBSWith decoder lbs = runIdentity $  runExceptionT_
+                                       $  CL.sourceList (L.toChunks lbs)
+                                       $$ sinkDocWith decoder
