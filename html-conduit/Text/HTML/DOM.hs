@@ -43,6 +43,10 @@ eventConduit =
         mx <- await
         case fmap (entities . fmap' (decodeUtf8With lenientDecode)) mx of
             Nothing -> closeStack stack
+
+            -- Ignore processing instructions (or pseudo-instructions)
+            Just (TS.TagOpen local _ _) | "?" `T.isPrefixOf` local -> go stack
+
             Just (TS.TagOpen local attrs isClosed) -> do
                 let name = toName local
                     attrs' = map (toName *** return . XT.ContentText) attrs
