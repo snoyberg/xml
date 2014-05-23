@@ -39,7 +39,7 @@ library
                    , xml-types                 >= 0.3.4    && < 0.4
                    , attoparsec                >= 0.10
                    , blaze-builder             >= 0.2      && < 0.4
-                   , transformers              >= 0.2      && < 0.4
+                   , transformers              >= 0.2      && < 0.5
                    , data-default
                    , system-filepath           >= 0.4      && < 0.5
                    , monad-control             >= 0.3      && < 0.4
