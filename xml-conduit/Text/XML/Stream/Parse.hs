@@ -68,6 +68,10 @@ module Text.XML.Stream.Parse
     , tagPredicate
     , tagName
     , tagNoAttr
+    , tag'
+    , tagPredicate'
+    , tagName'
+    , tagNoAttr'
     , content
     , contentMaybe
       -- * Attribute parsing
@@ -517,6 +521,34 @@ content = do
         Nothing -> return T.empty
         Just y -> return y
 
+dropWS :: MonadThrow m => CI.ConduitM Event o m (Maybe Event)
+dropWS = do
+    x <- CL.peek
+    let isWS =
+            case x of
+                Just EventBeginDocument -> True
+                Just EventEndDocument -> True
+                Just EventBeginDoctype{} -> True
+                Just EventEndDoctype -> True
+                Just EventInstruction{} -> True
+                Just EventBeginElement{} -> False
+                Just EventEndElement{} -> False
+                Just (EventContent (ContentText t))
+                    | T.all isSpace t -> True
+                    | otherwise -> False
+                Just (EventContent ContentEntity{}) -> False
+                Just EventComment{} -> True
+                Just EventCDATA{} -> False
+                Nothing -> False
+    if isWS then CL.drop 1 >> dropWS else return x
+
+runAttrParser' :: forall b.  AttrParser b -> [(Name, [Content])] -> Either XmlException b
+runAttrParser' p as =
+    case runAttrParser p as of
+        Left e -> Left e
+        Right ([], x) -> Right x
+        Right (attr, _) -> Left $ UnparsedAttributes attr
+
 -- | The most generic way to parse a tag. It takes a predicate for checking if
 -- this is the correct tag name, an 'AttrParser' for handling attributes, and
 -- then a parser for dealing with content.
@@ -549,31 +581,6 @@ tag checkName attrParser f = do
                                 _ -> lift $ monadThrow $ XmlException ("Expected end tag for: " ++ show name) a
                 Nothing -> return Nothing
         _ -> return Nothing
-  where
-    dropWS = do
-        x <- CL.peek
-        let isWS =
-                case x of
-                    Just EventBeginDocument -> True
-                    Just EventEndDocument -> True
-                    Just EventBeginDoctype{} -> True
-                    Just EventEndDoctype -> True
-                    Just EventInstruction{} -> True
-                    Just EventBeginElement{} -> False
-                    Just EventEndElement{} -> False
-                    Just (EventContent (ContentText t))
-                        | T.all isSpace t -> True
-                        | otherwise -> False
-                    Just (EventContent ContentEntity{}) -> False
-                    Just EventComment{} -> True
-                    Just EventCDATA{} -> False
-                    Nothing -> False
-        if isWS then CL.drop 1 >> dropWS else return x
-    runAttrParser' p as =
-        case runAttrParser p as of
-            Left e -> Left e
-            Right ([], x) -> Right x
-            Right (attr, _) -> Left $ UnparsedAttributes attr
 
 -- | A simplified version of 'tag' which matches against boolean predicates.
 tagPredicate :: MonadThrow m
@@ -600,6 +607,53 @@ tagNoAttr :: MonadThrow m
           -> CI.ConduitM Event o m a
           -> CI.ConduitM Event o m (Maybe a)
 tagNoAttr name f = tagName name (return ()) $ const f
+
+-- | Same thing as tag, but does not try to absorb the balancing closing tag.
+tag' :: MonadThrow m
+    => (Name -> Maybe a)
+    -> (a -> AttrParser b)
+    -> (b -> CI.ConduitM Event o m c)
+    -> CI.ConduitM Event o m (Maybe c)
+tag' checkName attrParser f = do
+    x <- dropWS
+    case x of
+        Just (EventBeginElement name as) ->
+            case checkName name of
+                Just y ->
+                    case runAttrParser' (attrParser y) as of
+                        Left e -> lift $ monadThrow e
+                        Right z -> do
+                            CL.drop 1
+                            z' <- f z
+                            a <- dropWS
+                            case a of
+                                Nothing -> lift $ monadThrow $ XmlException ("Invalid token") a
+                                _ -> return (Just z')
+                Nothing -> return Nothing
+        _ -> return Nothing
+
+-- | tag' version of tagPredicate.
+tagPredicate' :: MonadThrow m
+             => (Name -> Bool)
+             -> AttrParser a
+             -> (a -> CI.ConduitM Event o m b)
+             -> CI.ConduitM Event o m (Maybe b)
+tagPredicate' p attrParser = tag' (\x -> if p x then Just () else Nothing) (const attrParser)
+
+-- | tag' version of tagName.
+tagName' :: MonadThrow m
+     => Name
+     -> AttrParser a
+     -> (a -> CI.ConduitM Event o m b)
+     -> CI.ConduitM Event o m (Maybe b)
+tagName' name = tagPredicate' (== name)
+
+-- | tag' version of tagNoAttr
+tagNoAttr' :: MonadThrow m
+          => Name
+          -> CI.ConduitM Event o m a
+          -> CI.ConduitM Event o m (Maybe a)
+tagNoAttr' name f = tagName' name (return ()) $ const f
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
