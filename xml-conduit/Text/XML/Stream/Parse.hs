@@ -527,9 +527,13 @@ content = do
 --
 -- This function automatically ignores comments, instructions and whitespace.
 tag :: MonadThrow m
-    => (Name -> Maybe a)
-    -> (a -> AttrParser b)
-    -> (b -> CI.ConduitM Event o m c)
+    => (Name -> Maybe a) -- ^ Check if this is a correct tag name
+                         --   and return a value that can be used to get an @AttrParser@.
+                         --   If this returns @Nothing@, the function will also return @Nothing@
+    -> (a -> AttrParser b) -- ^ Given the value returned by the name checker, this function will
+                           --   be used to get an @AttrParser@ appropriate for the specific tag.
+    -> (b -> CI.ConduitM Event o m c) -- ^ Handler function to handle the attributes and children
+                                      --   of a tag, given the value return from the @AttrParser@
     -> CI.ConduitM Event o m (Maybe c)
 tag checkName attrParser f = do
     x <- dropWS
@@ -577,9 +581,10 @@ tag checkName attrParser f = do
 
 -- | A simplified version of 'tag' which matches against boolean predicates.
 tagPredicate :: MonadThrow m
-             => (Name -> Bool)
-             -> AttrParser a
-             -> (a -> CI.ConduitM Event o m b)
+             => (Name -> Bool) -- ^ Name predicate that returns @True@ if the name matches the parser
+             -> AttrParser a -- ^ The attribute parser to be used for tags matching the predicate
+             -> (a -> CI.ConduitM Event o m b) -- ^ Handler function to handle the attributes and children
+                                               --   of a tag, given the value return from the @AttrParser@
              -> CI.ConduitM Event o m (Maybe b)
 tagPredicate p attrParser = tag (\x -> if p x then Just () else Nothing) (const attrParser)
 
@@ -587,28 +592,34 @@ tagPredicate p attrParser = tag (\x -> if p x then Just () else Nothing) (const 
 -- of taking a predicate function. This is often sufficient, and when combined
 -- with OverloadedStrings and the IsString instance of 'Name', can prove to be
 -- very concise.
+-- .
+-- Note that @Name@ is namespace sensitive. When using the @IsString@ instance of name,
+-- use
+-- > "{http://a/b}c" :: Name
+-- to match the tag @c@ in the XML namespace @http://a/b@
 tagName :: MonadThrow m
-     => Name
-     -> AttrParser a
-     -> (a -> CI.ConduitM Event o m b)
+     => Name -- ^ The tag name this parser matches to (includes namespaces)
+     -> AttrParser a -- ^ The attribute parser to be used for tags matching the predicate 
+     -> (a -> CI.ConduitM Event o m b) -- ^ Handler function to handle the attributes and children
+                                       --   of a tag, given the value return from the @AttrParser@
      -> CI.ConduitM Event o m (Maybe b)
 tagName name = tagPredicate (== name)
 
 -- | A further simplified tag parser, which requires that no attributes exist.
 tagNoAttr :: MonadThrow m
-          => Name
-          -> CI.ConduitM Event o m a
+          => Name -- ^ The name this parser matches to
+          -> CI.ConduitM Event o m a -- ^ Handler function to handle the children of the matched tag
           -> CI.ConduitM Event o m (Maybe a)
 tagNoAttr name f = tagName name (return ()) $ const f
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
--- succeed (i.e., return 'Just'), this function returns 'Nothing'.
+-- succeed (i.e., return @Just@), this function returns 'Nothing'.
 --
 -- > orE a b = choose [a, b]
 orE :: Monad m
-    => Consumer Event m (Maybe a)
-    -> Consumer Event m (Maybe a)
-    -> Consumer Event m (Maybe a)
+    => Consumer Event m (Maybe a) -- ^ The first (preferred) parser
+    -> Consumer Event m (Maybe a) -- ^ The second parser, only executed if the first parser fails
+    -> Consumer Event m (Maybe a) 
 orE a b = do
   x <- a
   case x of
@@ -618,8 +629,9 @@ orE a b = do
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
 choose :: Monad m
-       => [Consumer Event m (Maybe a)]
-       -> Consumer Event m (Maybe a)
+       => [Consumer Event m (Maybe a)] -- ^ List of parsers that will be tried in order.
+       -> Consumer Event m (Maybe a) -- ^ Result of the first parser to succeed, or @Nothing@
+                                     --   if no parser succeeded
 choose [] = return Nothing
 choose (i:is) = do
     x <- i
@@ -632,7 +644,7 @@ choose (i:is) = do
 -- want to finally force something to happen.
 force :: MonadThrow m
       => String -- ^ Error message
-      -> CI.ConduitM Event o m (Maybe a)
+      -> CI.ConduitM Event o m (Maybe a) -- ^ Optional parser to be forced
       -> CI.ConduitM Event o m a
 force msg i = do
     x <- i
