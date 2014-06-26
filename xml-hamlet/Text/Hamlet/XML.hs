@@ -10,7 +10,7 @@ import Language.Haskell.TH.Quote
 import qualified Data.Text.Lazy as TL
 import Control.Monad ((<=<))
 import Text.Hamlet.XMLParse
-import Text.Shakespeare.Base (readUtf8File, derefToExp, Scope, Deref (DerefIdent), Ident (Ident))
+import Text.Shakespeare.Base (readUtf8File, derefToExp, Scope, Deref, Ident (Ident))
 import Data.Text (pack, unpack)
 import qualified Data.Text as T
 import qualified Text.XML as X
@@ -18,6 +18,7 @@ import Data.String (fromString)
 import qualified Data.Foldable as F
 import Data.Maybe (fromMaybe)
 import qualified Data.Map as Map
+import Control.Arrow (first)
 
 xml :: QuasiQuoter
 xml = QuasiQuoter { quoteExp = strToExp }
@@ -69,12 +70,13 @@ docToExp scope (DocMaybe deref ident@(Ident name) just nothing) = do
     [| maybe $(return nothing') $(return inside'') $(return deref') |]
 docToExp scope (DocCond conds final) = do
     unit <- [| () |]
-    body <- fmap GuardedB $ mapM go $ conds ++ [(DerefIdent $ Ident "otherwise", fromMaybe [] final)]
+    otherwise' <- [|otherwise|]
+    body <- fmap GuardedB $ mapM go $ map (first (derefToExp scope)) conds ++ [(otherwise', fromMaybe [] final)]
     return $ CaseE unit [Match (TupP []) body []]
   where
     go (deref, inside) = do
         inside' <- docsToExp scope inside
-        return (NormalG $ derefToExp scope deref, inside')
+        return (NormalG deref, inside')
 
 mkAttrs :: Scope -> [(Maybe Deref, String, [Content])] -> Q Exp
 mkAttrs _ [] = [| Map.empty |]
