@@ -119,7 +119,7 @@ import Data.Conduit
 import qualified Data.Conduit.Text as CT
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Internal as CI
-import Control.Monad (ap, liftM, void)
+import Control.Monad (ap, liftM, void, guard)
 import qualified Data.Text as TS
 import Data.List (foldl')
 import Data.Typeable (Typeable)
@@ -551,6 +551,7 @@ tag checkName attrParser f = do
                 Nothing -> return Nothing
         _ -> return Nothing
   where
+    -- | Drop Events until we encount a non-whitespace element
     dropWS = do
         x <- CL.peek
         let isWS =
@@ -583,7 +584,7 @@ tagPredicate :: MonadThrow m
              -> (a -> CI.ConduitM Event o m b) -- ^ Handler function to handle the attributes and children
                                                --   of a tag, given the value return from the @AttrParser@
              -> CI.ConduitM Event o m (Maybe b)
-tagPredicate p attrParser = tag (\x -> if p x then Just () else Nothing) (const attrParser)
+tagPredicate p attrParser = tag (guard . p) (const attrParser)
 
 -- | A simplified version of 'tag' which matches for specific tag names instead
 -- of taking a predicate function. This is often sufficient, and when combined
