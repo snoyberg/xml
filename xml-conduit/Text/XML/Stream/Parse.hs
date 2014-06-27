@@ -551,7 +551,7 @@ tag checkName attrParser f = do
                 Nothing -> return Nothing
         _ -> return Nothing
   where
-    -- | Drop Events until we encount a non-whitespace element
+    -- Drop Events until we encount a non-whitespace element
     dropWS = do
         x <- CL.peek
         let isWS =
