@@ -511,11 +511,7 @@ contentMaybe = do
 -- | Grabs the next piece of content. If none if available, returns 'T.empty'.
 -- This is simply a wrapper around 'contentMaybe'.
 content :: MonadThrow m => Consumer Event m Text
-content = do
-    x <- contentMaybe
-    case x of
-        Nothing -> return T.empty
-        Just y -> return y
+content = fromMaybe T.empty <$> contentMaybe
 
 -- | The most generic way to parse a tag. It takes a predicate for checking if
 -- this is the correct tag name, an 'AttrParser' for handling attributes, and
