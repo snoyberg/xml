@@ -119,7 +119,7 @@ import Data.Conduit
 import qualified Data.Conduit.Text as CT
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Internal as CI
-import Control.Monad (ap, liftM)
+import Control.Monad (ap, liftM, void)
 import qualified Data.Text as TS
 import Data.List (foldl')
 import Data.Typeable (Typeable)
@@ -128,6 +128,7 @@ import Data.Conduit.Binary (sourceFile)
 import Data.Char (isSpace)
 import Data.Default (Default (..))
 import Control.Monad.Trans.Class (lift)
+import Data.Maybe (fromMaybe, isNothing)
 
 type Ents = [(Text, Text)]
 
@@ -145,7 +146,7 @@ tokenToEvent es n (TokenBeginElement name as isClosed _) =
         | kpref == Just "xmlns" =
             (front, l { prefixes = Map.insert kname (contentsToText val)
                                  $ prefixes l })
-        | kpref == Nothing && kname == "xmlns" =
+        | isNothing kpref && kname == "xmlns" =
             (front, l { defaultNS = if T.null $ contentsToText val
                                         then Nothing
                                         else Just $ contentsToText val })
@@ -470,7 +471,7 @@ newline :: Parser ()
 newline = ((char '\r' >> char '\n') <|> char '\n') >> return ()
 
 char' :: Char -> Parser ()
-char' c = char c >> return ()
+char' = void . char
 
 data ContentType =
     Ignore | IsContent Text | IsError String | NotContent
