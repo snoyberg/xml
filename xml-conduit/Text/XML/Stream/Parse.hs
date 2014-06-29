@@ -119,7 +119,7 @@ import Data.Conduit
 import qualified Data.Conduit.Text as CT
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Internal as CI
-import Control.Monad (ap, liftM)
+import Control.Monad (ap, liftM, void, guard)
 import qualified Data.Text as TS
 import Data.List (foldl')
 import Data.Typeable (Typeable)
@@ -128,6 +128,7 @@ import Data.Conduit.Binary (sourceFile)
 import Data.Char (isSpace)
 import Data.Default (Default (..))
 import Control.Monad.Trans.Class (lift)
+import Data.Maybe (fromMaybe, isNothing)
 
 type Ents = [(Text, Text)]
 
@@ -145,7 +146,7 @@ tokenToEvent es n (TokenBeginElement name as isClosed _) =
         | kpref == Just "xmlns" =
             (front, l { prefixes = Map.insert kname (contentsToText val)
                                  $ prefixes l })
-        | kpref == Nothing && kname == "xmlns" =
+        | isNothing kpref && kname == "xmlns" =
             (front, l { defaultNS = if T.null $ contentsToText val
                                         then Nothing
                                         else Just $ contentsToText val })
@@ -470,7 +471,7 @@ newline :: Parser ()
 newline = ((char '\r' >> char '\n') <|> char '\n') >> return ()
 
 char' :: Char -> Parser ()
-char' c = char c >> return ()
+char' = void . char
 
 data ContentType =
     Ignore | IsContent Text | IsError String | NotContent
@@ -511,11 +512,7 @@ contentMaybe = do
 -- | Grabs the next piece of content. If none if available, returns 'T.empty'.
 -- This is simply a wrapper around 'contentMaybe'.
 content :: MonadThrow m => Consumer Event m Text
-content = do
-    x <- contentMaybe
-    case x of
-        Nothing -> return T.empty
-        Just y -> return y
+content = fromMaybe T.empty <$> contentMaybe
 
 -- | The most generic way to parse a tag. It takes a predicate for checking if
 -- this is the correct tag name, an 'AttrParser' for handling attributes, and
@@ -554,6 +551,7 @@ tag checkName attrParser f = do
                 Nothing -> return Nothing
         _ -> return Nothing
   where
+    -- Drop Events until we encount a non-whitespace element
     dropWS = do
         x <- CL.peek
         let isWS =
@@ -586,7 +584,7 @@ tagPredicate :: MonadThrow m
              -> (a -> CI.ConduitM Event o m b) -- ^ Handler function to handle the attributes and children
                                                --   of a tag, given the value return from the @AttrParser@
              -> CI.ConduitM Event o m (Maybe b)
-tagPredicate p attrParser = tag (\x -> if p x then Just () else Nothing) (const attrParser)
+tagPredicate p attrParser = tag (guard . p) (const attrParser)
 
 -- | A simplified version of 'tag' which matches for specific tag names instead
 -- of taking a predicate function. This is often sufficient, and when combined
