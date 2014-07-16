@@ -53,6 +53,7 @@ module Text.XML
       -- ** Parsing
     , ParseSettings
     , psDecodeEntities
+    , P.psRetainNamespaces
       -- *** Entity decoding
     , P.decodeXmlEntities
     , P.decodeHtmlEntities

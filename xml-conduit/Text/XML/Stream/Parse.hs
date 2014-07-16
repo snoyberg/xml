@@ -60,6 +60,7 @@ module Text.XML.Stream.Parse
     , def
     , DecodeEntities
     , psDecodeEntities
+    , psRetainNamespaces
       -- *** Entity decoding
     , decodeXmlEntities
     , decodeHtmlEntities
@@ -132,25 +133,40 @@ import Data.Maybe (fromMaybe, isNothing)
 
 type Ents = [(Text, Text)]
 
-tokenToEvent :: Ents -> [NSLevel] -> Token -> (Ents, [NSLevel], [Event])
-tokenToEvent es n (TokenBeginDocument _) = (es, n, [])
-tokenToEvent es n (TokenInstruction i) = (es, n, [EventInstruction i])
-tokenToEvent es n (TokenBeginElement name as isClosed _) =
+tokenToEvent :: ParseSettings -> Ents -> [NSLevel] -> Token -> (Ents, [NSLevel], [Event])
+tokenToEvent _ es n (TokenBeginDocument _) = (es, n, [])
+tokenToEvent _ es n (TokenInstruction i) = (es, n, [EventInstruction i])
+tokenToEvent ps es n (TokenBeginElement name as isClosed _) =
     (es, n', if isClosed then [begin, end] else [begin])
   where
     l0 = case n of
             [] -> NSLevel Nothing Map.empty
             x:_ -> x
     (as', l') = foldl' go (id, l0) as
-    go (front, l) (TName kpref kname, val)
-        | kpref == Just "xmlns" =
-            (front, l { prefixes = Map.insert kname (contentsToText val)
-                                 $ prefixes l })
-        | isNothing kpref && kname == "xmlns" =
-            (front, l { defaultNS = if T.null $ contentsToText val
-                                        then Nothing
-                                        else Just $ contentsToText val })
-        | otherwise = (front . (:) (TName kpref kname, map resolve val), l)
+    go (front, l) (TName kpref kname, val) =
+        (addNS front, l'')
+      where
+        isPrefixed = kpref == Just "xmlns"
+        isUnprefixed = isNothing kpref && kname == "xmlns"
+
+        addNS
+            | not (psRetainNamespaces ps) && (isPrefixed || isUnprefixed) = id
+            | otherwise = (((tname, map resolve val):) .)
+          where
+            tname
+                | isPrefixed = TName Nothing ("xmlns:" `T.append` kname)
+                | otherwise = TName kpref kname
+
+        l''
+            | isPrefixed =
+                l { prefixes = Map.insert kname (contentsToText val)
+                                     $ prefixes l }
+            | isUnprefixed =
+                l { defaultNS = if T.null $ contentsToText val
+                                            then Nothing
+                                            else Just $ contentsToText val }
+            | otherwise = l
+
     resolve (ContentEntity e)
         | Just t <- lookup e es = ContentText t
     resolve c = c
@@ -159,19 +175,19 @@ tokenToEvent es n (TokenBeginElement name as isClosed _) =
     elementName = tnameToName False l' name
     begin = EventBeginElement elementName $ map fixAttName $ as' []
     end = EventEndElement elementName
-tokenToEvent es n (TokenEndElement name) =
+tokenToEvent _ es n (TokenEndElement name) =
     (es, n', [EventEndElement $ tnameToName False l name])
   where
     (l, n') =
         case n of
             [] -> (NSLevel Nothing Map.empty, [])
             x:xs -> (x, xs)
-tokenToEvent es n (TokenContent (ContentEntity e))
+tokenToEvent _ es n (TokenContent (ContentEntity e))
     | Just t <- lookup e es = (es, n, [EventContent $ ContentText t])
-tokenToEvent es n (TokenContent c) = (es, n, [EventContent c])
-tokenToEvent es n (TokenComment c) = (es, n, [EventComment c])
-tokenToEvent es n (TokenDoctype t eid es') = (es ++ es', n, [EventBeginDoctype t eid, EventEndDoctype])
-tokenToEvent es n (TokenCDATA t) = (es, n, [EventCDATA t])
+tokenToEvent _ es n (TokenContent c) = (es, n, [EventContent c])
+tokenToEvent _ es n (TokenComment c) = (es, n, [EventComment c])
+tokenToEvent _ es n (TokenDoctype t eid es') = (es ++ es', n, [EventBeginDoctype t eid, EventEndDoctype])
+tokenToEvent _ es n (TokenCDATA t) = (es, n, [EventCDATA t])
 
 tnameToName :: Bool -> NSLevel -> TName -> Name
 tnameToName _ _ (TName (Just "xml") name) =
@@ -265,7 +281,7 @@ parseText :: MonadThrow m
 parseText de =
     dropBOM
         =$= tokenize
-        =$= toEventC
+        =$= toEventC de
         =$= addBeginEnd
   where
     tokenize = conduitToken de
@@ -274,8 +290,8 @@ parseText de =
         (yield (Nothing, EventEndDocument))
         (\e -> yield e >> addEnd)
 
-toEventC :: Monad m => Conduit (PositionRange, Token) m EventPos
-toEventC =
+toEventC :: Monad m => ParseSettings -> Conduit (PositionRange, Token) m EventPos
+toEventC ps =
     go [] []
   where
     go !es !levels =
@@ -284,15 +300,25 @@ toEventC =
         push (position, token) =
             mapM_ (yield . (,) (Just position)) events >> go es' levels'
           where
-            (es', levels', events) = tokenToEvent es levels token
+            (es', levels', events) = tokenToEvent ps es levels token
 
 data ParseSettings = ParseSettings
     { psDecodeEntities :: DecodeEntities
+    , psRetainNamespaces :: Bool
+    -- ^ Whether the original xmlns attributes should be retained in the parsed
+    -- values. For more information on motivation, see:
+    --
+    -- <https://github.com/snoyberg/xml/issues/38>
+    --
+    -- Default: False
+    --
+    -- Since 1.2.1
     }
 
 instance Default ParseSettings where
     def = ParseSettings
         { psDecodeEntities = decodeXmlEntities
+        , psRetainNamespaces = False
         }
 
 conduitToken :: MonadThrow m => ParseSettings -> Conduit TS.Text m (PositionRange, Token)

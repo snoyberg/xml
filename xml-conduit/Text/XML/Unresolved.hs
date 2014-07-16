@@ -34,6 +34,7 @@ module Text.XML.Unresolved
       -- ** Parse
     , P.ParseSettings
     , P.psDecodeEntities
+    , P.psRetainNamespaces
       -- ** Render
     , R.RenderSettings
     , R.rsPretty

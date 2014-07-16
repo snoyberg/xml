@@ -89,6 +89,7 @@ main = hspec $ do
     describe "ordering attributes explicitly" $ do
         it "works" caseOrderAttrs
     it "parsing CDATA" caseParseCdata
+    it "retains namespaces when asked" caseRetainNamespaces
 
 documentParseRender :: IO ()
 documentParseRender =
@@ -539,3 +540,23 @@ caseParseCdata = do
                     ])
                 []
     Res.parseLBS_ def lbs @?= doc
+
+caseRetainNamespaces :: Assertion
+caseRetainNamespaces = do
+    let lbs = "<foo xmlns:bar='baz'><bar:bin/><bin3 xmlns='bin4'></bin3></foo>"
+        doc = Res.parseLBS_ def { Res.psRetainNamespaces = True } lbs
+    doc `shouldBe` Res.Document
+        (Res.Prologue [] Nothing [])
+        (Res.Element
+            "foo"
+            (Map.singleton "xmlns:bar" "baz")
+            [ Res.NodeElement $ Res.Element
+                "{baz}bin"
+                Map.empty
+                []
+            , Res.NodeElement $ Res.Element
+                "{bin4}bin3"
+                (Map.singleton "xmlns" "bin4")
+                []
+            ])
+        []
