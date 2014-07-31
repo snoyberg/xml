@@ -664,11 +664,8 @@ force :: MonadThrow m
       => String -- ^ Error message
       -> CI.ConduitM Event o m (Maybe a) -- ^ Optional parser to be forced
       -> CI.ConduitM Event o m a
-force msg i = do
-    x <- i
-    case x of
-        Nothing -> lift $ monadThrow $ XmlException msg Nothing
-        Just a -> return a
+force msg i =
+    i >>= maybe (lift $ monadThrow $ XmlException msg Nothing) return
 
 -- | A helper function which reads a file from disk using 'enumFile', detects
 -- character encoding using 'detectUtf', parses the XML using 'parseBytes', and
