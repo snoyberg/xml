@@ -767,7 +767,7 @@ contentsToText =
 -- list of attributes, you must call this /after/ any calls to 'requireAttr',
 -- 'optionalAttr', etc.
 ignoreAttrs :: AttrParser ()
-ignoreAttrs = AttrParser $ \_ -> Right ([], ())
+ignoreAttrs = AttrParser $ const $ Right ([], ())
 
 -- | Keep parsing elements as long as the parser returns 'Just'.
 many :: Monad m
