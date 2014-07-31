@@ -654,11 +654,8 @@ choose :: Monad m
        -> Consumer Event m (Maybe a) -- ^ Result of the first parser to succeed, or @Nothing@
                                      --   if no parser succeeded
 choose [] = return Nothing
-choose (i:is) = do
-    x <- i
-    case x of
-        Nothing -> choose is
-        Just a -> return $ Just a
+choose (i:is) =
+    i >>= maybe (choose is) (return . Just)
 
 -- | Force an optional parser into a required parser. All of the 'tag'
 -- functions, 'choose' and 'many' deal with 'Maybe' parsers. Use this when you
