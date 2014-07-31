@@ -73,6 +73,7 @@ module Text.XML.Stream.Parse
     , tagPredicateIgnoreAttrs
     , ignoreTag
     , ignoreTagName
+    , ignoreAnyTagName
     , content
     , contentMaybe
       -- * Attribute parsing
@@ -669,6 +670,12 @@ ignoreTagName :: MonadThrow m
               => Name -- ^ The name to match to
               -> ConduitM Event o m (Maybe ())
 ignoreTagName name = ignoreTag (== name)
+
+-- | Like 'ignoreTagName', but matches any name from a list of names.
+ignoreAnyTagName :: MonadThrow m
+                 => [Name] -- ^ The name to match to
+                 -> ConduitM Event o m (Maybe ())
+ignoreAnyTagName names = ignoreTag (`elem` names)
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return @Just@), this function returns 'Nothing'.
