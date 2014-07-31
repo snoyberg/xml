@@ -778,11 +778,9 @@ many :: Monad m
 many i =
     go id
   where
-    go front = do
-        x <- i
-        case x of
-            Nothing -> return $ front []
-            Just y -> go $ front . (:) y
+    go front = i >>=
+        maybe (return $ front [])
+              (\y -> go $ front . (:) y)
 
 type DecodeEntities = Text -> Content
 
