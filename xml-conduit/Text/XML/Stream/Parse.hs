@@ -210,9 +210,8 @@ detectUtf =
     conduit front = await >>= maybe (return ()) (push front)
 
     push front bss =
-        case getEncoding front bss of
-            Left x -> conduit x
-            Right (bss', continue) -> leftover bss' >> continue
+        either conduit (\(bss', continue) -> leftover bss' >> continue)
+               (getEncoding front bss)
 
     getEncoding front bs'
         | S.length bs < 4 =
