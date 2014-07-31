@@ -83,6 +83,7 @@ module Text.XML.Stream.Parse
     , orE
     , choose
     , many
+    , manyIgnore
     , force
       -- * Exceptions
     , XmlException (..)
@@ -773,6 +774,21 @@ many i =
     go front = i >>=
         maybe (return $ front [])
               (\y -> go $ front . (:) y)
+
+-- | Keep parsing elements as long as the parser returns 'Just'
+--   or the ignore parser returns 'Just'.
+manyIgnore :: Monad m
+           => Consumer Event m (Maybe a)
+           -> Consumer Event m (Maybe ())
+           -> Consumer Event m [a]
+manyIgnore i ignored =
+    go id
+  where
+    go front = i >>=
+        maybe (onFail front) (\y -> go $ front . (:) y)
+    -- onFail is called if the main parser fails
+    onFail front =
+        ignored >>= maybe (return $ front []) (const $ go front)
 
 type DecodeEntities = Text -> Content
 
