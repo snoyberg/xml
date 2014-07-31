@@ -691,7 +691,7 @@ ignoreTree :: MonadThrow m
           => (Name -> Bool) -- ^ The predicate name to match to
           -> ConduitM Event o m (Maybe ())
 ignoreTree namePred =
-    tagPredicateIgnoreAttrs namePred (fromMaybe () <$> ignoreAllTrees)
+    tagPredicateIgnoreAttrs namePred (const () <$> many ignoreAllTrees)
 
 -- | Like 'ignoreAllTags', but ignores entire subtrees.
 --
