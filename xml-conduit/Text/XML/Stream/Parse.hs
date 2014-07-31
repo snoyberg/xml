@@ -678,8 +678,24 @@ ignoreAnyTagName :: MonadThrow m
 ignoreAnyTagName names = ignoreTag (`elem` names)
 
 -- | Like 'ignoreTag', but matches all tag name.
+--
+--   > ignoreAllTags = ignoreTag (const True)
 ignoreAllTags :: MonadThrow m => ConduitM Event o m (Maybe ())
 ignoreAllTags = ignoreTag $ const True
+
+-- | Ignore an empty tag, its attributes and its children subtree recursively.
+--   This functions returns 'Just' if the tag matched.
+ignoreTree :: MonadThrow m
+          => (Name -> Bool) -- ^ The predicate name to match to
+          -> ConduitM Event o m (Maybe ())
+ignoreTree namePred = tagPredicateIgnoreAttrs namePred ignoreAllTrees
+
+-- | Like 'ignoreAllTags', but ignores entire subtrees.
+--
+--   > ignoreAllTrees = ignoreTree (const True)
+ignoreAllTrees :: MonadThrow m => ConduitM Event o m (Maybe ())
+ignoreAllTrees = ignoreTree $ const True
+
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return @Just@), this function returns 'Nothing'.
