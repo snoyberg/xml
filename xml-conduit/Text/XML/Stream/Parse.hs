@@ -644,11 +644,8 @@ orE :: Monad m
     => Consumer Event m (Maybe a) -- ^ The first (preferred) parser
     -> Consumer Event m (Maybe a) -- ^ The second parser, only executed if the first parser fails
     -> Consumer Event m (Maybe a) 
-orE a b = do
-  x <- a
-  case x of
-    Nothing -> b
-    _ -> return x
+orE a b =
+    a >>= \x -> maybe b (const $ return x) x
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
