@@ -717,9 +717,7 @@ instance Applicative AttrParser where
 instance Alternative AttrParser where
     empty = AttrParser $ const $ Left $ XmlException "AttrParser.empty" Nothing
     AttrParser f <|> AttrParser g = AttrParser $ \x ->
-      case f x of
-        Left  _ -> g x
-        res     -> res
+        either (const $ g x) Right (f x)
 
 optionalAttrRaw :: ((Name, [Content]) -> Maybe b) -> AttrParser (Maybe b)
 optionalAttrRaw f =
