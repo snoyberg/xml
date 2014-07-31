@@ -677,6 +677,10 @@ ignoreAnyTagName :: MonadThrow m
                  -> ConduitM Event o m (Maybe ())
 ignoreAnyTagName names = ignoreTag (`elem` names)
 
+-- | Like 'ignoreTag', but matches all tag name.
+ignoreAllTags :: MonadThrow m => ConduitM Event o m (Maybe ())
+ignoreAllTags = ignoreTag $ const True
+
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return @Just@), this function returns 'Nothing'.
 --
