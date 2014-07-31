@@ -741,11 +741,9 @@ optionalAttrRaw f =
             Just b -> Right (front as, Just b)
 
 requireAttrRaw :: String -> ((Name, [Content]) -> Maybe b) -> AttrParser b
-requireAttrRaw msg f = do
-    x <- optionalAttrRaw f
-    case x of
-        Just b -> return b
-        Nothing -> AttrParser $ const $ Left $ XmlException msg Nothing
+requireAttrRaw msg f = optionalAttrRaw f >>=
+    maybe (AttrParser $ const $ Left $ XmlException msg Nothing)
+          return
 
 -- | Require that a certain attribute be present and return its value.
 requireAttr :: Name -> AttrParser Text
