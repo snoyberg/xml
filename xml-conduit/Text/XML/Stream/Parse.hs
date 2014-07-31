@@ -693,12 +693,18 @@ ignoreTree :: MonadThrow m
 ignoreTree namePred =
     tagPredicateIgnoreAttrs namePred (const () <$> many ignoreAllTrees)
 
+-- | Like 'ignoreTagName', but also ignores non-empty tabs
+ignoreTreeName :: MonadThrow m
+               => Name
+               -> ConduitM Event o m (Maybe ())
+ignoreTreeName name =
+    ignoreTree (== name)
+
 -- | Like 'ignoreAllTags', but ignores entire subtrees.
 --
 --   > ignoreAllTrees = ignoreTree (const True)
 ignoreAllTrees :: MonadThrow m => ConduitM Event o m (Maybe ())
 ignoreAllTrees = ignoreTree $ const True
-
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return @Just@), this function returns 'Nothing'.
