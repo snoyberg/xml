@@ -706,9 +706,7 @@ newtype AttrParser a = AttrParser { runAttrParser :: [(Name, [Content])] -> Eith
 instance Monad AttrParser where
     return a = AttrParser $ \as -> Right (as, a)
     (AttrParser f) >>= g = AttrParser $ \as ->
-        case f as of
-            Left e -> Left e
-            Right (as', f') -> runAttrParser (g f') as'
+        either Left (\(as', f') -> runAttrParser (g f') as') (f as)
 instance Functor AttrParser where
     fmap = liftM
 instance Applicative AttrParser where
