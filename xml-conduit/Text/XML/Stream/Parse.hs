@@ -71,11 +71,13 @@ module Text.XML.Stream.Parse
     , tagNoAttr
     , tagIgnoreAttrs
     , tagPredicateIgnoreAttrs
+    , content
+    , contentMaybe
+      -- * Ignoring tags/trees
     , ignoreTag
     , ignoreTagName
     , ignoreAnyTagName
-    , content
-    , contentMaybe
+    , ignoreTree
       -- * Attribute parsing
     , AttrParser
     , requireAttr
@@ -688,7 +690,8 @@ ignoreAllTags = ignoreTag $ const True
 ignoreTree :: MonadThrow m
           => (Name -> Bool) -- ^ The predicate name to match to
           -> ConduitM Event o m (Maybe ())
-ignoreTree namePred = tagPredicateIgnoreAttrs namePred ignoreAllTrees
+ignoreTree namePred =
+    tagPredicateIgnoreAttrs namePred (fromMaybe () <$> ignoreAllTrees)
 
 -- | Like 'ignoreAllTags', but ignores entire subtrees.
 --
