@@ -804,9 +804,7 @@ decodeHtmlEntities t =
     case decodeXmlEntities t of
         x@ContentText{} -> x
         backup@ContentEntity{} ->
-            case Map.lookup t htmlEntities of
-                Just x -> ContentText x
-                Nothing -> backup
+            maybe backup ContentText $ Map.lookup t htmlEntities
 
 htmlEntities :: Map.Map T.Text T.Text
 htmlEntities = Map.fromList
