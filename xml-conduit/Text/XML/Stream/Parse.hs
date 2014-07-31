@@ -727,9 +727,9 @@ optionalAttrRaw f =
   where
     go front [] = Right (front [], Nothing)
     go front (a:as) =
-        case f a of
-            Nothing -> go (front . (:) a) as
-            Just b -> Right (front as, Just b)
+        maybe (go (front . (:) a) as)
+              (\b -> Right (front as, Just b))
+              (f a)
 
 requireAttrRaw :: String -> ((Name, [Content]) -> Maybe b) -> AttrParser b
 requireAttrRaw msg f = optionalAttrRaw f >>=
