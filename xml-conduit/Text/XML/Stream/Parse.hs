@@ -71,6 +71,8 @@ module Text.XML.Stream.Parse
     , tagNoAttr
     , tagIgnoreAttrs
     , tagPredicateIgnoreAttrs
+    , ignoreTag
+    , ignoreTagName
     , content
     , contentMaybe
       -- * Attribute parsing
@@ -653,6 +655,20 @@ tagPredicateIgnoreAttrs :: MonadThrow m
                         -> CI.ConduitM Event o m (Maybe a)
 tagPredicateIgnoreAttrs namePred f = tagPredicate namePred ignoreAttrs $ const f
 
+-- | Ignore an empty tag and all of its attributes by predicate.
+--   This does not ignore the tag recursively
+--   (i.e. it assumes there are no child elements).
+--   This functions returns 'Just' if the tag matched.
+ignoreTag :: MonadThrow m
+          => (Name -> Bool) -- ^ The predicate name to match to
+          -> ConduitM Event o m (Maybe ())
+ignoreTag namePred = tagPredicateIgnoreAttrs namePred (return ())
+
+-- | Like 'ignoreTag', but matches an exact name
+ignoreTagName :: MonadThrow m
+              => Name -- ^ The name to match to
+              -> ConduitM Event o m (Maybe ())
+ignoreTagName name = ignoreTag (== name)
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return @Just@), this function returns 'Nothing'.
