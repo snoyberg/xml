@@ -396,7 +396,7 @@ parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False
         char' '-'
         char' '-'
         c <- T.pack <$> manyTill anyChar (string "-->") -- FIXME use takeWhile instead
-        return $ TokenComment c
+        return $ TokenComment c 
     parseCdata = do
         _ <- string "[CDATA["
         t <- T.pack <$> manyTill anyChar (string "]]>") -- FIXME use takeWhile instead
@@ -683,14 +683,14 @@ tagNoAttr :: MonadThrow m
 tagNoAttr name f = tagName name (return ()) $ const f
 
 
--- | A further simplified tag parser, which ignores all attributes, if any exists
+-- | A further simplified tag parser, which ignores all attributes, if any exist
 tagIgnoreAttrs :: MonadThrow m
                => Name -- ^ The name this parser matches to
                -> CI.ConduitM Event o m a -- ^ Handler function to handle the children of the matched tag
                -> CI.ConduitM Event o m (Maybe a)
 tagIgnoreAttrs name f = tagName name ignoreAttrs $ const f
 
--- | A further simplified tag parser, which ignores all attributes, if any exists
+-- | A further simplified tag parser, which ignores all attributes, if any exist
 tagPredicateIgnoreAttrs :: MonadThrow m
                         => (Name -> Bool) -- ^ The name predicate this parser matches to
                         -> CI.ConduitM Event o m a -- ^ Handler function to handle the children of the matched tag
