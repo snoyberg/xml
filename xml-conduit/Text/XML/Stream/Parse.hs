@@ -91,6 +91,10 @@ module Text.XML.Stream.Parse
     , many
     , manyIgnore
     , force
+      -- * Streaming combinators
+    , manyYield
+    , manyIgnoreYield
+    , manyYield'
       -- * Exceptions
     , XmlException (..)
       -- * Other types
@@ -851,6 +855,35 @@ manyIgnore i ignored =
     -- onFail is called if the main parser fails
     onFail front =
         ignored >>= maybe (return $ front []) (const $ go front)
+
+-- | Like 'many', but uses 'yield' so the result list can be streamed
+--   to downstream conduits without waiting for 'manyYield' to finished
+manyYield :: Monad m
+          => ConduitM a b m (Maybe b)
+          -> Conduit a m b
+manyYield consumer =
+    loop
+  where
+    loop = consumer >>= maybe (return ()) (\x -> yield x >> loop)
+
+-- | Like @manyIgnore@, but uses 'yield' so the result list can be streamed
+--   to downstream conduits without waiting for 'manyYield' to finished
+manyIgnoreYield :: MonadThrow m
+                => ConduitM Event b m (Maybe b) -- ^ Consuming parser that generates the result stream
+                -> Consumer Event m (Maybe ()) -- ^ Ignore parser that consumes elements to be ignored
+                -> Conduit Event m b
+manyIgnoreYield consumer ignore =
+    loop
+  where
+    loop = consumer >>= maybe onFail (\x -> yield x >> loop)
+    onFail = ignore >>= maybe (return ()) (const loop)
+
+-- | Like @many'@, but uses 'yield' so the result list can be streamed
+--   to downstream conduits without waiting for 'manyYield' to finished
+manyYield' :: MonadThrow m
+           => ConduitM Event b m (Maybe b)
+           -> Conduit Event m b
+manyYield' consumer = manyIgnoreYield consumer ignoreAllTrees
 
 type DecodeEntities = Text -> Content
 
