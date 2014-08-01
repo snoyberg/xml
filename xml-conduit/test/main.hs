@@ -39,6 +39,7 @@ main = hspec $ do
         it "has valid parser combinators" combinators
         it "has working choose function" testChoose
         it "has working many function" testMany
+        it "has working many' function" testMany'
         it "has working orE" testOrE
         it "is idempotent to parse and pretty render a document" documentParsePrettyRender
         it "ignores the BOM" parseIgnoreBOM
@@ -180,6 +181,26 @@ testMany = C.runResourceT $ P.parseLBS def input C.$$ do
         , "<success/>"
         , "<success/>"
         , "<success/>"
+        , "<success/>"
+        , "</hello>"
+        ]
+
+testMany' :: Assertion
+testMany' = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.many' $ P.tagNoAttr "success" $ return ()
+        liftIO $ length x @?= 5
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<success/>"
+        , "<success/>"
+        , "<success/>"
+        , "<foobar/>"
+        , "<success/>"
+        , "<foo><bar attr=\"1\">some content</bar></foo>"
         , "<success/>"
         , "</hello>"
         ]
