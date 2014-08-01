@@ -111,6 +111,7 @@ module Text.XML.Stream.Parse
     , ignoreTreeName
     , ignoreAnyTreeName
     , ignoreAllTrees
+    , ignoreAllTreesContent
       -- * Attribute parsing
     , AttrParser
     , requireAttr
@@ -724,12 +725,13 @@ ignoreAllTags :: MonadThrow m => ConduitM Event o m (Maybe ())
 ignoreAllTags = ignoreTag $ const True
 
 -- | Ignore an empty tag, its attributes and its children subtree recursively.
+--   Both content and text events are ignored.
 --   This functions returns 'Just' if the tag matched.
 ignoreTree :: MonadThrow m
           => (Name -> Bool) -- ^ The predicate name to match to
           -> ConduitM Event o m (Maybe ())
 ignoreTree namePred =
-    tagPredicateIgnoreAttrs namePred (const () <$> many ignoreAllTrees)
+    tagPredicateIgnoreAttrs namePred (const () <$> many ignoreAllTreesContent)
 
 -- | Like 'ignoreTagName', but also ignores non-empty tabs
 ignoreTreeName :: MonadThrow m
@@ -743,12 +745,15 @@ ignoreAnyTreeName :: MonadThrow m
                  -> ConduitM Event o m (Maybe ())
 ignoreAnyTreeName names = ignoreTree (`elem` names)
 
-
 -- | Like 'ignoreAllTags', but ignores entire subtrees.
 --
 --   > ignoreAllTrees = ignoreTree (const True)
 ignoreAllTrees :: MonadThrow m => ConduitM Event o m (Maybe ())
 ignoreAllTrees = ignoreTree $ const True
+
+-- | Like 'ignoreAllTrees', but also ignores all content events
+ignoreAllTreesContent :: MonadThrow m => ConduitM Event o m (Maybe ())
+ignoreAllTreesContent = (void <$> contentMaybe) `orE` ignoreAllTrees
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return @Just@), this function returns 'Nothing'.
@@ -896,12 +901,12 @@ manyIgnore i ignored =
     onFail front =
         ignored >>= maybe (return $ front []) (const $ go front)
 
--- | Like @many@, but any tags the consumer doesn't match on
---   are silently ignored. 
+-- | Like @many@, but any tags and content the consumer doesn't match on
+--   are silently ignored.
 many' :: MonadThrow m
            => Consumer Event m (Maybe a)
            -> Consumer Event m [a]
-many' consumer = manyIgnore consumer ignoreAllTrees
+many' consumer = manyIgnore consumer ignoreAllTreesContent
 
 -- | Like 'many', but uses 'yield' so the result list can be streamed
 --   to downstream conduits without waiting for 'manyYield' to finished
@@ -930,7 +935,7 @@ manyIgnoreYield consumer ignoreParser =
 manyYield' :: MonadThrow m
            => ConduitM Event b m (Maybe b)
            -> Conduit Event m b
-manyYield' consumer = manyIgnoreYield consumer ignoreAllTrees
+manyYield' consumer = manyIgnoreYield consumer ignoreAllTreesContent
 
 type DecodeEntities = Text -> Content
 
