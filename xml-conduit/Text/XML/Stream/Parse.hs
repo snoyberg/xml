@@ -123,6 +123,7 @@ module Text.XML.Stream.Parse
     , choose
     , many
     , manyIgnore
+    , many'
     , force
       -- * Streaming combinators
     , manyYield
@@ -894,6 +895,13 @@ manyIgnore i ignored =
     -- onFail is called if the main parser fails
     onFail front =
         ignored >>= maybe (return $ front []) (const $ go front)
+
+-- | Like @many@, but any tags the consumer doesn't match on
+--   are silently ignored. 
+many' :: MonadThrow m
+           => Consumer Event m (Maybe a)
+           -> Consumer Event m [a]
+many' consumer = manyIgnore consumer ignoreAllTrees
 
 -- | Like 'many', but uses 'yield' so the result list can be streamed
 --   to downstream conduits without waiting for 'manyYield' to finished
