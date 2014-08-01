@@ -106,8 +106,10 @@ module Text.XML.Stream.Parse
     , ignoreTag
     , ignoreTagName
     , ignoreAnyTagName
+    , ignoreAllTags
     , ignoreTree
     , ignoreTreeName
+    , ignoreAnyTreeName
     , ignoreAllTrees
       -- * Attribute parsing
     , AttrParser
@@ -733,6 +735,13 @@ ignoreTreeName :: MonadThrow m
                => Name
                -> ConduitM Event o m (Maybe ())
 ignoreTreeName name = ignoreTree (== name)
+
+-- | Like 'ignoreTagName', but matches any name from a list of names.
+ignoreAnyTreeName :: MonadThrow m
+                 => [Name] -- ^ The name to match to
+                 -> ConduitM Event o m (Maybe ())
+ignoreAnyTreeName names = ignoreTree (`elem` names)
+
 
 -- | Like 'ignoreAllTags', but ignores entire subtrees.
 --
