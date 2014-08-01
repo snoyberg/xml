@@ -107,6 +107,8 @@ module Text.XML.Stream.Parse
     , ignoreTagName
     , ignoreAnyTagName
     , ignoreTree
+    , ignoreTreeName
+    , ignoreAllTrees
       -- * Attribute parsing
     , AttrParser
     , requireAttr
@@ -900,11 +902,11 @@ manyIgnoreYield :: MonadThrow m
                 => ConduitM Event b m (Maybe b) -- ^ Consuming parser that generates the result stream
                 -> Consumer Event m (Maybe ()) -- ^ Ignore parser that consumes elements to be ignored
                 -> Conduit Event m b
-manyIgnoreYield consumer ignore =
+manyIgnoreYield consumer ignoreParser =
     loop
   where
     loop = consumer >>= maybe onFail (\x -> yield x >> loop)
-    onFail = ignore >>= maybe (return ()) (const loop)
+    onFail = ignoreParser >>= maybe (return ()) (const loop)
 
 -- | Like @many'@, but uses 'yield' so the result list can be streamed
 --   to downstream conduits without waiting for 'manyYield' to finished
