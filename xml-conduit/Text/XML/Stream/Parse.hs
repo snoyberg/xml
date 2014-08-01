@@ -210,9 +210,8 @@ detectUtf =
     conduit front = await >>= maybe (return ()) (push front)
 
     push front bss =
-        case getEncoding front bss of
-            Left x -> conduit x
-            Right (bss', continue) -> leftover bss' >> continue
+        either conduit (\(bss', continue) -> leftover bss' >> continue)
+               (getEncoding front bss)
 
     getEncoding front bs'
         | S.length bs < 4 =
@@ -644,11 +643,8 @@ orE :: Monad m
     => Consumer Event m (Maybe a) -- ^ The first (preferred) parser
     -> Consumer Event m (Maybe a) -- ^ The second parser, only executed if the first parser fails
     -> Consumer Event m (Maybe a) 
-orE a b = do
-  x <- a
-  case x of
-    Nothing -> b
-    _ -> return x
+orE a b =
+    a >>= \x -> maybe b (const $ return x) x
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
@@ -657,11 +653,8 @@ choose :: Monad m
        -> Consumer Event m (Maybe a) -- ^ Result of the first parser to succeed, or @Nothing@
                                      --   if no parser succeeded
 choose [] = return Nothing
-choose (i:is) = do
-    x <- i
-    case x of
-        Nothing -> choose is
-        Just a -> return $ Just a
+choose (i:is) =
+    i >>= maybe (choose is) (return . Just)
 
 -- | Force an optional parser into a required parser. All of the 'tag'
 -- functions, 'choose' and 'many' deal with 'Maybe' parsers. Use this when you
@@ -670,11 +663,8 @@ force :: MonadThrow m
       => String -- ^ Error message
       -> CI.ConduitM Event o m (Maybe a) -- ^ Optional parser to be forced
       -> CI.ConduitM Event o m a
-force msg i = do
-    x <- i
-    case x of
-        Nothing -> lift $ monadThrow $ XmlException msg Nothing
-        Just a -> return a
+force msg i =
+    i >>= maybe (lift $ monadThrow $ XmlException msg Nothing) return
 
 -- | A helper function which reads a file from disk using 'enumFile', detects
 -- character encoding using 'detectUtf', parses the XML using 'parseBytes', and
@@ -715,9 +705,7 @@ newtype AttrParser a = AttrParser { runAttrParser :: [(Name, [Content])] -> Eith
 instance Monad AttrParser where
     return a = AttrParser $ \as -> Right (as, a)
     (AttrParser f) >>= g = AttrParser $ \as ->
-        case f as of
-            Left e -> Left e
-            Right (as', f') -> runAttrParser (g f') as'
+        either Left (\(as', f') -> runAttrParser (g f') as') (f as)
 instance Functor AttrParser where
     fmap = liftM
 instance Applicative AttrParser where
@@ -726,9 +714,7 @@ instance Applicative AttrParser where
 instance Alternative AttrParser where
     empty = AttrParser $ const $ Left $ XmlException "AttrParser.empty" Nothing
     AttrParser f <|> AttrParser g = AttrParser $ \x ->
-      case f x of
-        Left  _ -> g x
-        res     -> res
+        either (const $ g x) Right (f x)
 
 optionalAttrRaw :: ((Name, [Content]) -> Maybe b) -> AttrParser (Maybe b)
 optionalAttrRaw f =
@@ -736,16 +722,14 @@ optionalAttrRaw f =
   where
     go front [] = Right (front [], Nothing)
     go front (a:as) =
-        case f a of
-            Nothing -> go (front . (:) a) as
-            Just b -> Right (front as, Just b)
+        maybe (go (front . (:) a) as)
+              (\b -> Right (front as, Just b))
+              (f a)
 
 requireAttrRaw :: String -> ((Name, [Content]) -> Maybe b) -> AttrParser b
-requireAttrRaw msg f = do
-    x <- optionalAttrRaw f
-    case x of
-        Just b -> return b
-        Nothing -> AttrParser $ const $ Left $ XmlException msg Nothing
+requireAttrRaw msg f = optionalAttrRaw f >>=
+    maybe (AttrParser $ const $ Left $ XmlException msg Nothing)
+          return
 
 -- | Require that a certain attribute be present and return its value.
 requireAttr :: Name -> AttrParser Text
@@ -769,7 +753,7 @@ contentsToText =
 -- list of attributes, you must call this /after/ any calls to 'requireAttr',
 -- 'optionalAttr', etc.
 ignoreAttrs :: AttrParser ()
-ignoreAttrs = AttrParser $ \_ -> Right ([], ())
+ignoreAttrs = AttrParser $ const $ Right ([], ())
 
 -- | Keep parsing elements as long as the parser returns 'Just'.
 many :: Monad m
@@ -778,11 +762,9 @@ many :: Monad m
 many i =
     go id
   where
-    go front = do
-        x <- i
-        case x of
-            Nothing -> return $ front []
-            Just y -> go $ front . (:) y
+    go front = i >>=
+        maybe (return $ front [])
+              (\y -> go $ front . (:) y)
 
 type DecodeEntities = Text -> Content
 
@@ -817,9 +799,7 @@ decodeHtmlEntities t =
     case decodeXmlEntities t of
         x@ContentText{} -> x
         backup@ContentEntity{} ->
-            case Map.lookup t htmlEntities of
-                Just x -> ContentText x
-                Nothing -> backup
+            maybe backup ContentText $ Map.lookup t htmlEntities
 
 htmlEntities :: Map.Map T.Text T.Text
 htmlEntities = Map.fromList
