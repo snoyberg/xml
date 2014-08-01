@@ -43,6 +43,35 @@
 --
 -- > [Person {age = 25, name = "Michael"},Person {age = 2, name = "Eliezer"}]
 --
+-- This module also supports streaming results using 'yield'.
+-- This allows parser results to be processed using conduits
+-- while a particular parser (e.g. 'many') is still running.
+-- Without using streaming results, you have to wait until the parser finished
+-- before you can process the result list. Large XML files might be easier
+-- to process by using streaming results.
+-- See http://stackoverflow.com/q/21367423/2597135 for a related discussion.
+--
+-- > {-# LANGUAGE OverloadedStrings #-}
+-- > import Control.Monad.Trans.Resource
+-- > import Data.Conduit
+-- > import Data.Text (Text, unpack)
+-- > import Text.XML.Stream.Parse
+-- > import Text.XML (Name)
+-- > import Control.Monad.Trans.Class (lift)
+-- > import Control.Monad (void)
+-- > import qualified Data.Conduit.List as CL
+-- >
+-- > data Person = Person Int Text deriving Show
+-- >
+-- > parsePerson = tagName "person" (requireAttr "age") $ \age -> do
+-- >     name <- content
+-- >     return $ Person (read $ unpack age) name
+-- >
+-- > parsePeople = void $ tagNoAttr "people" $ manyYield parsePerson
+-- >
+-- > main = runResourceT $
+-- >     parseFile def "people.xml" $$ parsePeople =$ CL.mapM_ (lift . print)
+--
 -- Previous versions of this module contained a number of more sophisticated
 -- functions written by Aristid Breitkreuz and Dmitry Olshansky. To keep this
 -- package simpler, those functions are being moved to a separate package. This
@@ -701,8 +730,7 @@ ignoreTree namePred =
 ignoreTreeName :: MonadThrow m
                => Name
                -> ConduitM Event o m (Maybe ())
-ignoreTreeName name =
-    ignoreTree (== name)
+ignoreTreeName name = ignoreTree (== name)
 
 -- | Like 'ignoreAllTags', but ignores entire subtrees.
 --
