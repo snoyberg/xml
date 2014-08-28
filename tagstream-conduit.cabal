@@ -38,7 +38,7 @@ Library
                      , text
                      , case-insensitive
                      , transformers >= 0.2
-                     , conduit >= 0.5 && < 1.2
+                     , conduit >= 0.5 && < 1.3
                      , conduit-extra
                      , resourcet
                      , attoparsec
