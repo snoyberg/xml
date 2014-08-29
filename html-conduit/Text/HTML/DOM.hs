@@ -4,13 +4,14 @@ module Text.HTML.DOM
     , sinkDoc
     , readFile
     , parseLBS
+    , parseBSChunks
     ) where
 
 import Control.Monad.Trans.Resource
 import Prelude hiding (readFile)
 import qualified Data.ByteString as S
 #if MIN_VERSION_tagstream_conduit(0,5,0)
-import qualified Text.HTML.TagStream.ByteString as TS
+import qualified Text.HTML.TagStream.Text as TS
 #endif
 import qualified Text.HTML.TagStream as TS
 import qualified Data.XML.Types as XT
@@ -19,7 +20,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Conduit.List as CL
 import Control.Arrow ((***), second)
-import Data.Text.Encoding (decodeUtf8With)
+import Data.Text.Encoding (decodeUtf8With, streamDecodeUtf8With, Decoding(..))
 import Data.Text.Encoding.Error (lenientDecode)
 import qualified Data.Set as Set
 import qualified Text.XML as X
@@ -31,17 +32,29 @@ import Control.Monad.Trans.Resource (runExceptionT_)
 import Data.Functor.Identity (runIdentity)
 import Data.Maybe (mapMaybe)
 
--- | Converts a stream of bytes to a stream of properly balanced @Event@s.
+-- | Convert a stream of bytes to a Text stream using @lenientDecode@
+toText :: Monad m => Conduit S.ByteString m T.Text
+toText = go (streamDecodeUtf8With lenientDecode "")
+  where
+    go (Some _ _ f) = do
+      mbs <- await
+      case mbs of
+        Nothing -> let (Some txt _ _) = f S.empty in yield txt
+        Just bs -> do let some@(Some txt _ _) = f bs
+                      yield txt
+                      go some
+
+-- | Converts a Text stream to a stream of properly balanced @Event@s.
 --
 -- Note that there may be multiple (or not) root elements. @sinkDoc@ addresses
 -- that case.
-eventConduit :: Monad m => Conduit S.ByteString m XT.Event
+eventConduit :: Monad m => Conduit T.Text m XT.Event
 eventConduit =
     TS.tokenStream =$= go []
   where
     go stack = do
         mx <- await
-        case fmap (entities . fmap' (decodeUtf8With lenientDecode)) mx of
+        case fmap entities mx of
             Nothing -> closeStack stack
 
             -- Ignore processing instructions (or pseudo-instructions)
@@ -120,7 +133,7 @@ eventConduit =
         , "wbr"
         ]
 
-sinkDoc :: MonadThrow m => Sink S.ByteString m X.Document
+sinkDoc :: MonadThrow m => Sink T.Text m X.Document
 sinkDoc =
     fmap stripDummy $ mapOutput ((,) Nothing) eventConduit =$ addDummyWrapper =$ X.fromEvents
   where
@@ -138,7 +151,10 @@ sinkDoc =
     toElement _ = Nothing
 
 readFile :: F.FilePath -> IO X.Document
-readFile fp = runResourceT $ sourceFile (F.encodeString fp) $$ sinkDoc
+readFile fp = runResourceT $ sourceFile (F.encodeString fp) $$ (toText =$ sinkDoc)
 
 parseLBS :: L.ByteString -> X.Document
-parseLBS lbs = runIdentity $ runExceptionT_ $ CL.sourceList (L.toChunks lbs) $$ sinkDoc
+parseLBS lbs = runIdentity $ runExceptionT_ $ CL.sourceList (L.toChunks lbs) $$ (toText =$ sinkDoc)
+
+parseBSChunks :: [S.ByteString] -> X.Document
+parseBSChunks bss = runIdentity $ runExceptionT_ $ CL.sourceList bss $$ (toText =$ sinkDoc)

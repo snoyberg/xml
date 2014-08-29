@@ -39,6 +39,9 @@ main = hspec $ do
         it "doesn't strip whitespace" $
             X.parseLBS_ X.def "<foo>  hello</foo>" @=?
             H.parseLBS        "<foo>  hello</foo>"
+        it "split code-points" $
+            X.parseLBS_ X.def "<foo>&#xa0;</foo>" @=?
+            H.parseBSChunks ["<foo>\xc2", "\xa0</foo>"]
     describe "HTML parsing" $ do
         it "XHTML" $
             let html = "<html><head><title>foo</title></head><body><p>Hello World</p></body></html>"
