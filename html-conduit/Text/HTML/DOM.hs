@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings, CPP #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 module Text.HTML.DOM
     ( eventConduit
     , sinkDoc
