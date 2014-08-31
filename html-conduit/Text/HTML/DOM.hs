@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings, CPP #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 module Text.HTML.DOM
     ( eventConduit
     , sinkDoc
@@ -16,12 +17,11 @@ import qualified Text.HTML.TagStream.Text as TS
 import qualified Text.HTML.TagStream as TS
 import qualified Data.XML.Types as XT
 import Data.Conduit
+import Data.Conduit.Text (decode, utf8)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Conduit.List as CL
 import Control.Arrow ((***), second)
-import Data.Text.Encoding (decodeUtf8With, streamDecodeUtf8With, Decoding(..))
-import Data.Text.Encoding.Error (lenientDecode)
 import qualified Data.Set as Set
 import qualified Text.XML as X
 import Text.XML.Stream.Parse (decodeHtmlEntities)
@@ -31,18 +31,6 @@ import qualified Data.ByteString.Lazy as L
 import Control.Monad.Trans.Resource (runExceptionT_)
 import Data.Functor.Identity (runIdentity)
 import Data.Maybe (mapMaybe)
-
--- | Convert a stream of bytes to a Text stream using @lenientDecode@
-toText :: Monad m => Conduit S.ByteString m T.Text
-toText = go (streamDecodeUtf8With lenientDecode "")
-  where
-    go (Some _ _ f) = do
-      mbs <- await
-      case mbs of
-        Nothing -> let (Some txt _ _) = f S.empty in yield txt
-        Just bs -> do let some@(Some txt _ _) = f bs
-                      yield txt
-                      go some
 
 -- | Converts a Text stream to a stream of properly balanced @Event@s.
 --
@@ -87,14 +75,6 @@ eventConduit =
             Just TS.Incomplete{} -> go stack
     toName l = XT.Name l Nothing Nothing
     closeStack = mapM_ (yield . XT.EventEndElement)
-
-    fmap' :: (a -> b) -> TS.Token' a -> TS.Token' b
-    fmap' f (TS.TagOpen x pairs b) = TS.TagOpen (f x) (map (f *** f) pairs) b
-    fmap' f (TS.TagClose x) = TS.TagClose (f x)
-    fmap' f (TS.Text x) = TS.Text (f x)
-    fmap' f (TS.Comment x) = TS.Comment (f x)
-    fmap' f (TS.Special x y) = TS.Special (f x) (f y)
-    fmap' f (TS.Incomplete x) = TS.Incomplete (f x)
 
     entities :: TS.Token' Text -> TS.Token' Text
     entities (TS.TagOpen x pairs b) = TS.TagOpen x (map (second entities') pairs) b
@@ -151,10 +131,11 @@ sinkDoc =
     toElement _ = Nothing
 
 readFile :: F.FilePath -> IO X.Document
-readFile fp = runResourceT $ sourceFile (F.encodeString fp) $$ (toText =$ sinkDoc)
+readFile fp = runResourceT $ sourceFile (F.encodeString fp) $$ decode utf8 =$ sinkDoc
 
 parseLBS :: L.ByteString -> X.Document
-parseLBS lbs = runIdentity $ runExceptionT_ $ CL.sourceList (L.toChunks lbs) $$ (toText =$ sinkDoc)
+parseLBS lbs = runIdentity $ runExceptionT_ $ CL.sourceList (L.toChunks lbs) $$ decode utf8 =$ sinkDoc
 
 parseBSChunks :: [S.ByteString] -> X.Document
-parseBSChunks bss = runIdentity $ runExceptionT_ $ CL.sourceList bss $$ (toText =$ sinkDoc)
+parseBSChunks bss = runIdentity $ runExceptionT_ $ CL.sourceList bss $$ decode utf8 =$ sinkDoc
+
