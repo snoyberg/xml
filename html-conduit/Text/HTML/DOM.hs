@@ -31,13 +31,13 @@ import Control.Monad.Trans.Resource (runExceptionT_)
 import Data.Functor.Identity (runIdentity)
 import Data.Maybe (mapMaybe)
 
--- | Converts a Text stream to a stream of properly balanced @Event@s.
+-- | Converts a stream of bytes to a stream of properly balanced @Event@s.
 --
 -- Note that there may be multiple (or not) root elements. @sinkDoc@ addresses
 -- that case.
-eventConduit :: Monad m => Conduit T.Text m XT.Event
+eventConduit :: (MonadThrow m, Monad m) => Conduit S.ByteString m XT.Event
 eventConduit =
-    TS.tokenStream =$= go []
+    decode utf8 =$= TS.tokenStream =$= go []
   where
     go stack = do
         mx <- await
@@ -112,7 +112,7 @@ eventConduit =
         , "wbr"
         ]
 
-sinkDoc :: MonadThrow m => Sink T.Text m X.Document
+sinkDoc :: MonadThrow m => Sink S.ByteString m X.Document
 sinkDoc =
     fmap stripDummy $ mapOutput ((,) Nothing) eventConduit =$ addDummyWrapper =$ X.fromEvents
   where
@@ -130,11 +130,11 @@ sinkDoc =
     toElement _ = Nothing
 
 readFile :: F.FilePath -> IO X.Document
-readFile fp = runResourceT $ sourceFile (F.encodeString fp) $$ decode utf8 =$ sinkDoc
+readFile fp = runResourceT $ sourceFile (F.encodeString fp) $$ sinkDoc
 
 parseLBS :: L.ByteString -> X.Document
-parseLBS lbs = runIdentity $ runExceptionT_ $ CL.sourceList (L.toChunks lbs) $$ decode utf8 =$ sinkDoc
+parseLBS lbs = runIdentity $ runExceptionT_ $ CL.sourceList (L.toChunks lbs) $$ sinkDoc
 
 parseBSChunks :: [S.ByteString] -> X.Document
-parseBSChunks bss = runIdentity $ runExceptionT_ $ CL.sourceList bss $$ decode utf8 =$ sinkDoc
+parseBSChunks bss = runIdentity $ runExceptionT_ $ CL.sourceList bss $$ sinkDoc
 
