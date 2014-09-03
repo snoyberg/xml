@@ -16,7 +16,7 @@ import qualified Text.HTML.TagStream.Text as TS
 import qualified Text.HTML.TagStream as TS
 import qualified Data.XML.Types as XT
 import Data.Conduit
-import Data.Conduit.Text (decode, utf8)
+import Data.Conduit.Text (decodeUtf8Lenient)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Conduit.List as CL
@@ -35,9 +35,9 @@ import Data.Maybe (mapMaybe)
 --
 -- Note that there may be multiple (or not) root elements. @sinkDoc@ addresses
 -- that case.
-eventConduit :: (MonadThrow m, Monad m) => Conduit S.ByteString m XT.Event
+eventConduit :: Monad m => Conduit S.ByteString m XT.Event
 eventConduit =
-    decode utf8 =$= TS.tokenStream =$= go []
+    decodeUtf8Lenient =$= TS.tokenStream =$= go []
   where
     go stack = do
         mx <- await
