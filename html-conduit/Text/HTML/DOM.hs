@@ -133,7 +133,7 @@ readFile :: F.FilePath -> IO X.Document
 readFile fp = runResourceT $ sourceFile (F.encodeString fp) $$ sinkDoc
 
 parseLBS :: L.ByteString -> X.Document
-parseLBS lbs = runIdentity $ runExceptionT_ $ CL.sourceList (L.toChunks lbs) $$ sinkDoc
+parseLBS = parseBSChunks . L.toChunks
 
 parseBSChunks :: [S.ByteString] -> X.Document
 parseBSChunks bss = runIdentity $ runExceptionT_ $ CL.sourceList bss $$ sinkDoc
