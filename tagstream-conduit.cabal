@@ -41,7 +41,7 @@ Library
                      , conduit >= 1.2
                      , conduit-extra >= 1.1.0
                      , resourcet
-                     , attoparsec >= 0.12
+                     , attoparsec >= 0.10
                      , blaze-builder
                      , xml-conduit >= 1.1.0.0
                      , data-default >= 0.5.0
