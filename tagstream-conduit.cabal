@@ -33,7 +33,7 @@ Library
                      , Text.HTML.TagStream.Types
                      , Text.HTML.TagStream.Utils
                      , Text.HTML.TagStream.Entities
-  Build-depends:       base >= 4
+  Build-depends:       base >= 4 && < 5
                      , bytestring
                      , text
                      , case-insensitive
@@ -50,7 +50,7 @@ test-suite test
     hs-source-dirs: tests
     main-is: Tests.hs
     type: exitcode-stdio-1.0
-    build-depends:     base >= 4
+    build-depends:     base >= 4 && < 5
                      , bytestring
                      , text
                      , conduit >= 1.2
