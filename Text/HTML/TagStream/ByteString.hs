@@ -6,7 +6,7 @@ module Text.HTML.TagStream.ByteString where
 import qualified Blaze.ByteString.Builder as B
 import           Control.Applicative
 import           Control.Monad (unless)
-import           Data.Attoparsec.Char8
+import           Data.Attoparsec.ByteString.Char8
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as S
 import           Data.Conduit
