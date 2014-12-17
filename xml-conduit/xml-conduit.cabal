@@ -1,30 +1,19 @@
 name:            xml-conduit
-version:         1.2.3
+version:         1.2.3.1
 license:         BSD3
 license-file:    LICENSE
-author:          Michael Snoyman <michaels@suite-sol.com>, Aristid Breitkreuz <aristidb@googlemail.com>
-maintainer:      Michael Snoyman <michaels@suite-sol.com>
+author:          Michael Snoyman <michael@snoyman.com>, Aristid Breitkreuz <aristidb@googlemail.com>
+maintainer:      Michael Snoyman <michael@snoyman.com>
 synopsis:        Pure-Haskell utilities for dealing with XML with the conduit package.
-description:
-    This package provides parsing and rendering functions for XML. It is based on the datatypes found in the xml-types package. This package is broken up into the following modules:
-    .
-    * Text.XML: DOM-based parsing and rendering. This is the most commonly used module.
-    .
-    * Text.XML.Cursor: A wrapper around "Text.XML" which allows bidirectional traversing of the DOM, similar to XPath. (Note: Text.XML.Cursor.Generic is the same concept, but will work with any node representation.)
-    .
-    * Text.XML.Unresolved: A slight modification to "Text.XML" which does not require all entities to be resolved at parsing. The datatypes are slightly more complicated here, and therefore this module is only recommended when you need to deal directly with raw entities.
-    .
-    * Text.XML.Stream.Parse: Streaming parser, including some streaming parser combinators.
-    .
-    * Text.XML.Stream.Render: Streaming renderer.
-    .
-    Additionally, the xml-hamlet package <http://hackage.haskell.org/package/xml-hamlet> provides a more convenient syntax for creating XML documents. For a more thorough tutorial on this library, please see <http://www.yesodweb.com/book/xml>.
+description:     Hackage documentation generation is not reliable. For up to date documentation, please see: <http://www.stackage.org/package/xml-conduit>.
 category:        XML, Conduit
 stability:       Stable
 cabal-version:   >= 1.8
 build-type:      Simple
 homepage:        http://github.com/snoyberg/xml
 extra-source-files: test/main.hs
+                    README.md
+                    ChangeLog.md
 
 library
     build-depends:   base                      >= 4        && < 5
@@ -40,7 +29,7 @@ library
                    , transformers              >= 0.2      && < 0.5
                    , data-default
                    , system-filepath           >= 0.4      && < 0.5
-                   , monad-control             >= 0.3      && < 0.4
+                   , monad-control             >= 0.3      && < 1.1
                    , blaze-markup              >= 0.5
                    , blaze-html                >= 0.5
                    , deepseq                   >= 1.1.0.0
