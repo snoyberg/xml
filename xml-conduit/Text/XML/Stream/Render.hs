@@ -43,9 +43,9 @@ import Control.Monad.Trans.Resource (MonadThrow)
 --renderBytes :: Monad m => RenderSettings -> Conduit Event m ByteString
 renderBytes rs = renderBuilder rs =$= builderToByteString
 
--- | Render a stream of 'Event's into a stream of 'ByteString's. This function
+-- | Render a stream of 'Event's into a stream of 'Text's. This function
 -- wraps around 'renderBuilder', 'builderToByteString' and 'renderBytes', so it
--- produces optimally sized 'ByteString's with minimal buffer copying.
+-- produces optimally sized 'Text's with minimal buffer copying.
 {-
 renderText :: (MonadThrow m)
            => RenderSettings -> Conduit Event m Text
