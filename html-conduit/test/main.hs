@@ -86,3 +86,11 @@ main = hspec $ do
                         ]
                     ]
              in H.parseLBS html @?= doc
+
+    it "doesn't double unescape" $
+        let html = "<p>Hello &amp;gt; World</p>"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element "p" Map.empty
+                [ X.NodeContent "Hello &gt; World"
+                ]
+         in H.parseLBS html @?= doc
