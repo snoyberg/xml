@@ -51,7 +51,9 @@ module Text.XML.Stream.Parse
     ( -- * Parsing XML files
       parseBytes
     , parseBytesPos
+    , parseText'
     , parseText
+    , parseTextPos
     , detectUtf
     , parseFile
     , parseLBS
@@ -243,7 +245,7 @@ type EventPos = (Maybe PositionRange, Event)
 -- provided by libxml-enumerator. However, this has the advantage of not
 -- relying on any C libraries.
 --
--- This relies on 'detectUtf' to determine character encoding, and 'parseText'
+-- This relies on 'detectUtf' to determine character encoding, and 'parseText''
 -- to do the actual parsing.
 parseBytes :: MonadThrow m
            => ParseSettings
@@ -253,7 +255,7 @@ parseBytes = mapOutput snd . parseBytesPos
 parseBytesPos :: MonadThrow m
               => ParseSettings
               -> Conduit S.ByteString m EventPos
-parseBytesPos ps = detectUtf =$= parseText ps
+parseBytesPos ps = detectUtf =$= parseTextPos ps
 
 dropBOM :: Monad m => Conduit TS.Text m TS.Text
 dropBOM =
@@ -274,10 +276,21 @@ dropBOM =
 -- messages do not give line/column information, so you may prefer to stick
 -- with the parser provided by libxml-enumerator. However, this has the
 -- advantage of not relying on any C libraries.
+parseText' :: MonadThrow m
+           => ParseSettings
+           -> Conduit TS.Text m Event
+parseText' = mapOutput snd . parseTextPos
+
+{-# DEPRECATED parseText "Please use 'parseText'' or 'parseTextPos'." #-}
 parseText :: MonadThrow m
           => ParseSettings
           -> Conduit TS.Text m EventPos
-parseText de =
+parseText = parseTextPos
+
+parseTextPos :: MonadThrow m
+          => ParseSettings
+          -> Conduit TS.Text m EventPos
+parseTextPos de =
     dropBOM
         =$= tokenize
         =$= toEventC de
