@@ -1,3 +1,7 @@
+## 1.2.4
+
+* 'parseText' becomes 'parseText'/'parseTextPos', depending on the output type [#47](https://github.com/snoyberg/xml/pull/47)
+
 ## 1.2.3.3
 
 * Allow blaze-builder 0.4

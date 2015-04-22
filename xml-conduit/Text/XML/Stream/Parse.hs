@@ -276,6 +276,8 @@ dropBOM =
 -- messages do not give line/column information, so you may prefer to stick
 -- with the parser provided by libxml-enumerator. However, this has the
 -- advantage of not relying on any C libraries.
+--
+-- Since 1.2.4
 parseText' :: MonadThrow m
            => ParseSettings
            -> Conduit TS.Text m Event
@@ -287,6 +289,9 @@ parseText :: MonadThrow m
           -> Conduit TS.Text m EventPos
 parseText = parseTextPos
 
+-- | Same as 'parseText'', but includes the position of each event.
+--
+-- Since 1.2.4
 parseTextPos :: MonadThrow m
           => ParseSettings
           -> Conduit TS.Text m EventPos
