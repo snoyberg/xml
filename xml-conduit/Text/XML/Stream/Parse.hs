@@ -71,6 +71,7 @@ module Text.XML.Stream.Parse
     , tagPredicate
     , tagName
     , tagNoAttr
+    , tagSkip
     , content
     , contentMaybe
       -- * Attribute parsing
@@ -652,6 +653,41 @@ tagNoAttr :: MonadThrow m
           -> CI.ConduitM Event o m a -- ^ Handler function to handle the children of the matched tag
           -> CI.ConduitM Event o m (Maybe a)
 tagNoAttr name f = tagName name (return ()) $ const f
+
+-- | Skip a tag with all its nested subtags and return a default value if it worked: c.
+-- This function automatically absorbs its balancing closing tag, and will
+-- throw an exception if not all of the nested tags have a closing tag.
+-- This function automatically ignores everything that is not a begin or closing tag.
+tagSkip :: MonadThrow m => c -> CI.ConduitM Event o m (Maybe c)
+tagSkip c = do
+    x <- dropAllExceptBeginEnd
+    case x of
+        Just (EventBeginElement name as) ->
+            do CL.drop 1
+               sequences -- several tags in sequence on one level
+               y <- dropAllExceptBeginEnd
+               case y of
+                   Just (EventEndElement name')
+                       | name == name' -> CL.drop 1 >> return (Just c)
+                   _ -> lift $ monadThrow $ XmlException ("tagSkip expected end tag for: " ++ show name) y
+        _ -> return Nothing
+  where
+    -- Drop Events until we encount a begin or end element
+    dropAllExceptBeginEnd = do
+        x <- CL.peek
+        let isAllExceptBeginEnd =
+                case x of
+                    Just EventBeginElement{} -> False
+                    Just EventEndElement{} -> False
+                    Just _ -> True
+                    Nothing -> False
+        if isAllExceptBeginEnd then CL.drop 1 >> dropAllExceptBeginEnd else return x
+    sequences = do
+        z <- dropAllExceptBeginEnd
+        case z of Just (EventBeginElement _ _) -> do tagSkip c
+                                                     sequences
+                  _ -> return Nothing
+
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return @Just@), this function returns 'Nothing'.
