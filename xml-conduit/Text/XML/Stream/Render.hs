@@ -1,39 +1,49 @@
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts #-}
 -- | 'Enumeratee's to render XML 'Event's. Unlike libxml-enumerator and
 -- expat-enumerator, this module does not provide IO and ST variants, since the
 -- underlying rendering operations are pure functions.
 module Text.XML.Stream.Render
-    ( renderBuilder
+    ( -- * Rendering XML files
+      renderBuilder
     , renderBytes
     , renderText
+    , prettify
+      -- * Renderer settings
     , RenderSettings
     , def
     , rsPretty
     , rsNamespaces
     , rsAttrOrder
     , orderAttrs
-    , prettify
+      -- * Event rendering
+    , tag
+    , content
+      -- * Attribute rendering
+    , Attributes
+    , attr
+    , optionalAttr
     ) where
 
-import Data.XML.Types (Event (..), Content (..), Name (..))
-import Text.XML.Stream.Token
-import qualified Data.Text as T
-import Data.Text (Text)
-import Blaze.ByteString.Builder
-import Data.Conduit.Blaze (builderToByteString)
-import qualified Data.Map as Map
-import Data.Map (Map)
-import Data.Maybe (fromMaybe, mapMaybe)
-import Data.ByteString (ByteString)
-import Data.Default (Default (def))
-import qualified Data.Set as Set
-import Data.List (foldl')
-import Data.Conduit
-import qualified Data.Conduit.List as CL
-import qualified Data.Conduit.Text as CT
-import Data.Monoid (mempty)
-import Control.Monad.Trans.Resource (MonadThrow)
+import           Blaze.ByteString.Builder
+import           Control.Monad.Trans.Resource (MonadThrow)
+import           Data.ByteString              (ByteString)
+import           Data.Conduit
+import           Data.Conduit.Blaze           (builderToByteString)
+import qualified Data.Conduit.List            as CL
+import qualified Data.Conduit.Text            as CT
+import           Data.Default                 (Default (def))
+import           Data.List                    (foldl')
+import           Data.Map                     (Map)
+import qualified Data.Map                     as Map
+import           Data.Maybe                   (fromMaybe, mapMaybe)
+import           Data.Monoid                  (mempty)
+import qualified Data.Set                     as Set
+import           Data.Text                    (Text)
+import qualified Data.Text                    as T
+import           Data.XML.Types               (Content (..), Event (..),
+                                               Name (..))
+import           Text.XML.Stream.Token
 
 -- | Render a stream of 'Event's into a stream of 'ByteString's. This function
 -- wraps around 'renderBuilder' and 'builderToByteString', so it produces
@@ -53,13 +63,13 @@ renderText :: (MonadThrow m)
 renderText rs = renderBytes rs =$= CT.decode CT.utf8
 
 data RenderSettings = RenderSettings
-    { rsPretty :: Bool
+    { rsPretty     :: Bool
     , rsNamespaces :: [(Text, Text)]
       -- ^ Defines some top level namespace definitions to be used, in the form
       -- of (prefix, namespace). This has absolutely no impact on the meaning
       -- of your documents, but can increase readability by moving commonly
       -- used namespace declarations to the top level.
-    , rsAttrOrder :: Name -> Map.Map Name Text -> [(Name, Text)]
+    , rsAttrOrder  :: Name -> Map.Map Name Text -> [(Name, Text)]
       -- ^ Specify how to turn the unordered attributes used by the "Text.XML"
       -- module into an ordered list.
     }
@@ -326,3 +336,33 @@ nubAttrs orig =
     go (dlist, used) (k, v)
         | k `Set.member` used = (dlist, used)
         | otherwise = (dlist . ((k, v):), Set.insert k used)
+
+
+-- | Generate a complete XML 'Element'.
+tag :: (Monad m) => Name -> Attributes -> Source m Event  -- ^ 'Element''s subnodes.
+                                       -> Source m Event
+tag name (Attributes a) content = do
+  yield $ EventBeginElement name a
+  content
+  yield $ EventEndElement name
+
+-- | Generate a textual 'EventContent'.
+content :: (Monad m) => Text -> Source m Event
+content = yield . EventContent . ContentText
+
+-- | A list of attributes.
+data Attributes = Attributes [(Name, [Content])]
+
+instance Monoid Attributes where
+  mempty = Attributes mempty
+  (Attributes a) `mappend` (Attributes b) = Attributes (a `mappend` b)
+
+-- | Generate a single attribute.
+attr :: Name        -- ^ Attribute's name
+     -> Text        -- ^ Attribute's value
+     -> Attributes
+attr name value = Attributes [(name, [ContentText value])]
+
+-- | Helper function that generates a valid attribute if input isn't 'Nothing', or 'mempty' otherwise.
+optionalAttr :: Name -> Maybe Text -> Attributes
+optionalAttr name = maybe mempty (attr name)
