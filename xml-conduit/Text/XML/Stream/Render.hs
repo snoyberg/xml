@@ -37,7 +37,7 @@ import           Data.List                    (foldl')
 import           Data.Map                     (Map)
 import qualified Data.Map                     as Map
 import           Data.Maybe                   (fromMaybe, mapMaybe)
-import           Data.Monoid                  (mempty)
+import           Data.Monoid                  (Monoid, mappend, mempty)
 import qualified Data.Set                     as Set
 import           Data.Text                    (Text)
 import qualified Data.Text                    as T
