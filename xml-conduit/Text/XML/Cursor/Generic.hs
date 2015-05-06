@@ -1,7 +1,7 @@
 -- | Generalized cursors to be applied to different nodes.
 module Text.XML.Cursor.Generic
     ( -- * Core
-      Cursor
+      Cursor(..)
     , Axis
     , toCursor
     , node
