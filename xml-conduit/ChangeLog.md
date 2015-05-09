@@ -1,3 +1,7 @@
+## 1.2.6
+
+* Reuse 'MonadThrow' and 'force' for 'AttrParser' [#52](https://github.com/snoyberg/xml/pull/52)
+
 ## 1.2.5
 
 *  Added helper functions to render XML elements [#48](https://github.com/snoyberg/xml/pull/48)
