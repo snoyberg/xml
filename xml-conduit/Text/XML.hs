@@ -91,8 +91,7 @@ import qualified Text.XML.Stream.Render as R
 import qualified Data.Text as T
 import Data.Either (partitionEithers)
 import Control.Monad.Trans.Resource (MonadThrow, monadThrow, runExceptionT, runResourceT)
-import Prelude hiding (readFile, writeFile, FilePath)
-import Filesystem.Path.CurrentOS (FilePath, encodeString)
+import Prelude hiding (readFile, writeFile)
 import Control.Exception (SomeException, Exception, throwIO, handle)
 import Text.XML.Stream.Parse (ParseSettings, def, psDecodeEntities)
 import Data.ByteString (ByteString)
@@ -230,7 +229,7 @@ fromXMLNode (X.NodeInstruction i) = Right $ NodeInstruction i
 readFile :: ParseSettings -> FilePath -> IO Document
 readFile ps fp = handle
     (throwIO . InvalidXMLFile fp)
-    (runResourceT $ CB.sourceFile (encodeString fp) $$ sinkDoc ps)
+    (runResourceT $ CB.sourceFile fp $$ sinkDoc ps)
 
 data XMLException = InvalidXMLFile FilePath SomeException
     deriving Typeable
@@ -238,7 +237,7 @@ data XMLException = InvalidXMLFile FilePath SomeException
 instance Show XMLException where
     show (InvalidXMLFile fp e) = concat
         [ "Error parsing XML file "
-        , encodeString fp
+        , fp
         , ": "
         , show e
         ]
@@ -286,7 +285,7 @@ renderBytes rs doc = D.renderBytes rs $ toXMLDocument' rs doc
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
 writeFile rs fp doc =
-    runResourceT $ renderBytes rs doc $$ CB.sinkFile (encodeString fp)
+    runResourceT $ renderBytes rs doc $$ CB.sinkFile fp
 
 renderLBS :: R.RenderSettings -> Document -> L.ByteString
 renderLBS rs doc =

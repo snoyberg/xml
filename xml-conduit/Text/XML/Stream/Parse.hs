@@ -130,8 +130,7 @@ import           Data.Text.Encoding.Error     (ignore)
 import           Data.Text.Read               (Reader, decimal, hexadecimal)
 import           Data.Typeable                (Typeable)
 import           Data.Word                    (Word32)
-import           Filesystem.Path.CurrentOS    (FilePath, encodeString)
-import           Prelude                      hiding (FilePath, takeWhile)
+import           Prelude                      hiding (takeWhile)
 import           Text.XML.Stream.Token
 
 type Ents = [(Text, Text)]
@@ -691,7 +690,7 @@ parseFile :: MonadResource m
           => ParseSettings
           -> FilePath
           -> Producer m Event
-parseFile ps fp = sourceFile (encodeString fp) =$= parseBytes ps
+parseFile ps fp = sourceFile fp =$= parseBytes ps
 
 -- | Parse an event stream from a lazy 'L.ByteString'.
 parseLBS :: MonadThrow m

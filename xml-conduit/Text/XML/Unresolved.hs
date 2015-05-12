@@ -41,8 +41,7 @@ module Text.XML.Unresolved
     , R.rsNamespaces
     ) where
 
-import Prelude hiding (writeFile, readFile, FilePath)
-import Filesystem.Path.CurrentOS (FilePath, encodeString)
+import Prelude hiding (writeFile, readFile)
 import Data.XML.Types
 import Control.Exception (Exception, SomeException)
 import Data.Typeable (Typeable)
@@ -69,7 +68,7 @@ import Control.Monad.ST (runST)
 import Data.Conduit.Lazy (lazyConsume)
 
 readFile :: P.ParseSettings -> FilePath -> IO Document
-readFile ps fp = runResourceT $ CB.sourceFile (encodeString fp) $$ sinkDoc ps
+readFile ps fp = runResourceT $ CB.sourceFile fp $$ sinkDoc ps
 
 sinkDoc :: MonadThrow m
         => P.ParseSettings
@@ -78,7 +77,7 @@ sinkDoc ps = P.parseBytesPos ps =$= fromEvents
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
 writeFile rs fp doc =
-    runResourceT $ renderBytes rs doc $$ CB.sinkFile (encodeString fp)
+    runResourceT $ renderBytes rs doc $$ CB.sinkFile fp
 
 renderLBS :: R.RenderSettings -> Document -> L.ByteString
 renderLBS rs doc =

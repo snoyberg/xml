@@ -1,3 +1,7 @@
+## 1.3.0
+
+* Drop system-filepath
+
 ## 1.2.6
 
 * Reuse 'MonadThrow' and 'force' for 'AttrParser' [#52](https://github.com/snoyberg/xml/pull/52)
