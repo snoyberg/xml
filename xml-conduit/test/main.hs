@@ -1,45 +1,47 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE QuasiQuotes        #-}
+{-# LANGUAGE TemplateHaskell    #-}
 
+import           Control.Applicative          (Alternative (..), optional)
 import           Control.Exception            (Exception)
 import           Control.Monad.IO.Class       (liftIO)
-import           Data.Typeable                (Typeable)
-import           Data.XML.Types
-import           Test.HUnit                   hiding (Test)
-import           Test.Hspec
 import qualified Data.ByteString.Char8        as S
 import qualified Data.ByteString.Lazy.Char8   as L
-import qualified Text.XML.Unresolved          as D
-import qualified Text.XML.Stream.Parse        as P
+import           Data.Typeable                (Typeable)
+import           Data.XML.Types
+import           Test.Hspec
+import           Test.HUnit                   hiding (Test)
 import qualified Text.XML                     as Res
 import qualified Text.XML.Cursor              as Cu
 import           Text.XML.Stream.Parse        (def)
+import qualified Text.XML.Stream.Parse        as P
+import qualified Text.XML.Unresolved          as D
 
-import Text.XML.Cursor ((&/), (&//), (&.//), ($|), ($/), ($//), ($.//))
-import Data.Text(Text)
-import Control.Monad
-import Control.Monad.Trans.Class (lift)
-import qualified Data.Text as T
-import qualified Data.Set as Set
-import Control.Exception (toException)
+import           Control.Exception            (toException)
+import           Control.Monad
+import           Control.Monad.Trans.Class    (lift)
+import qualified Data.Set                     as Set
+import           Data.Text                    (Text)
+import qualified Data.Text                    as T
+import           Text.XML.Cursor              (($.//), ($/), ($//), ($|),
+                                               (&.//), (&/), (&//))
 
-import qualified Data.Conduit as C
-import qualified Control.Monad.Trans.Resource as C
-import qualified Data.Conduit.List as CL
-import qualified Data.Map as Map
-import Text.Blaze (toMarkup)
-import Text.Blaze.Renderer.String (renderMarkup)
+import           Control.Monad.Trans.Resource (MonadThrow (..), runResourceT)
+import           Data.Conduit                 as C
+import qualified Data.Conduit.List            as CL
+import qualified Data.Map                     as Map
+import           Text.Blaze                   (toMarkup)
+import           Text.Blaze.Renderer.String   (renderMarkup)
 
 main :: IO ()
 main = hspec $ do
     describe "XML parsing and rendering" $ do
         it "is idempotent to parse and render a document" documentParseRender
         it "has valid parser combinators" combinators
-        it "has working choose function" testChoose
+        it "has working choice function" testChoice
         it "has working many function" testMany
-        it "has working orE" testOrE
+        it "has working <|>" testAlternative
         it "is idempotent to parse and pretty render a document" documentParsePrettyRender
         it "ignores the BOM" parseIgnoreBOM
         it "strips duplicated attributes" stripDuplicateAttributes
@@ -128,13 +130,13 @@ documentParsePrettyRender =
         ]
 
 combinators :: Assertion
-combinators = C.runResourceT $ P.parseLBS def input C.$$ do
-    P.force "need hello" $ P.tagName "hello" (P.requireAttr "world") $ \world -> do
+combinators = runResourceT $ P.parseLBS def input $$ do
+    P.force' "need hello" $ P.tagName "hello" (P.requireAttr "world") $ \world -> do
         liftIO $ world @?= "true"
         P.force "need child1" $ P.tagNoAttr "{mynamespace}child1" $ return ()
         P.force "need child2" $ P.tagNoAttr "child2" $ return ()
         P.force "need child3" $ P.tagNoAttr "child3" $ do
-            x <- P.contentMaybe
+            x <- optional P.contentMaybe
             liftIO $ x @?= Just "combine <all> &content"
   where
     input = L.concat
@@ -149,10 +151,10 @@ combinators = C.runResourceT $ P.parseLBS def input C.$$ do
         , "</hello>"
         ]
 
-testChoose :: Assertion
-testChoose = C.runResourceT $ P.parseLBS def input C.$$ do
-    P.force "need hello" $ P.tagNoAttr "hello" $ do
-        x <- P.choose
+testChoice :: Assertion
+testChoice = runResourceT $ P.parseLBS def input $$ do
+    P.force' "need hello" $ P.tagNoAttr "hello" $ do
+        x <- optional $ P.choice
             [ P.tagNoAttr "failure" $ return 1
             , P.tagNoAttr "success" $ return 2
             ]
@@ -167,9 +169,9 @@ testChoose = C.runResourceT $ P.parseLBS def input C.$$ do
         ]
 
 testMany :: Assertion
-testMany = C.runResourceT $ P.parseLBS def input C.$$ do
-    P.force "need hello" $ P.tagNoAttr "hello" $ do
-        x <- P.many $ P.tagNoAttr "success" $ return ()
+testMany = runResourceT $ P.parseLBS def input $$ do
+    P.force' "need hello" $ P.tagNoAttr "hello" $ do
+        x <- many $ P.tagNoAttr "success" $ return ()
         liftIO $ length x @?= 5
   where
     input = L.concat
@@ -184,11 +186,11 @@ testMany = C.runResourceT $ P.parseLBS def input C.$$ do
         , "</hello>"
         ]
 
-testOrE :: IO ()
-testOrE = C.runResourceT $ P.parseLBS def input C.$$ do
-    P.force "need hello" $ P.tagNoAttr "hello" $ do
-        x <- P.tagNoAttr "failure" (return 1) `P.orE`
-             P.tagNoAttr "success" (return 2)
+testAlternative :: IO ()
+testAlternative = runResourceT $ P.parseLBS def input $$ do
+    P.force' "need hello" $ P.tagNoAttr "hello" $ do
+        x <- optional $ P.tagNoAttr "failure" (return 1) <|>
+                        P.tagNoAttr "success" (return 2)
         liftIO $ x @?= Just (2 :: Int)
   where
     input = L.concat
@@ -200,10 +202,10 @@ testOrE = C.runResourceT $ P.parseLBS def input C.$$ do
         ]
 
 testConduitParser :: Assertion
-testConduitParser = C.runResourceT $ do
+testConduitParser = runResourceT $ do
     x <- P.parseLBS def input
-        C.$= (P.force "need hello" $ P.tagNoAttr "hello" f)
-        C.$$ CL.consume
+        =$= (P.force' "need hello" $ P.tagNoAttr "hello" f)
+        $$ CL.consume
     liftIO $ x @?= [1, 1, 1]
   where
     input = L.concat
@@ -215,10 +217,10 @@ testConduitParser = C.runResourceT $ do
         , "<item/>"
         , "</hello>"
         ]
-    f :: C.MonadThrow m => C.Conduit Event m Int
+    f :: MonadThrow m => P.ConduitParser Event Int m ()
     f = do
-        ma <- P.tagNoAttr "item" (return 1)
-        maybe (return ()) (\a -> C.yield a >> f) ma
+        value <- optional $ P.tagNoAttr "item" $ return 1
+        maybe (return ()) (\a -> lift (yield a) >> f) value
 
 
 name :: [Cu.Cursor] -> [Text]
