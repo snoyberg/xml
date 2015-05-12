@@ -32,6 +32,8 @@ library
                    , blaze-markup              >= 0.5
                    , blaze-html                >= 0.5
                    , deepseq                   >= 1.1.0.0
+                   , either
+                   , errors
     exposed-modules: Text.XML.Stream.Parse
                      Text.XML.Stream.Render
                      Text.XML.Unresolved

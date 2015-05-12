@@ -67,6 +67,7 @@ module Text.XML.Stream.Parse
     , decodeXmlEntities
     , decodeHtmlEntities
       -- * Event parsing
+    , ConduitParser
     , tag
     , tagPredicate
     , tagName
@@ -84,8 +85,9 @@ module Text.XML.Stream.Parse
       -- * Combinators
     , orE
     , choose
-    , many
+    , choice
     , force
+    , force'
       -- * Exceptions
     , XmlException (..)
       -- * Other types
@@ -93,12 +95,13 @@ module Text.XML.Stream.Parse
     , EventPos
     ) where
 import qualified Control.Applicative          as A
-import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..),
-                                               monadThrow)
+import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..))
 import           Data.Attoparsec.Text         (Parser, anyChar, char, manyTill,
                                                skipWhile, string, takeWhile,
                                                takeWhile1, try)
 import           Data.Conduit.Attoparsec      (PositionRange, conduitParser)
+import           Data.Foldable                (asum)
+import           Data.Monoid                  ((<>))
 import           Data.XML.Types               (Content (..), Event (..),
                                                ExternalID (..),
                                                Instruction (..), Name (..))
@@ -107,15 +110,16 @@ import           Blaze.ByteString.Builder     (fromWord32be, toByteString)
 import           Control.Applicative          (Alternative (empty, (<|>)),
                                                Applicative (..), (<$>))
 import           Control.Arrow                ((***))
+import           Control.Error.Util           (hush, (!?), (??))
 import           Control.Exception            (Exception (..), SomeException)
 import           Control.Monad                (ap, guard, liftM, void)
 import           Control.Monad.Trans.Class    (lift)
+import           Control.Monad.Trans.Either   (EitherT (..), left)
 import qualified Data.ByteString              as S
 import qualified Data.ByteString.Lazy         as L
 import           Data.Char                    (isSpace)
 import           Data.Conduit
 import           Data.Conduit.Binary          (sourceFile)
-import qualified Data.Conduit.Internal        as CI
 import qualified Data.Conduit.List            as CL
 import qualified Data.Conduit.Text            as CT
 import           Data.Default                 (Default (..))
@@ -320,7 +324,7 @@ toEventC ps =
             (es', levels', events) = tokenToEvent ps es levels token
 
 data ParseSettings = ParseSettings
-    { psDecodeEntities :: DecodeEntities
+    { psDecodeEntities   :: DecodeEntities
     , psRetainNamespaces :: Bool
     -- ^ Whether the original xmlns attributes should be retained in the parsed
     -- values. For more information on motivation, see:
@@ -517,24 +521,37 @@ char' :: Char -> Parser ()
 char' = void . char
 
 data ContentType =
-    Ignore | IsContent Text | IsError String | NotContent
+    Ignore | IsContent Text | IsError Text | NotContent
+
+-- | Conduit parser monad.
+-- There are 2 levels of error:
+--
+-- - exceptions are handled by the 'MonadThrow' instance of @m@.
+-- - parsing failures are handled by the 'EitherT' layer.
+--
+-- Use 'A.optional' or 'force' to choose how to handle them.
+type ConduitParser i o m = EitherT Text (ConduitM i o m)
+
+peek :: (Monad m) => ConduitParser i o m i
+peek = CL.peek !? "Stream closed."
 
 -- | Grabs the next piece of content if available. This function skips over any
 -- comments and instructions and concatenates all content until the next start
 -- or end tag.
-contentMaybe :: MonadThrow m => Consumer Event m (Maybe Text)
+contentMaybe :: MonadThrow m => ConduitParser Event o m Text
 contentMaybe = do
-    x <- CL.peek
-    case pc' x of
-        Ignore -> CL.drop 1 >> contentMaybe
-        IsContent t -> CL.drop 1 >> fmap Just (takeContents (t:))
-        IsError e -> lift $ monadThrow $ XmlException e x
-        NotContent -> return Nothing
+    x <- peek
+    case pc x of
+        Ignore -> lift (CL.drop 1) >> contentMaybe
+        IsContent t -> lift (CL.drop 1) >> takeContents (t:)
+        IsError e -> throwM $ XmlException e (Just x)
+        _ -> left "Next event is not a content."
+
   where
     pc' Nothing = NotContent
     pc' (Just x) = pc x
     pc (EventContent (ContentText t)) = IsContent t
-    pc (EventContent (ContentEntity e)) = IsError $ "Unknown entity: " ++ show e
+    pc (EventContent (ContentEntity e)) = IsError $ "Unknown entity: " <> pack (show e)
     pc (EventCDATA t) = IsContent t
     pc EventBeginElement{} = NotContent
     pc EventEndElement{} = NotContent
@@ -545,17 +562,17 @@ contentMaybe = do
     pc EventInstruction{} = Ignore
     pc EventComment{} = Ignore
     takeContents front = do
-        x <- CL.peek
+        x <- lift CL.peek
         case pc' x of
-            Ignore -> CL.drop 1 >> takeContents front
-            IsContent t -> CL.drop 1 >> takeContents (front . (:) t)
-            IsError e -> lift $ monadThrow $ XmlException e x
+            Ignore -> lift (CL.drop 1) >> takeContents front
+            IsContent t -> lift (CL.drop 1) >> takeContents (front . (:) t)
+            IsError e -> throwM $ XmlException e x
             NotContent -> return $ T.concat $ front []
 
 -- | Grabs the next piece of content. If none if available, returns 'T.empty'.
 -- This is simply a wrapper around 'contentMaybe'.
 content :: MonadThrow m => Consumer Event m Text
-content = fromMaybe T.empty <$> contentMaybe
+content = fromMaybe T.empty . hush <$> runEitherT contentMaybe
 
 -- | The most generic way to parse a tag. It takes a predicate for checking if
 -- this is the correct tag name, an 'AttrParser' for handling attributes, and
@@ -572,61 +589,58 @@ tag :: MonadThrow m
                          --   If this returns @Nothing@, the function will also return @Nothing@
     -> (a -> AttrParser b) -- ^ Given the value returned by the name checker, this function will
                            --   be used to get an @AttrParser@ appropriate for the specific tag.
-    -> (b -> CI.ConduitM Event o m c) -- ^ Handler function to handle the attributes and children
-                                      --   of a tag, given the value return from the @AttrParser@
-    -> CI.ConduitM Event o m (Maybe c)
+    -> (b -> ConduitParser Event o m c) -- ^ Handler function to handle the attributes and children
+                                        --   of a tag, given the value return from the @AttrParser@
+    -> ConduitParser Event o m c
 tag checkName attrParser f = do
     x <- dropWS
     case x of
-        Just (EventBeginElement name as) ->
-            case checkName name of
-                Just y ->
-                    case runAttrParser' (attrParser y) as of
-                        Left e -> lift $ monadThrow e
-                        Right z -> do
-                            CL.drop 1
-                            z' <- f z
-                            a <- dropWS
-                            case a of
-                                Just (EventEndElement name')
-                                    | name == name' -> CL.drop 1 >> return (Just z')
-                                _ -> lift $ monadThrow $ XmlException ("Expected end tag for: " ++ show name) a
-                Nothing -> return Nothing
-        _ -> return Nothing
+        EventBeginElement name as -> do
+            y <- checkName name ?? ("Invalid element name: " <> pack (show name))
+            case runAttrParser' (attrParser y) as of
+                Left e -> throwM e
+                Right z -> do
+                    lift (CL.drop 1)
+                    z' <- f z
+                    a <- A.optional dropWS
+                    case a of
+                        Just (EventEndElement name')
+                            | name == name' -> lift (CL.drop 1) >> return z'
+                        _ -> throwM $ XmlException ("Expected end tag for: " <> pack (show name)) a
+        _ -> left "Next event is not an element."
   where
     -- Drop Events until we encount a non-whitespace element
     dropWS = do
-        x <- CL.peek
+        x <- peek
         let isWS =
                 case x of
-                    Just EventBeginDocument -> True
-                    Just EventEndDocument -> True
-                    Just EventBeginDoctype{} -> True
-                    Just EventEndDoctype -> True
-                    Just EventInstruction{} -> True
-                    Just EventBeginElement{} -> False
-                    Just EventEndElement{} -> False
-                    Just (EventContent (ContentText t))
+                    EventBeginDocument -> True
+                    EventEndDocument -> True
+                    EventBeginDoctype{} -> True
+                    EventEndDoctype -> True
+                    EventInstruction{} -> True
+                    EventBeginElement{} -> False
+                    EventEndElement{} -> False
+                    (EventContent (ContentText t))
                         | T.all isSpace t -> True
                         | otherwise -> False
-                    Just (EventContent ContentEntity{}) -> False
-                    Just EventComment{} -> True
-                    Just EventCDATA{} -> False
-                    Nothing -> False
-        if isWS then CL.drop 1 >> dropWS else return x
+                    (EventContent ContentEntity{}) -> False
+                    EventComment{} -> True
+                    EventCDATA{} -> False
+        if isWS then lift (CL.drop 1) >> dropWS else return x
     runAttrParser' p as =
         case runAttrParser p as of
             Left e -> Left e
             Right ([], x) -> Right x
-            Right (attr, _) -> Left $ toException $ UnparsedAttributes attr
+            Right (attribute, _) -> Left $ toException $ UnparsedAttributes attribute
 
 -- | A simplified version of 'tag' which matches against boolean predicates.
 tagPredicate :: MonadThrow m
              => (Name -> Bool) -- ^ Name predicate that returns @True@ if the name matches the parser
              -> AttrParser a -- ^ The attribute parser to be used for tags matching the predicate
-             -> (a -> CI.ConduitM Event o m b) -- ^ Handler function to handle the attributes and children
-                                               --   of a tag, given the value return from the @AttrParser@
-             -> CI.ConduitM Event o m (Maybe b)
+             -> (a -> ConduitParser Event o m b) -- ^ Handler function to handle the attributes and children
+                                                 --   of a tag, given the value return from the @AttrParser@
+             -> ConduitParser Event o m b
 tagPredicate p attrParser = tag (guard . p) (const attrParser)
 
 -- | A simplified version of 'tag' which matches for specific tag names instead
@@ -640,19 +654,20 @@ tagPredicate p attrParser = tag (guard . p) (const attrParser)
 -- to match the tag @c@ in the XML namespace @http://a/b@
 tagName :: MonadThrow m
      => Name -- ^ The tag name this parser matches to (includes namespaces)
-     -> AttrParser a -- ^ The attribute parser to be used for tags matching the predicate 
-     -> (a -> CI.ConduitM Event o m b) -- ^ Handler function to handle the attributes and children
+     -> AttrParser a -- ^ The attribute parser to be used for tags matching the predicate
+     -> (a -> ConduitParser Event o m b) -- ^ Handler function to handle the attributes and children
                                        --   of a tag, given the value return from the @AttrParser@
-     -> CI.ConduitM Event o m (Maybe b)
+     -> ConduitParser Event o m b
 tagName name = tagPredicate (== name)
 
 -- | A further simplified tag parser, which requires that no attributes exist.
 tagNoAttr :: MonadThrow m
           => Name -- ^ The name this parser matches to
-          -> CI.ConduitM Event o m a -- ^ Handler function to handle the children of the matched tag
-          -> CI.ConduitM Event o m (Maybe a)
+          -> ConduitParser Event o m a -- ^ Handler function to handle the children of the matched tag
+          -> ConduitParser Event o m a
 tagNoAttr name f = tagName name (return ()) $ const f
 
+{-# DEPRECATED orE "Please use '<|>' on 'ConduitParser'." #-}
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return @Just@), this function returns 'Nothing'.
 --
@@ -660,28 +675,41 @@ tagNoAttr name f = tagName name (return ()) $ const f
 orE :: Monad m
     => Consumer Event m (Maybe a) -- ^ The first (preferred) parser
     -> Consumer Event m (Maybe a) -- ^ The second parser, only executed if the first parser fails
-    -> Consumer Event m (Maybe a) 
+    -> Consumer Event m (Maybe a)
 orE a b =
     a >>= \x -> maybe b (const $ return x) x
 
+{-# DEPRECATED choose "Please use 'choice' on 'ConduitParser'." #-}
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
 choose :: Monad m
        => [Consumer Event m (Maybe a)] -- ^ List of parsers that will be tried in order.
-       -> Consumer Event m (Maybe a) -- ^ Result of the first parser to succeed, or @Nothing@
-                                     --   if no parser succeeded
+       -> Consumer Event m (Maybe a)   -- ^ Result of the first parser to succeed, or @Nothing@
+                                       --   if no parser succeeded
 choose [] = return Nothing
 choose (i:is) =
     i >>= maybe (choose is) (return . Just)
 
--- | Force an optional parser into a required parser. All of the 'tag'
--- functions, 'attr', 'choose' and 'many' deal with 'Maybe' parsers. Use this when you
--- want to finally force something to happen.
+-- | Get the value of the first parser which doesn't fail.
+-- This is an alias for 'asum'.
+choice :: Monad m
+       => [ConduitParser Event o m a] -- ^ List of parsers that will be tried in order.
+       -> ConduitParser Event o m a   -- ^ Result of the first parser to succeed.
+choice = asum
+
+-- | Interpret a parsing failure as an exception (cf explanation on 'ConduitParser').
 force :: MonadThrow m
-      => String -- ^ Error message
-      -> m (Maybe a) -- ^ Optional parser to be forced
-      -> m a
-force msg i = i >>= maybe (throwM $ XmlException msg Nothing) return
+      => Text -- ^ Error message
+      -> ConduitParser i o m a -- ^ Parser to be forced
+      -> ConduitParser i o m a
+force msg parser = lift $ force' msg parser
+
+-- | Same as 'force', but removes the 'EitherT' layer in the process, leaving a simple 'Consumer'.
+force' :: MonadThrow m
+      => Text -- ^ Error message
+      -> ConduitParser i o m a -- ^ Parser to be forced
+      -> ConduitM i o m a
+force' msg parser = runEitherT parser >>= either (const . throwM $ XmlException msg Nothing) return
 
 -- | A helper function which reads a file from disk using 'enumFile', detects
 -- character encoding using 'detectUtf', parses the XML using 'parseBytes', and
@@ -700,8 +728,8 @@ parseLBS :: MonadThrow m
 parseLBS ps lbs = CL.sourceList (L.toChunks lbs) =$= parseBytes ps
 
 data XmlException = XmlException
-    { xmlErrorMessage :: String
-    , xmlBadInput :: Maybe Event
+    { xmlErrorMessage :: Text
+    , xmlBadInput     :: Maybe Event
     }
                   | InvalidEndElement Name
                   | InvalidEntity Text
@@ -745,23 +773,24 @@ optionalAttrRaw f =
               (\b -> Right (front as, Just b))
               (f a)
 
-requireAttrRaw :: String -> ((Name, [Content]) -> Maybe b) -> AttrParser b
+requireAttrRaw :: Text -> ((Name, [Content]) -> Maybe b) -> AttrParser b
 requireAttrRaw msg f = optionalAttrRaw f >>=
     maybe (AttrParser $ const $ Left $ toException $ XmlException msg Nothing)
           return
 
 -- | Return the value for an attribute if present.
 attr :: Name -> AttrParser (Maybe Text)
-attr = optionalAttr
+attr n = optionalAttrRaw $ \(x, y) -> if x == n then Just (contentsToText y) else Nothing
 
 -- | Shortcut composition of 'force' and 'attr'.
 requireAttr :: Name -> AttrParser Text
-requireAttr n = force ("Missing attribute: " ++ show n) $ attr n
+requireAttr n = requireAttrRaw
+    ("Missing attribute: " <> pack (show n))
+    (\(x, y) -> if x == n then Just (contentsToText y) else Nothing)
 
 {-# DEPRECATED optionalAttr "Please use 'attr'." #-}
 optionalAttr :: Name -> AttrParser (Maybe Text)
-optionalAttr n = optionalAttrRaw
-    (\(x, y) -> if x == n then Just (contentsToText y) else Nothing)
+optionalAttr = attr
 
 contentsToText :: [Content] -> Text
 contentsToText =
@@ -776,16 +805,6 @@ contentsToText =
 ignoreAttrs :: AttrParser ()
 ignoreAttrs = AttrParser $ const $ Right ([], ())
 
--- | Keep parsing elements as long as the parser returns 'Just'.
-many :: Monad m
-     => Consumer Event m (Maybe a)
-     -> Consumer Event m [a]
-many i =
-    go id
-  where
-    go front = i >>=
-        maybe (return $ front [])
-              (\y -> go $ front . (:) y)
 
 type DecodeEntities = Text -> Content
 
