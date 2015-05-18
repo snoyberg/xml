@@ -75,6 +75,7 @@ module Text.XML.Stream.Parse
     , contentMaybe
       -- * Attribute parsing
     , AttrParser
+    , runAttrParser
     , attr
     , requireAttr
     , optionalAttr
