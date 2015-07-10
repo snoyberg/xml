@@ -1,6 +1,6 @@
 name:            xml-conduit
 version:         1.3.0
-license:         BSD3
+license:         MIT
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>, Aristid Breitkreuz <aristidb@googlemail.com>
 maintainer:      Michael Snoyman <michael@snoyman.com>
