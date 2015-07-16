@@ -39,6 +39,9 @@ main = hspec $ do
         it "doesn't strip whitespace" $
             X.parseLBS_ X.def "<foo>  hello</foo>" @=?
             H.parseLBS        "<foo>  hello</foo>"
+        it "split code-points" $
+            X.parseLBS_ X.def "<foo>&#xa0;</foo>" @=?
+            H.parseBSChunks ["<foo>\xc2", "\xa0</foo>"]
     describe "HTML parsing" $ do
         it "XHTML" $
             let html = "<html><head><title>foo</title></head><body><p>Hello World</p></body></html>"
@@ -83,3 +86,11 @@ main = hspec $ do
                         ]
                     ]
              in H.parseLBS html @?= doc
+
+    it "doesn't double unescape" $
+        let html = "<p>Hello &amp;gt; World</p>"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element "p" Map.empty
+                [ X.NodeContent "Hello &gt; World"
+                ]
+         in H.parseLBS html @?= doc

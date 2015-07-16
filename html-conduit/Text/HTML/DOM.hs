@@ -1,26 +1,24 @@
-{-# LANGUAGE OverloadedStrings, CPP #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Text.HTML.DOM
     ( eventConduit
     , sinkDoc
     , readFile
     , parseLBS
+    , parseBSChunks
     ) where
 
 import Control.Monad.Trans.Resource
 import Prelude hiding (readFile)
 import qualified Data.ByteString as S
-#if MIN_VERSION_tagstream_conduit(0,5,0)
-import qualified Text.HTML.TagStream.ByteString as TS
-#endif
+import qualified Text.HTML.TagStream.Text as TS
 import qualified Text.HTML.TagStream as TS
 import qualified Data.XML.Types as XT
 import Data.Conduit
+import Data.Conduit.Text (decodeUtf8Lenient)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Conduit.List as CL
 import Control.Arrow ((***), second)
-import Data.Text.Encoding (decodeUtf8With)
-import Data.Text.Encoding.Error (lenientDecode)
 import qualified Data.Set as Set
 import qualified Text.XML as X
 import Text.XML.Stream.Parse (decodeHtmlEntities)
@@ -37,11 +35,11 @@ import Data.Maybe (mapMaybe)
 -- that case.
 eventConduit :: Monad m => Conduit S.ByteString m XT.Event
 eventConduit =
-    TS.tokenStream =$= go []
+    decodeUtf8Lenient =$= TS.tokenStream =$= go []
   where
     go stack = do
         mx <- await
-        case fmap (entities . fmap' (decodeUtf8With lenientDecode)) mx of
+        case mx of
             Nothing -> closeStack stack
 
             -- Ignore processing instructions (or pseudo-instructions)
@@ -74,32 +72,6 @@ eventConduit =
             Just TS.Incomplete{} -> go stack
     toName l = XT.Name l Nothing Nothing
     closeStack = mapM_ (yield . XT.EventEndElement)
-
-    fmap' :: (a -> b) -> TS.Token' a -> TS.Token' b
-    fmap' f (TS.TagOpen x pairs b) = TS.TagOpen (f x) (map (f *** f) pairs) b
-    fmap' f (TS.TagClose x) = TS.TagClose (f x)
-    fmap' f (TS.Text x) = TS.Text (f x)
-    fmap' f (TS.Comment x) = TS.Comment (f x)
-    fmap' f (TS.Special x y) = TS.Special (f x) (f y)
-    fmap' f (TS.Incomplete x) = TS.Incomplete (f x)
-
-    entities :: TS.Token' Text -> TS.Token' Text
-    entities (TS.TagOpen x pairs b) = TS.TagOpen x (map (second entities') pairs) b
-    entities (TS.Text x) = TS.Text $ entities' x
-    entities ts = ts
-
-    entities' :: Text -> Text
-    entities' t =
-        case T.break (== '&') t of
-            (_, "") -> t
-            (before, t') ->
-                case T.break (== ';') $ T.drop 1 t' of
-                    (_, "") -> t
-                    (entity, rest') ->
-                        let rest = T.drop 1 rest'
-                         in case decodeHtmlEntities entity of
-                                XT.ContentText entity' -> T.concat [before, entity', entities' rest]
-                                XT.ContentEntity _ -> T.concat [before, "&", entity, entities' rest']
 
     isVoid = flip Set.member $ Set.fromList
         [ "area"
@@ -141,4 +113,8 @@ readFile :: F.FilePath -> IO X.Document
 readFile fp = runResourceT $ sourceFile (F.encodeString fp) $$ sinkDoc
 
 parseLBS :: L.ByteString -> X.Document
-parseLBS lbs = runIdentity $ runExceptionT_ $ CL.sourceList (L.toChunks lbs) $$ sinkDoc
+parseLBS = parseBSChunks . L.toChunks
+
+parseBSChunks :: [S.ByteString] -> X.Document
+parseBSChunks bss = runIdentity $ runExceptionT_ $ CL.sourceList bss $$ sinkDoc
+

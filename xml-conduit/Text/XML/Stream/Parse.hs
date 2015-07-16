@@ -1,10 +1,10 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE BangPatterns       #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE FlexibleContexts   #-}
 {-# LANGUAGE ImpredicativeTypes #-}
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE PatternGuards      #-}
+{-# LANGUAGE RankNTypes         #-}
 -- | This module provides both a native Haskell solution for parsing XML
 -- documents into a stream of events, and a set of parser combinators for
 -- dealing with a stream of events.
@@ -80,7 +80,9 @@ module Text.XML.Stream.Parse
     ( -- * Parsing XML files
       parseBytes
     , parseBytesPos
+    , parseText'
     , parseText
+    , parseTextPos
     , detectUtf
     , parseFile
     , parseLBS
@@ -114,6 +116,7 @@ module Text.XML.Stream.Parse
     , ignoreAllTreesContent
       -- * Attribute parsing
     , AttrParser
+    , attr
     , requireAttr
     , optionalAttr
     , requireAttrRaw
@@ -136,47 +139,47 @@ module Text.XML.Stream.Parse
     , PositionRange
     , EventPos
     ) where
-import Data.Attoparsec.Text
-    ( char, Parser, takeWhile1, skipWhile, string
-    , manyTill, takeWhile, try, anyChar
-    )
-import qualified Control.Applicative as A
-import Control.Monad.Trans.Resource (MonadThrow, monadThrow, MonadResource)
-import Data.Conduit.Attoparsec (conduitParser, PositionRange)
-import Data.XML.Types
-    ( Name (..), Event (..), Content (..)
-    , Instruction (..), ExternalID (..)
-    )
+import qualified Control.Applicative          as A
+import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..),
+                                               monadThrow)
+import           Data.Attoparsec.Text         (Parser, anyChar, char, manyTill,
+                                               skipWhile, string, takeWhile,
+                                               takeWhile1, try)
+import           Data.Conduit.Attoparsec      (PositionRange, conduitParser)
+import           Data.XML.Types               (Content (..), Event (..),
+                                               ExternalID (..),
+                                               Instruction (..), Name (..))
 
-import Filesystem.Path.CurrentOS (FilePath, encodeString)
-import Control.Applicative (Applicative(..), Alternative(empty,(<|>)), (<$>))
-import Data.Text (Text, pack)
-import Control.Arrow ((***))
-import qualified Data.Text as T
-import Data.Text.Read (Reader, decimal, hexadecimal)
-import Data.Text.Encoding (decodeUtf32BEWith)
-import Data.Text.Encoding.Error (ignore)
-import Data.Word (Word32)
-import Blaze.ByteString.Builder (fromWord32be, toByteString)
-import Text.XML.Stream.Token
-import Prelude hiding (takeWhile, FilePath)
-import qualified Data.ByteString as S
-import qualified Data.ByteString.Lazy as L
-import qualified Data.Map as Map
-import Data.Conduit
-import qualified Data.Conduit.Text as CT
-import qualified Data.Conduit.List as CL
-import qualified Data.Conduit.Internal as CI
-import Control.Monad (ap, liftM, void, guard)
-import qualified Data.Text as TS
-import Data.List (foldl')
-import Data.Typeable (Typeable)
-import Control.Exception (Exception)
-import Data.Conduit.Binary (sourceFile)
-import Data.Char (isSpace)
-import Data.Default (Default (..))
-import Control.Monad.Trans.Class (lift)
-import Data.Maybe (fromMaybe, isNothing)
+import           Blaze.ByteString.Builder     (fromWord32be, toByteString)
+import           Control.Applicative          (Alternative (empty, (<|>)),
+                                               Applicative (..), (<$>))
+import           Control.Arrow                ((***))
+import           Control.Exception            (Exception (..), SomeException)
+import           Control.Monad                (ap, guard, liftM, void)
+import           Control.Monad.Trans.Class    (lift)
+import qualified Data.ByteString              as S
+import qualified Data.ByteString.Lazy         as L
+import           Data.Char                    (isSpace)
+import           Data.Conduit
+import           Data.Conduit.Binary          (sourceFile)
+import qualified Data.Conduit.Internal        as CI
+import qualified Data.Conduit.List            as CL
+import qualified Data.Conduit.Text            as CT
+import           Data.Default                 (Default (..))
+import           Data.List                    (foldl')
+import qualified Data.Map                     as Map
+import           Data.Maybe                   (fromMaybe, isNothing)
+import           Data.Text                    (Text, pack)
+import qualified Data.Text                    as T
+import qualified Data.Text                    as TS
+import           Data.Text.Encoding           (decodeUtf32BEWith)
+import           Data.Text.Encoding.Error     (ignore)
+import           Data.Text.Read               (Reader, decimal, hexadecimal)
+import           Data.Typeable                (Typeable)
+import           Data.Word                    (Word32)
+import           Filesystem.Path.CurrentOS    (FilePath, encodeString)
+import           Prelude                      hiding (FilePath, takeWhile)
+import           Text.XML.Stream.Token
 
 type Ents = [(Text, Text)]
 
@@ -290,7 +293,7 @@ type EventPos = (Maybe PositionRange, Event)
 -- provided by libxml-enumerator. However, this has the advantage of not
 -- relying on any C libraries.
 --
--- This relies on 'detectUtf' to determine character encoding, and 'parseText'
+-- This relies on 'detectUtf' to determine character encoding, and 'parseText''
 -- to do the actual parsing.
 parseBytes :: MonadThrow m
            => ParseSettings
@@ -300,7 +303,7 @@ parseBytes = mapOutput snd . parseBytesPos
 parseBytesPos :: MonadThrow m
               => ParseSettings
               -> Conduit S.ByteString m EventPos
-parseBytesPos ps = detectUtf =$= parseText ps
+parseBytesPos ps = detectUtf =$= parseTextPos ps
 
 dropBOM :: Monad m => Conduit TS.Text m TS.Text
 dropBOM =
@@ -321,10 +324,26 @@ dropBOM =
 -- messages do not give line/column information, so you may prefer to stick
 -- with the parser provided by libxml-enumerator. However, this has the
 -- advantage of not relying on any C libraries.
+--
+-- Since 1.2.4
+parseText' :: MonadThrow m
+           => ParseSettings
+           -> Conduit TS.Text m Event
+parseText' = mapOutput snd . parseTextPos
+
+{-# DEPRECATED parseText "Please use 'parseText'' or 'parseTextPos'." #-}
 parseText :: MonadThrow m
           => ParseSettings
           -> Conduit TS.Text m EventPos
-parseText de =
+parseText = parseTextPos
+
+-- | Same as 'parseText'', but includes the position of each event.
+--
+-- Since 1.2.4
+parseTextPos :: MonadThrow m
+          => ParseSettings
+          -> Conduit TS.Text m EventPos
+parseTextPos de =
     dropBOM
         =$= tokenize
         =$= toEventC de
@@ -647,7 +666,7 @@ tag checkName attrParser f = do
         case runAttrParser p as of
             Left e -> Left e
             Right ([], x) -> Right x
-            Right (attr, _) -> Left $ UnparsedAttributes attr
+            Right (attr, _) -> Left $ toException $ UnparsedAttributes attr
 
 -- | A simplified version of 'tag' which matches against boolean predicates.
 tagPredicate :: MonadThrow m
@@ -777,14 +796,13 @@ choose (i:is) =
     i >>= maybe (choose is) (return . Just)
 
 -- | Force an optional parser into a required parser. All of the 'tag'
--- functions, 'choose' and 'many' deal with 'Maybe' parsers. Use this when you
+-- functions, 'attr', 'choose' and 'many' deal with 'Maybe' parsers. Use this when you
 -- want to finally force something to happen.
 force :: MonadThrow m
       => String -- ^ Error message
-      -> CI.ConduitM Event o m (Maybe a) -- ^ Optional parser to be forced
-      -> CI.ConduitM Event o m a
-force msg i =
-    i >>= maybe (lift $ monadThrow $ XmlException msg Nothing) return
+      -> m (Maybe a) -- ^ Optional parser to be forced
+      -> m a
+force msg i = i >>= maybe (throwM $ XmlException msg Nothing) return
 
 -- | A helper function which reads a file from disk using 'enumFile', detects
 -- character encoding using 'detectUtf', parses the XML using 'parseBytes', and
@@ -820,7 +838,7 @@ instance Exception XmlException
 --
 -- 'Alternative' instance behave like 'First' monoid. It chooses first
 -- parser which doesn't fail.
-newtype AttrParser a = AttrParser { runAttrParser :: [(Name, [Content])] -> Either XmlException ([(Name, [Content])], a) }
+newtype AttrParser a = AttrParser { runAttrParser :: [(Name, [Content])] -> Either SomeException ([(Name, [Content])], a) }
 
 instance Monad AttrParser where
     return a = AttrParser $ \as -> Right (as, a)
@@ -832,9 +850,11 @@ instance Applicative AttrParser where
     pure = return
     (<*>) = ap
 instance Alternative AttrParser where
-    empty = AttrParser $ const $ Left $ XmlException "AttrParser.empty" Nothing
+    empty = AttrParser $ const $ Left $ toException $ XmlException "AttrParser.empty" Nothing
     AttrParser f <|> AttrParser g = AttrParser $ \x ->
         either (const $ g x) Right (f x)
+instance MonadThrow AttrParser where
+    throwM = AttrParser . const . throwM
 
 optionalAttrRaw :: ((Name, [Content]) -> Maybe b) -> AttrParser (Maybe b)
 optionalAttrRaw f =
@@ -848,16 +868,18 @@ optionalAttrRaw f =
 
 requireAttrRaw :: String -> ((Name, [Content]) -> Maybe b) -> AttrParser b
 requireAttrRaw msg f = optionalAttrRaw f >>=
-    maybe (AttrParser $ const $ Left $ XmlException msg Nothing)
+    maybe (AttrParser $ const $ Left $ toException $ XmlException msg Nothing)
           return
 
--- | Require that a certain attribute be present and return its value.
-requireAttr :: Name -> AttrParser Text
-requireAttr n = requireAttrRaw
-    ("Missing attribute: " ++ show n)
-    (\(x, y) -> if x == n then Just (contentsToText y) else Nothing)
-
 -- | Return the value for an attribute if present.
+attr :: Name -> AttrParser (Maybe Text)
+attr = optionalAttr
+
+-- | Shortcut composition of 'force' and 'attr'.
+requireAttr :: Name -> AttrParser Text
+requireAttr n = force ("Missing attribute: " ++ show n) $ attr n
+
+{-# DEPRECATED optionalAttr "Please use 'attr'." #-}
 optionalAttr :: Name -> AttrParser (Maybe Text)
 optionalAttr n = optionalAttrRaw
     (\(x, y) -> if x == n then Just (contentsToText y) else Nothing)

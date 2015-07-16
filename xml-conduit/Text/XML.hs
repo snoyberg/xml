@@ -270,7 +270,7 @@ parseText_ ps = either throw id . parseText ps
 sinkTextDoc :: MonadThrow m
             => ParseSettings
             -> Consumer Text m Document
-sinkTextDoc ps = P.parseText ps =$= fromEvents
+sinkTextDoc ps = P.parseTextPos ps =$= fromEvents
 
 fromEvents :: MonadThrow m => Consumer P.EventPos m Document
 fromEvents = do
