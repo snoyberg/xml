@@ -3,3 +3,5 @@ dist/
 *.hi
 *.o
 client_session_key.aes
+tarballs/
+.stack-work/

@@ -1,0 +1,5 @@
+packages:
+- xml-conduit/
+- xml-hamlet/
+- html-conduit/
+resolver: lts-2.17
