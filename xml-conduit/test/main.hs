@@ -20,6 +20,7 @@ import           Text.XML.Stream.Parse        (def)
 import Text.XML.Cursor ((&/), (&//), (&.//), ($|), ($/), ($//), ($.//))
 import Data.Text(Text)
 import Control.Monad
+import Control.Applicative ((<$>))
 import Control.Monad.Trans.Class (lift)
 import qualified Data.Text as T
 import qualified Data.Set as Set
@@ -39,6 +40,8 @@ main = hspec $ do
         it "has valid parser combinators" combinators
         it "has working choose function" testChoose
         it "has working many function" testMany
+        it "has working many' function" testMany'
+        it "has working manyYield function" testManyYield
         it "has working orE" testOrE
         it "is idempotent to parse and pretty render a document" documentParsePrettyRender
         it "ignores the BOM" parseIgnoreBOM
@@ -166,6 +169,28 @@ testChoose = C.runResourceT $ P.parseLBS def input C.$$ do
         , "</hello>"
         ]
 
+testManyYield :: Assertion
+testManyYield = do
+    -- Basically the same as testMany, but consume the streamed result
+    result <- C.runResourceT $
+        P.parseLBS def input C.$$ helloParser
+        C.$= CL.consume
+    length result @?= 5
+  where
+    helloParser = void $ P.tagNoAttr "hello" $ P.manyYield successParser
+    successParser = P.tagNoAttr "success" $ return ()
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<success/>"
+        , "<success/>"
+        , "<success/>"
+        , "<success/>"
+        , "<success/>"
+        , "</hello>"
+        ]
+
 testMany :: Assertion
 testMany = C.runResourceT $ P.parseLBS def input C.$$ do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
@@ -180,6 +205,26 @@ testMany = C.runResourceT $ P.parseLBS def input C.$$ do
         , "<success/>"
         , "<success/>"
         , "<success/>"
+        , "<success/>"
+        , "</hello>"
+        ]
+
+testMany' :: Assertion
+testMany' = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.many' $ P.tagNoAttr "success" $ return ()
+        liftIO $ length x @?= 5
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<success/>"
+        , "<success/>"
+        , "<success/>"
+        , "<foobar/>"
+        , "<success/>"
+        , "<foo><bar attr=\"1\">some content</bar></foo>"
         , "<success/>"
         , "</hello>"
         ]
