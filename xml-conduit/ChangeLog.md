@@ -1,3 +1,7 @@
+## 1.3.1
+
+* Add functions to ignore subtrees & result-streaming (yield) parsers [#58](https://github.com/snoyberg/xml/pull/58)
+
 ## 1.3.0
 
 * Drop system-filepath
