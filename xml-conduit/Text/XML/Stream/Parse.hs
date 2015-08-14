@@ -96,6 +96,7 @@ module Text.XML.Stream.Parse
     , decodeXmlEntities
     , decodeHtmlEntities
       -- * Event parsing
+    , tagAttr
     , tag
     , tagPredicate
     , tagName
@@ -604,29 +605,30 @@ contentMaybe = do
 content :: MonadThrow m => Consumer Event m Text
 content = fromMaybe T.empty <$> contentMaybe
 
--- | The most generic way to parse a tag. It takes a predicate for checking if
--- this is the correct tag name, an 'AttrParser' for handling attributes, and
--- then a parser for dealing with content.
+-- | The most generic way to parse a tag. It takes 
+-- a predicate for checking if this is the correct tag name and attributes, 
+-- an 'AttrParser' for handling attributes, 
+-- and then a parser for dealing with content.
 --
 -- This function automatically absorbs its balancing closing tag, and will
 -- throw an exception if not all of the attributes or child elements are
 -- consumed. If you want to allow extra attributes, see 'ignoreAttrs'.
 --
 -- This function automatically ignores comments, instructions and whitespace.
-tag :: MonadThrow m
-    => (Name -> Maybe a) -- ^ Check if this is a correct tag name
-                         --   and return a value that can be used to get an @AttrParser@.
-                         --   If this returns @Nothing@, the function will also return @Nothing@
+tagAttr :: MonadThrow m
+    => (Name -> [(Name, [Content])] -> Maybe a) -- ^ Check if this is a correct tag name and attributes
+                                                --   and return a value that can be used to get an @AttrParser@.
+                                                --   If this returns @Nothing@, the function will also return @Nothing@
     -> (a -> AttrParser b) -- ^ Given the value returned by the name checker, this function will
                            --   be used to get an @AttrParser@ appropriate for the specific tag.
     -> (b -> CI.ConduitM Event o m c) -- ^ Handler function to handle the attributes and children
                                       --   of a tag, given the value return from the @AttrParser@
     -> CI.ConduitM Event o m (Maybe c)
-tag checkName attrParser f = do
+tagAttr check attrParser f = do
     x <- dropWS
     case x of
         Just (EventBeginElement name as) ->
-            case checkName name of
+            case check name as of
                 Just y ->
                     case runAttrParser' (attrParser y) as of
                         Left e -> lift $ monadThrow e
@@ -666,6 +668,20 @@ tag checkName attrParser f = do
             Left e -> Left e
             Right ([], x) -> Right x
             Right (attr, _) -> Left $ toException $ UnparsedAttributes attr
+
+-- | Slightly simplified version of 'tagAttr' without checking attributes
+
+tag :: MonadThrow m
+    => (Name -> Maybe a)    -- ^ Check if this is a correct tag name
+                            --   and return a value that can be used to get an @AttrParser@.
+                            --   If this returns @Nothing@, the function will also return @Nothing@
+    -> (a -> AttrParser b) -- ^ Given the value returned by the name checker, this function will
+                           --   be used to get an @AttrParser@ appropriate for the specific tag.
+    -> (b -> CI.ConduitM Event o m c) -- ^ Handler function to handle the attributes and children
+                                      --   of a tag, given the value return from the @AttrParser@
+    -> CI.ConduitM Event o m (Maybe c)
+tag checkName attrParser f = tagAttr ((checkName .) . const) attrParser f 
+
 
 -- | A simplified version of 'tag' which matches against boolean predicates.
 tagPredicate :: MonadThrow m
