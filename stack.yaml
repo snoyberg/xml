@@ -2,4 +2,4 @@ packages:
 - xml-conduit/
 - xml-hamlet/
 - html-conduit/
-resolver: lts-2.17
+resolver: lts-3.7

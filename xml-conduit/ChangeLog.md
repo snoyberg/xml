@@ -1,3 +1,7 @@
+## 1.3.2
+
+* Support for iso-8859-1 [#63](https://github.com/snoyberg/xml/issues/63)
+
 ## 1.3.1
 
 * Add functions to ignore subtrees & result-streaming (yield) parsers [#58](https://github.com/snoyberg/xml/pull/58)

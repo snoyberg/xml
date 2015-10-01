@@ -93,6 +93,7 @@ main = hspec $ do
         it "works" caseOrderAttrs
     it "parsing CDATA" caseParseCdata
     it "retains namespaces when asked" caseRetainNamespaces
+    it "handles iso-8859-1" caseIso8859_1
 
 documentParseRender :: IO ()
 documentParseRender =
@@ -604,4 +605,16 @@ caseRetainNamespaces = do
                 (Map.singleton "xmlns" "bin4")
                 []
             ])
+        []
+
+caseIso8859_1 :: Assertion
+caseIso8859_1 = do
+    let lbs = "<?xml version=\"1.0\" encoding=\"iso-8859-1\"?><foo>\232</foo>"
+        doc = Res.parseLBS_ def lbs
+    doc `shouldBe` Res.Document
+        (Res.Prologue [] Nothing [])
+        (Res.Element
+            "foo"
+            Map.empty
+            [Res.NodeContent "\232"])
         []

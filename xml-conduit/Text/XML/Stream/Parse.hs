@@ -145,6 +145,7 @@ import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..),
 import           Data.Attoparsec.Text         (Parser, anyChar, char, manyTill,
                                                skipWhile, string, takeWhile,
                                                takeWhile1, try)
+import qualified Data.Attoparsec.Text         as AT
 import           Data.Conduit.Attoparsec      (PositionRange, conduitParser)
 import           Data.XML.Types               (Content (..), Event (..),
                                                ExternalID (..),
@@ -172,8 +173,8 @@ import           Data.Maybe                   (fromMaybe, isNothing)
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
 import qualified Data.Text                    as TS
-import           Data.Text.Encoding           (decodeUtf32BEWith)
-import           Data.Text.Encoding.Error     (ignore)
+import           Data.Text.Encoding           (decodeUtf32BEWith, decodeUtf8With)
+import           Data.Text.Encoding.Error     (ignore, lenientDecode)
 import           Data.Text.Read               (Reader, decimal, hexadecimal)
 import           Data.Typeable                (Typeable)
 import           Data.Word                    (Word32)
@@ -259,30 +260,58 @@ detectUtf =
     conduit front = await >>= maybe (return ()) (push front)
 
     push front bss =
-        either conduit (\(bss', continue) -> leftover bss' >> continue)
+        either conduit
+               (uncurry checkXMLDecl)
                (getEncoding front bss)
 
     getEncoding front bs'
         | S.length bs < 4 =
             Left (bs `S.append`)
         | otherwise =
-            Right (bsOut, CT.decode codec)
+            Right (bsOut, mcodec)
       where
         bs = front bs'
         bsOut = S.append (S.drop toDrop x) y
         (x, y) = S.splitAt 4 bs
-        (toDrop, codec) =
+        (toDrop, mcodec) =
             case S.unpack x of
-                [0x00, 0x00, 0xFE, 0xFF] -> (4, CT.utf32_be)
-                [0xFF, 0xFE, 0x00, 0x00] -> (4, CT.utf32_le)
-                0xFE : 0xFF: _           -> (2, CT.utf16_be)
-                0xFF : 0xFE: _           -> (2, CT.utf16_le)
-                0xEF : 0xBB: 0xBF : _    -> (3, CT.utf8)
-                [0x00, 0x00, 0x00, 0x3C] -> (0, CT.utf32_be)
-                [0x3C, 0x00, 0x00, 0x00] -> (0, CT.utf32_le)
-                [0x00, 0x3C, 0x00, 0x3F] -> (0, CT.utf16_be)
-                [0x3C, 0x00, 0x3F, 0x00] -> (0, CT.utf16_le)
-                _                        -> (0, CT.utf8) -- Assuming UTF-8
+                [0x00, 0x00, 0xFE, 0xFF] -> (4, Just $ CT.utf32_be)
+                [0xFF, 0xFE, 0x00, 0x00] -> (4, Just $ CT.utf32_le)
+                0xFE : 0xFF: _           -> (2, Just $ CT.utf16_be)
+                0xFF : 0xFE: _           -> (2, Just $ CT.utf16_le)
+                0xEF : 0xBB: 0xBF : _    -> (3, Just $ CT.utf8)
+                [0x00, 0x00, 0x00, 0x3C] -> (0, Just $ CT.utf32_be)
+                [0x3C, 0x00, 0x00, 0x00] -> (0, Just $ CT.utf32_le)
+                [0x00, 0x3C, 0x00, 0x3F] -> (0, Just $ CT.utf16_be)
+                [0x3C, 0x00, 0x3F, 0x00] -> (0, Just $ CT.utf16_le)
+                _                        -> (0, Nothing) -- Assuming UTF-8
+
+checkXMLDecl :: MonadThrow m
+             => S.ByteString
+             -> Maybe CT.Codec
+             -> Conduit S.ByteString m TS.Text
+checkXMLDecl bs (Just codec) = leftover bs >> CT.decode codec
+checkXMLDecl bs0 Nothing =
+    loop [] (AT.parse (parseToken decodeXmlEntities)) bs0
+  where
+    loop chunks0 parser nextChunk =
+        case parser $ decodeUtf8With lenientDecode nextChunk of
+            AT.Fail _ _ _ -> fallback
+            AT.Partial f -> await >>= maybe fallback (loop chunks f)
+            AT.Done _ (TokenBeginDocument attrs) -> findEncoding attrs
+            AT.Done _ _ -> fallback
+      where
+        chunks = nextChunk : chunks0
+        fallback = complete CT.utf8
+        complete codec = mapM_ leftover chunks >> CT.decode codec
+
+        findEncoding [] = fallback
+        findEncoding ((TName _ "encoding", [ContentText enc]):_) =
+            case enc of
+                "iso-8859-1" -> complete CT.iso8859_1
+                "utf-8" -> complete CT.utf8
+                _ -> complete CT.utf8
+        findEncoding (_:xs) = findEncoding xs
 
 type EventPos = (Maybe PositionRange, Event)
 
