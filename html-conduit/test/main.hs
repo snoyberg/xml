@@ -42,6 +42,12 @@ main = hspec $ do
         it "split code-points" $
             X.parseLBS_ X.def "<foo>&#xa0;</foo>" @=?
             H.parseBSChunks ["<foo>\xc2", "\xa0</foo>"]
+        it "latin1 codes" $
+            X.parseText_ X.def "<foo>\232</foo>" @=?
+            H.parseSTChunks ["<foo>\232</foo>"]
+        it "latin1 codes strict vs lazy" $
+            H.parseLT "<foo>\232</foo>" @=?
+            H.parseSTChunks ["<foo>\232</foo>"]
     describe "HTML parsing" $ do
         it "XHTML" $
             let html = "<html><head><title>foo</title></head><body><p>Hello World</p></body></html>"
