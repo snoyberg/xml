@@ -5,6 +5,10 @@ module Text.HTML.DOM
     , readFile
     , parseLBS
     , parseBSChunks
+    , eventConduitText
+    , sinkDocText
+    , parseLT
+    , parseSTChunks
     ) where
 
 import Control.Monad.Trans.Resource
@@ -15,10 +19,10 @@ import qualified Text.HTML.TagStream as TS
 import qualified Data.XML.Types as XT
 import Data.Conduit
 import Data.Conduit.Text (decodeUtf8Lenient)
-import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
 import qualified Data.Conduit.List as CL
-import Control.Arrow ((***), second)
+import Control.Arrow ((***))
 import qualified Data.Set as Set
 import qualified Text.XML as X
 import Text.XML.Stream.Parse (decodeHtmlEntities)
@@ -33,8 +37,14 @@ import Data.Maybe (mapMaybe)
 -- Note that there may be multiple (or not) root elements. @sinkDoc@ addresses
 -- that case.
 eventConduit :: Monad m => Conduit S.ByteString m XT.Event
-eventConduit =
-    decodeUtf8Lenient =$= TS.tokenStream =$= go []
+eventConduit = decodeUtf8Lenient =$= eventConduit' 
+
+eventConduitText :: Monad m => Conduit T.Text m XT.Event
+eventConduitText = eventConduit'
+
+eventConduit' :: Monad m => Conduit T.Text m XT.Event
+eventConduit' = 
+    TS.tokenStream =$= go []
   where
     go stack = do
         mx <- await
@@ -92,8 +102,14 @@ eventConduit =
         ]
 
 sinkDoc :: MonadThrow m => Sink S.ByteString m X.Document
-sinkDoc =
-    fmap stripDummy $ mapOutput ((,) Nothing) eventConduit =$ addDummyWrapper =$ X.fromEvents
+sinkDoc = sinkDoc' eventConduit 
+
+sinkDocText :: MonadThrow m => Sink T.Text m X.Document
+sinkDocText = sinkDoc' eventConduitText
+
+sinkDoc' :: (Monad m, MonadThrow m) => Conduit a m XT.Event -> Sink a m X.Document
+sinkDoc' f = 
+    fmap stripDummy $ mapOutput ((,) Nothing) f =$ addDummyWrapper =$ X.fromEvents
   where
     addDummyWrapper = do
         yield (Nothing, XT.EventBeginElement "html" [])
@@ -115,5 +131,11 @@ parseLBS :: L.ByteString -> X.Document
 parseLBS = parseBSChunks . L.toChunks
 
 parseBSChunks :: [S.ByteString] -> X.Document
-parseBSChunks bss = runIdentity $ runExceptionT_ $ CL.sourceList bss $$ sinkDoc
+parseBSChunks tss = runIdentity $ runExceptionT_ $ CL.sourceList tss $$ sinkDoc
+
+parseLT :: TL.Text -> X.Document
+parseLT = parseSTChunks . TL.toChunks
+
+parseSTChunks :: [T.Text] -> X.Document
+parseSTChunks tss = runIdentity $ runExceptionT_ $ CL.sourceList tss $$ sinkDocText 
 
