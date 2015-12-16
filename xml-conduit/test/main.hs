@@ -94,6 +94,7 @@ main = hspec $ do
     it "parsing CDATA" caseParseCdata
     it "retains namespaces when asked" caseRetainNamespaces
     it "handles iso-8859-1" caseIso8859_1
+    it "renders CDATA when asked" caseRenderCDATA 
 
 documentParseRender :: IO ()
 documentParseRender =
@@ -618,3 +619,15 @@ caseIso8859_1 = do
             Map.empty
             [Res.NodeContent "\232"])
         []
+
+caseRenderCDATA :: Assertion
+caseRenderCDATA = do
+    let doc = Res.Document (Res.Prologue [] Nothing [])
+                (Res.Element "a" Map.empty
+                    [ Res.NodeContent "www.google.com"
+                    ])
+                []
+        withoutCDATA = Res.renderLBS def doc
+        withCDATA = Res.renderLBS (def { Res.rsUseCDATA = const True }) doc
+    withCDATA `shouldBe` "<?xml version=\"1.0\" encoding=\"UTF-8\"?><a><![CDATA[www.google.com]]></a>"
+    withoutCDATA `shouldBe` "<?xml version=\"1.0\" encoding=\"UTF-8\"?><a>www.google.com</a>"

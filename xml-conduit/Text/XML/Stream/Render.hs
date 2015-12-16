@@ -15,6 +15,7 @@ module Text.XML.Stream.Render
     , rsPretty
     , rsNamespaces
     , rsAttrOrder
+    , rsUseCDATA
     , orderAttrs
       -- * Event rendering
     , tag
@@ -72,6 +73,9 @@ data RenderSettings = RenderSettings
     , rsAttrOrder  :: Name -> Map.Map Name Text -> [(Name, Text)]
       -- ^ Specify how to turn the unordered attributes used by the "Text.XML"
       -- module into an ordered list.
+    , rsUseCDATA   :: Content -> Bool
+      -- ^ Determines if for a given text content the renderer should use a
+      -- CDATA node.
     }
 
 instance Default RenderSettings where
@@ -79,6 +83,7 @@ instance Default RenderSettings where
         { rsPretty = False
         , rsNamespaces = []
         , rsAttrOrder = const Map.toList
+        , rsUseCDATA = const False
         }
 
 -- | Convenience function to create an ordering function suitable for
@@ -106,11 +111,11 @@ orderAttrs orderSpec = order
 -- the blaze-builder package, and allow the create of optimally sized
 -- 'ByteString's with minimal buffer copying.
 renderBuilder :: Monad m => RenderSettings -> Conduit Event m Builder
-renderBuilder RenderSettings { rsPretty = True, rsNamespaces = n } = prettify =$= renderBuilder' n True
-renderBuilder RenderSettings { rsPretty = False, rsNamespaces = n } = renderBuilder' n False
+renderBuilder RenderSettings { rsPretty = True, rsNamespaces = n, rsUseCDATA = useCDATA } = prettify =$= renderBuilder' n True useCDATA
+renderBuilder RenderSettings { rsPretty = False, rsNamespaces = n, rsUseCDATA = useCDATA } = renderBuilder' n False useCDATA
 
-renderBuilder' :: Monad m => [(Text, Text)] -> Bool -> Conduit Event m Builder
-renderBuilder' namespaces0 isPretty = do
+renderBuilder' :: Monad m => [(Text, Text)] -> Bool -> (Content -> Bool) -> Conduit Event m Builder
+renderBuilder' namespaces0 isPretty useCDATA = do
     loop []
   where
     loop nslevels = await >>= maybe (return ()) (go nslevels)
@@ -129,29 +134,34 @@ renderBuilder' namespaces0 isPretty = do
                 yield token
                 loop nslevels'
             _ -> do
-                let (token, nslevels') = eventToToken nslevels e
+                let (token, nslevels') = eventToToken nslevels useCDATA e
                 yield token
                 loop nslevels'
 
-eventToToken :: Stack -> Event -> (Builder, [NSLevel])
-eventToToken s EventBeginDocument =
+eventToToken :: Stack -> (Content -> Bool) -> Event -> (Builder, [NSLevel])
+eventToToken s _ EventBeginDocument =
     (tokenToBuilder $ TokenBeginDocument
             [ ("version", [ContentText "1.0"])
             , ("encoding", [ContentText "UTF-8"])
             ]
      , s)
-eventToToken s EventEndDocument = (mempty, s)
-eventToToken s (EventInstruction i) = (tokenToBuilder $ TokenInstruction i, s)
-eventToToken s (EventBeginDoctype n meid) = (tokenToBuilder $ TokenDoctype n meid [], s)
-eventToToken s EventEndDoctype = (mempty, s)
-eventToToken s (EventCDATA t) = (tokenToBuilder $ TokenCDATA t, s)
-eventToToken s (EventEndElement name) =
+eventToToken s _ EventEndDocument = (mempty, s)
+eventToToken s _ (EventInstruction i) = (tokenToBuilder $ TokenInstruction i, s)
+eventToToken s _ (EventBeginDoctype n meid) = (tokenToBuilder $ TokenDoctype n meid [], s)
+eventToToken s _ EventEndDoctype = (mempty, s)
+eventToToken s _ (EventCDATA t) = (tokenToBuilder $ TokenCDATA t, s)
+eventToToken s _ (EventEndElement name) =
     (tokenToBuilder $ TokenEndElement $ nameToTName sl name, s')
   where
     (sl:s') = s
-eventToToken s (EventContent c) = (tokenToBuilder $ TokenContent c, s)
-eventToToken s (EventComment t) = (tokenToBuilder $ TokenComment t, s)
-eventToToken _ EventBeginElement{} = error "eventToToken on EventBeginElement" -- mkBeginToken False s name attrs
+eventToToken s useCDATA (EventContent c) 
+    | useCDATA c = 
+        case c of
+          ContentText txt -> (tokenToBuilder $ TokenCDATA txt, s)
+          ContentEntity txt -> (tokenToBuilder $ TokenCDATA txt, s)
+    | otherwise  = (tokenToBuilder $ TokenContent c, s)
+eventToToken s _ (EventComment t) = (tokenToBuilder $ TokenComment t, s)
+eventToToken _ _ EventBeginElement{} = error "eventToToken on EventBeginElement" -- mkBeginToken False s name attrs
 
 type Stack = [NSLevel]
 
