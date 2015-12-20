@@ -1,3 +1,7 @@
+## 1.3.3
+
+* New render setting to control when to use CDATA [#68](https://github.com/snoyberg/xml/pull/68)
+
 ## 1.3.2
 
 * Support for iso-8859-1 [#63](https://github.com/snoyberg/xml/issues/63)

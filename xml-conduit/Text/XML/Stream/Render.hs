@@ -76,6 +76,10 @@ data RenderSettings = RenderSettings
     , rsUseCDATA   :: Content -> Bool
       -- ^ Determines if for a given text content the renderer should use a
       -- CDATA node.
+      --
+      -- Default: @False@
+      --
+      -- @since 1.3.3
     }
 
 instance Default RenderSettings where
