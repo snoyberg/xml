@@ -1,6 +1,7 @@
 ## 1.3.3
 
 * New render setting to control when to use CDATA [#68](https://github.com/snoyberg/xml/pull/68)
+* Escaping CDATA closing tag in CDATA [#69](https://github.com/snoyberg/xml/pull/69)
 
 ## 1.3.2
 
