@@ -171,23 +171,6 @@ splitTName x@(TName Nothing t)
     | otherwise = TName (Just a) $ T.drop 1 b
   where
     (a, b) = T.break (== ':') t
-
+    
 escCDATA :: Text -> Builder
-escCDATA s = case findCDATAEnd s of
-    Left cs -> copyByteString  "]]]]><![CDATA[>" `mappend` escCDATA cs
-    Right (Just (c, cs)) -> BC8.fromChar c `mappend` escCDATA cs
-    Right Nothing -> mempty
-  where
-      findCDATAEnd :: Text -> Either Text (Maybe (Char, Text))
-      findCDATAEnd s = 
-          let s' = T.uncons s
-              r = do
-                (c0, cs0) <- s'
-                (c1, cs1) <- T.uncons cs0
-                (c2, cs2) <- T.uncons cs1
-                case (c0, c1, c2) of
-                  (']', ']', '>') -> return cs2
-                  _ -> Nothing
-          in case r of
-              Just cs -> Left cs
-              Nothing -> Right s' 
+escCDATA s = fromText (T.replace "]]>" "]]]]><![CDATA[>" s)
