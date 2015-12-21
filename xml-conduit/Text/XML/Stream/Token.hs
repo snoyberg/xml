@@ -68,9 +68,9 @@ tokenToBuilder (TokenEndElement name) = mconcat
     , fromByteString ">"
     ]
 tokenToBuilder (TokenContent c) = contentToText c
-tokenToBuilder (TokenCDATA t) =
+tokenToBuilder (TokenCDATA t) = 
     copyByteString "<![CDATA["
-    `mappend` fromText t
+    `mappend` escCDATA t
     `mappend` copyByteString "]]>"
 tokenToBuilder (TokenComment t) = mconcat [fromByteString "<!--", fromText t, fromByteString "-->"]
 tokenToBuilder (TokenDoctype name eid _) = mconcat
@@ -171,3 +171,6 @@ splitTName x@(TName Nothing t)
     | otherwise = TName (Just a) $ T.drop 1 b
   where
     (a, b) = T.break (== ':') t
+    
+escCDATA :: Text -> Builder
+escCDATA s = fromText (T.replace "]]>" "]]]]><![CDATA[>" s)
