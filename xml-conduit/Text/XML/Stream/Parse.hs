@@ -816,9 +816,9 @@ orE a b =
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
 choose :: Monad m
-       => [Consumer Event m (Maybe a)] -- ^ List of parsers that will be tried in order.
-       -> Consumer Event m (Maybe a) -- ^ Result of the first parser to succeed, or @Nothing@
-                                     --   if no parser succeeded
+       => [ConduitM Event o m (Maybe a)] -- ^ List of parsers that will be tried in order.
+       -> ConduitM Event o m (Maybe a)   -- ^ Result of the first parser to succeed, or @Nothing@
+                                         --   if no parser succeeded
 choose [] = return Nothing
 choose (i:is) =
     i >>= maybe (choose is) (return . Just)
