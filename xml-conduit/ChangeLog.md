@@ -1,3 +1,7 @@
+## 1.3.3.1
+
+* Generalize signature of choose (Fixes [#72](https://github.com/snoyberg/xml/issues/72)) [#73](https://github.com/snoyberg/xml/pull/73)
+
 ## 1.3.3
 
 * New render setting to control when to use CDATA [#68](https://github.com/snoyberg/xml/pull/68)
