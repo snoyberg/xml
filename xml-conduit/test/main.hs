@@ -141,7 +141,7 @@ combinators = C.runResourceT $ P.parseLBS def input C.$$ do
         P.force "need child2" $ P.tagNoAttr "child2" $ return ()
         P.force "need child3" $ P.tagNoAttr "child3" $ do
             x <- P.contentMaybe
-            liftIO $ x @?= Just "combine <all> &content"
+            liftIO $ x @?= Just "\160combine <all> &content"
   where
     input = L.concat
         [ "<?xml version='1.0'?>"
@@ -151,12 +151,34 @@ combinators = C.runResourceT $ P.parseLBS def input C.$$ do
         , "<child1 xmlns='mynamespace'/>"
         , "<!-- this should be ignored -->"
         , "<child2>   </child2>"
-        , "<child3>combine &lt;all&gt; <![CDATA[&content]]></child3>\n"
+        , "<child3>&#160;combine &lt;all&gt; <![CDATA[&content]]></child3>\n"
         , "</hello>"
         ]
 
 testChoose :: Assertion
-testChoose = C.runResourceT $ P.parseLBS def input C.$$ do
+testChoose = do
+    chooseBetweenFailureAndSuccess
+    chooseBetweenTagAndContent
+
+chooseBetweenTagAndContent :: Assertion
+chooseBetweenTagAndContent = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.choose
+            [ P.tagNoAttr "failure" $ return (T.pack "boom!")
+            , P.contentMaybe
+            ]
+        liftIO $ x @?= Just "\160success"
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "&#160;success"
+        , "</hello>"
+        ]
+    
+chooseBetweenFailureAndSuccess :: Assertion
+chooseBetweenFailureAndSuccess = C.runResourceT $ P.parseLBS def input C.$$ do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.tagNoAttr "failure" $ return 1
