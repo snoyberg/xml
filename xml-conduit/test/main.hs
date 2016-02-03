@@ -156,7 +156,29 @@ combinators = C.runResourceT $ P.parseLBS def input C.$$ do
         ]
 
 testChoose :: Assertion
-testChoose = C.runResourceT $ P.parseLBS def input C.$$ do
+testChoose = do
+    chooseBetweenFailureAndSuccess
+    chooseBetweenTagAndContent
+
+chooseBetweenTagAndContent :: Assertion
+chooseBetweenTagAndContent = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.choose
+            [ P.tagNoAttr "failure" $ return (T.pack "boom!")
+            , P.contentMaybe
+            ]
+        liftIO $ x @?= Just "\160success"
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "&#160;success"
+        , "</hello>"
+        ]
+    
+chooseBetweenFailureAndSuccess :: Assertion
+chooseBetweenFailureAndSuccess = C.runResourceT $ P.parseLBS def input C.$$ do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.tagNoAttr "failure" $ return 1
