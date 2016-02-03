@@ -160,7 +160,6 @@ import           Control.Monad                (ap, guard, liftM, void)
 import           Control.Monad.Trans.Class    (lift)
 import qualified Data.ByteString              as S
 import qualified Data.ByteString.Lazy         as L
-import           Data.Char                    (isSpace)
 import           Data.Conduit
 import           Data.Conduit.Binary          (sourceFile)
 import qualified Data.Conduit.Internal        as CI
@@ -683,7 +682,7 @@ tag checkName attrParser f = do
                     Just EventBeginElement{} -> False
                     Just EventEndElement{} -> False
                     Just (EventContent (ContentText t))
-                        | T.all isSpace t -> True
+                        | T.all isXMLSpace t -> True
                         | otherwise -> False
                     Just (EventContent ContentEntity{}) -> False
                     Just EventComment{} -> True
