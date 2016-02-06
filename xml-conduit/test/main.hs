@@ -141,9 +141,9 @@ combinators = C.runResourceT $ P.parseLBS def input C.$$ do
         P.force "need child2" $ P.tagNoAttr "child2" $ return ()
         P.force "need child3" $ P.tagNoAttr "child3" $ do
             x <- P.contentMaybe
-            liftIO $ x @?= Just "\160combine <all> &content"
+            liftIO $ x @?= Just "\160 combine <all> &content"
   where
-    input = L.concat
+    input = L.unlines
         [ "<?xml version='1.0'?>"
         , "<!DOCTYPE foo []>\n"
         , "<hello world='true'>"
@@ -151,7 +151,7 @@ combinators = C.runResourceT $ P.parseLBS def input C.$$ do
         , "<child1 xmlns='mynamespace'/>"
         , "<!-- this should be ignored -->"
         , "<child2>   </child2>"
-        , "<child3>&#160;combine &lt;all&gt; <![CDATA[&content]]></child3>\n"
+        , "<child3>&#160; combine &lt;all&gt; <![CDATA[&content]]></child3>\n"
         , "</hello>"
         ]
 
