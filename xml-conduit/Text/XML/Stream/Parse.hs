@@ -92,6 +92,7 @@ module Text.XML.Stream.Parse
     , DecodeEntities
     , psDecodeEntities
     , psRetainNamespaces
+    , psPreserveWhiteSpace
       -- *** Entity decoding
     , decodeXmlEntities
     , decodeHtmlEntities
@@ -154,7 +155,7 @@ import           Data.XML.Types               (Content (..), Event (..),
 import           Blaze.ByteString.Builder     (fromWord32be, toByteString)
 import           Control.Applicative          (Alternative (empty, (<|>)),
                                                Applicative (..), (<$>))
-import           Control.Arrow                ((***))
+import           Control.Arrow                ((***), (&&&))
 import           Control.Exception            (Exception (..), SomeException)
 import           Control.Monad                (ap, guard, liftM, void)
 import           Control.Monad.Trans.Class    (lift)
@@ -292,7 +293,7 @@ checkXMLDecl :: MonadThrow m
              -> Conduit S.ByteString m TS.Text
 checkXMLDecl bs (Just codec) = leftover bs >> CT.decode codec
 checkXMLDecl bs0 Nothing =
-    loop [] (AT.parse (parseToken decodeXmlEntities)) bs0
+    loop [] (AT.parse (parseToken decodeXmlEntities False)) bs0
   where
     loop chunks0 parser nextChunk =
         case parser $ decodeUtf8With lenientDecode nextChunk of
@@ -406,24 +407,29 @@ data ParseSettings = ParseSettings
     -- Default: False
     --
     -- Since 1.2.1
+    , psPreserveWhiteSpace :: Bool
+    -- ^ Whether we should preserve literal XML whitespace within nodes.
+    --
+    -- Default: False
     }
 
 instance Default ParseSettings where
     def = ParseSettings
         { psDecodeEntities = decodeXmlEntities
         , psRetainNamespaces = False
+        , psPreserveWhiteSpace = False
         }
 
 conduitToken :: MonadThrow m => ParseSettings -> Conduit TS.Text m (PositionRange, Token)
-conduitToken = (=$= flattenWithPos) . conduitParser . parseToken . psDecodeEntities
+conduitToken = (=$= flattenWithPos) . conduitParser . uncurry parseToken . (psDecodeEntities &&& psPreserveWhiteSpace)
 
 flattenWithPos :: MonadThrow m => Conduit (PositionRange, [Token]) m (PositionRange, Token)
 flattenWithPos = await >>= maybe (return ()) go 
     where go (pos, xs) = do mapM_ (\x -> yield (pos, x)) xs
                             flattenWithPos
 
-parseToken :: DecodeEntities -> Parser [Token]
-parseToken de = nonContent <|> textNodes de <|> trailingWS
+parseToken :: DecodeEntities -> Bool -> Parser [Token]
+parseToken de preserveWS = nonContent <|> textNodes de preserveWS <|> trailingWS
   where
     trailingWS = takeWhile1 isXMLSpace >> return []
     nonContent = do
@@ -524,9 +530,9 @@ parseToken de = nonContent <|> textNodes de <|> trailingWS
         char' '>'
         return $ TokenBeginElement n as isClose 0
 
-textNodes :: DecodeEntities -> Parser [Token]
-textNodes de = do
-    tn <- textNode False
+textNodes :: DecodeEntities -> Bool -> Parser [Token]
+textNodes de preserveWhiteSpace = do
+    tn <- textNode preserveWhiteSpace
     tns <- AT.many' (textNode True)
     return (tn : tns)
     where textNode preserve = TokenContent <$> parseContent de preserve False False
