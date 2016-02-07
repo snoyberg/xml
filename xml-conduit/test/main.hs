@@ -54,6 +54,7 @@ main = hspec $ do
         it "throws errors at illegal tag names" testIllegalTagNames
         it "trims leading whitespace by default" testWhiteSpaceContent
         it "can preserve whitespace by request" testWhiteSpaceContentPreserved
+        it "normalises new lines" normalisesWhiteSpace
     describe "XML Cursors" $ do
         it "has correct parent" cursorParent
         it "has correct ancestor" cursorAncestor
@@ -159,6 +160,20 @@ combinators = C.runResourceT $ P.parseLBS def input C.$$ do
         , "<child2>   </child2>"
         , "<child3>&#160; combine &lt;all&gt; <![CDATA[&content]]> together</child3>\n"
         , "</hello>"
+        ]
+
+-- XML processors MUST normalise whitespace.
+normalisesWhiteSpace :: Assertion
+normalisesWhiteSpace = C.runResourceT $ P.parseLBS settings input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        c <- P.contentMaybe
+        liftIO $ c @?= Just "newline\ncrlf\ncr\n"
+  where
+    settings = def { P.psPreserveWhiteSpace = True }
+    input = L.unlines
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>newline\ncrlf\r\ncr\r</hello>"
         ]
 
 testWhiteSpaceContentPreserved :: Assertion

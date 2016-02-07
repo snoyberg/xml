@@ -644,12 +644,15 @@ parseContent de preserveWhiteSpace breakDouble breakSingle =
         bs <- if not (T.null leading) && preserveWhiteSpace
                     then takeWhile valid <?> "valid content character"
                     else takeWhile1 valid <?> "at least one valid content character"
-        let text = leading <> bs
-        return $ ContentText text
+        le <- AT.option ""
+              $ (string "\n" <|> string "\r\n" <|> string "\r") >> return "\n"
+        return $ ContentText (leading <> bs <> le)
     valid '"' = not breakDouble
     valid '\'' = not breakSingle
     valid '&' = False -- amp
     valid '<' = False -- lt
+    valid '\r' = False -- lt
+    valid '\n' = False -- lt
     valid _  = True
 
 skipSpace :: Parser ()
