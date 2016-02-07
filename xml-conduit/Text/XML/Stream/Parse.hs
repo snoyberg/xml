@@ -141,12 +141,14 @@ module Text.XML.Stream.Parse
     , EventPos
     ) where
 import qualified Control.Applicative          as A
+import           Control.Monad                (mzero)
 import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..),
                                                monadThrow)
 import           Data.Attoparsec.Text         (Parser, anyChar, char, endOfLine, manyTill,
                                                satisfy, skipWhile, string, takeWhile,
                                                takeWhile1, (<?>))
 import qualified Data.Attoparsec.Text         as AT
+import qualified Data.Attoparsec.Combinator   as AC
 import           Data.Conduit.Attoparsec      (PositionRange, conduitParser)
 import           Data.XML.Types               (Content (..), Event (..),
                                                ExternalID (..),
@@ -532,8 +534,28 @@ parseToken de preserveWS =
         return $ TokenCDATA (T.pack t)
     textNodes preserveWhiteSpace = do
         tn <- textNode preserveWhiteSpace
-        tns <- AT.many' (cdata <|> textNode True)
-        return (tn : tns)
+        tns <- AT.manyTill' (cdata <|> textNode True) noMoreTextNodes
+        if preserveWhiteSpace
+            then return (tn : tns)
+            else return $ trimLastContent (tn : tns)
+    noMoreTextNodes = do
+        c <- AT.peekChar 
+        case c of
+            Nothing -> return ()
+            Just '<' -> do continue <- nextIsCData
+                           if continue then mzero else return ()
+            _       -> mzero
+        where nextIsCData = AC.option False
+                              (AC.lookAhead (string "<![CDATA[") >> return True)
+
+trimLastContent :: [Token] -> [Token]
+trimLastContent [] = []
+trimLastContent [TokenContent (ContentText t)] =
+    case T.dropWhileEnd isXMLSpace t of
+      "" -> []
+      trimmed -> [TokenContent (ContentText trimmed)]
+trimLastContent [t] = [t]
+trimLastContent (t:ts) = t : trimLastContent ts
 
 parseAttribute :: DecodeEntities -> Parser TAttribute
 parseAttribute de = do

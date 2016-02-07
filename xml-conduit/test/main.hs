@@ -52,6 +52,8 @@ main = hspec $ do
         it "displays comments" testRenderComments
         it "conduit parser" testConduitParser
         it "throws errors at illegal tag names" testIllegalTagNames
+        it "trims leading whitespace by default" testWhiteSpaceContent
+        it "can preserve whitespace by request" testWhiteSpaceContentPreserved
     describe "XML Cursors" $ do
         it "has correct parent" cursorParent
         it "has correct ancestor" cursorAncestor
@@ -156,6 +158,35 @@ combinators = C.runResourceT $ P.parseLBS def input C.$$ do
         , "<!-- this should be ignored -->"
         , "<child2>   </child2>"
         , "<child3>&#160; combine &lt;all&gt; <![CDATA[&content]]> together</child3>\n"
+        , "</hello>"
+        ]
+
+testWhiteSpaceContentPreserved :: Assertion
+testWhiteSpaceContentPreserved = C.runResourceT $ P.parseLBS settings input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        c <- P.contentMaybe
+        liftIO $ c @?= Just "\n untrimmed is OK \n"
+  where
+    settings = def { P.psPreserveWhiteSpace = True }
+    input = L.unlines
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , " untrimmed is OK "
+        , "</hello>"
+        ]
+
+testWhiteSpaceContent :: Assertion
+testWhiteSpaceContent = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        c <- P.contentMaybe
+        liftIO $ c @?= Just "trimmed is OK"
+  where
+    input = L.unlines
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , " trimmed is OK "
         , "</hello>"
         ]
 
