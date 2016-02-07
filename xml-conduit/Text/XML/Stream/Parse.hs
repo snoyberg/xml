@@ -144,7 +144,7 @@ import qualified Control.Applicative          as A
 import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..),
                                                monadThrow)
 import           Data.Attoparsec.Text         (Parser, anyChar, char, endOfLine, manyTill,
-                                               skipWhile, string, takeWhile,
+                                               satisfy, skipWhile, string, takeWhile,
                                                takeWhile1, (<?>))
 import qualified Data.Attoparsec.Text         as AT
 import           Data.Conduit.Attoparsec      (PositionRange, conduitParser)
@@ -429,7 +429,8 @@ flattenWithPos = await >>= maybe (return ()) go
                             flattenWithPos
 
 parseToken :: DecodeEntities -> Bool -> Parser [Token]
-parseToken de preserveWS = nonContent <|> textNodes de preserveWS <|> trailingWS
+parseToken de preserveWS =
+  nonContent <|> fmap return cdata <|> textNodes preserveWS <|> trailingWS
   where
     trailingWS = takeWhile1 isXMLSpace >> return []
     nonContent = do
@@ -438,7 +439,7 @@ parseToken de preserveWS = nonContent <|> textNodes de preserveWS <|> trailingWS
         return <$> parseLt
     parseLt =
         (char '?' >> parseInstr) <|>
-        (char '!' >> (parseComment <|> parseCdata <|> parseDoctype)) <|>
+        (char '!' >> (parseComment <|> parseDoctype)) <|>
         parseBegin <|>
         (char '/' >> parseEnd)
     parseInstr = do
@@ -456,14 +457,9 @@ parseToken de preserveWS = nonContent <|> textNodes de preserveWS <|> trailingWS
                 x <- T.pack <$> manyTill anyChar (string "?>")
                 return $ TokenInstruction $ Instruction name x
     parseComment = do
-        char' '-'
-        char' '-'
+        void $ string "--"
         c <- T.pack <$> manyTill anyChar (string "-->") -- FIXME use takeWhile instead
         return $ TokenComment c 
-    parseCdata = do
-        _ <- string "[CDATA["
-        t <- T.pack <$> manyTill anyChar (string "]]>") -- FIXME use takeWhile instead
-        return $ TokenCDATA t
     parseDoctype = do
         _ <- string "DOCTYPE"
         skipSpace
@@ -529,13 +525,15 @@ parseToken de preserveWS = nonContent <|> textNodes de preserveWS <|> trailingWS
         isClose <- (char '/' >> skipSpace >> return True) <|> return False
         char' '>'
         return $ TokenBeginElement n as isClose 0
-
-textNodes :: DecodeEntities -> Bool -> Parser [Token]
-textNodes de preserveWhiteSpace = do
-    tn <- textNode preserveWhiteSpace
-    tns <- AT.many' (textNode True)
-    return (tn : tns)
-    where textNode preserve = TokenContent <$> parseContent de preserve False False
+    textNode preserve = TokenContent <$> parseContent de preserve False False
+    cdata = do
+        void $ string "<![CDATA["
+        t <- manyTill anyChar (string "]]>") -- FIXME use takeWhile instead
+        return $ TokenCDATA (T.pack t)
+    textNodes preserveWhiteSpace = do
+        tn <- textNode preserveWhiteSpace
+        tns <- AT.many' (cdata <|> textNode True)
+        return (tn : tns)
 
 parseAttribute :: DecodeEntities -> Parser TAttribute
 parseAttribute de = do
@@ -550,12 +548,44 @@ parseAttribute de = do
     squoted = char '\'' *> manyTill (parseContent de True False True) (char '\'')
     dquoted = char  '"' *> manyTill (parseContent de True True False) (char  '"')
 
+-- The w3.org spec is clear about what defines a valid tag name:
+--
+--   NameStartChar ::= ":" | [A-Z] | "_" | [a-z] | [#xC0-#xD6] | [#xD8-#xF6]
+--                    | [#xF8-#x2FF] | [#x370-#x37D] | [#x37F-#x1FFF]
+--                    | [#x200C-#x200D] | [#x2070-#x218F] | [#x2C00-#x2FEF]
+--                    | [#x3001-#xD7FF] | [#xF900-#xFDCF] | [#xFDF0-#xFFFD]
+--                    | [#x10000-#xEFFFF]
+--   NameChar      ::= NameStartChar | "-" | "." | [0-9] | #xB7 | [#x0300-#x036F]
+--                    | [#x203F-#x2040]
+--   Name          ::= NameStartChar (NameChar)*
+--
+-- Due to the semantic importance of ':', it is handled separately, but allowed to appear
+-- in the local name.
+--
+-- We use range based tests to avoid testing each character.
 parseName :: Parser TName
-parseName =
-  name <$> parseIdent <*> A.optional (char ':' >> parseIdent)
-  where
-    name i1 Nothing = TName Nothing i1
-    name i1 (Just i2) = TName (Just i1) i2
+parseName = do
+    c <- satisfy isStartChar <?> "NameStartChar"
+    cs <- takeWhile nameChar <?> "NameChar"
+    ln <- A.optional (char ':' >> localName <?> "LocalName")
+    return $ name (T.cons c cs) ln
+    where isStartChar = (inAnyRange validStartChars)
+          nameChar = (inAnyRange validNameChars)
+          localName = takeWhile1 (inAnyRange (only ':' : validNameChars))
+
+          name i1 Nothing = TName Nothing i1
+          name i1 (Just i2) = TName (Just i1) i2
+
+          only c = (c, c)
+          inAnyRange [] _ = False
+          inAnyRange ((x, y):rs) c = if x <= c && c <= y then True else inAnyRange rs c
+          validStartChars = [('A', 'Z'), ('a', 'z'), ('\xC0', '\xD6'), ('\xD8', '\xF6')
+                            ,('\xF8', '\x2FF'),    ('\x370', '\x37D'),   ('\x37F', '\x1FFF')
+                            ,('\x200C', '\x200D'), ('\x2070', '\x218F'), ('\x2C00', '\x2FEF')
+                            ,('\x3001', '\xD7FF'), ('\xF900', '\xFDCF'), ('\xFDF0', '\xFFFD')
+                            ,('\x10000', '\xEFFFF')]
+          validNameChars = [only '-', only '.', only '\xB7', ('0', '9')] ++ validStartChars
+                            ++ [('\x0300', '\x036F'), ('\x203F', '\x2040')]
 
 parseIdent :: Parser Text
 parseIdent =
@@ -590,8 +620,8 @@ parseContent de preserveWhiteSpace breakDouble breakSingle =
                     then takeWhile isXMLSpace
                     else skipSpace >> return ""
         bs <- if not (T.null leading) && preserveWhiteSpace
-                    then takeWhile valid
-                    else takeWhile1 valid
+                    then takeWhile valid <?> "valid content character"
+                    else takeWhile1 valid <?> "at least one valid content character"
         let text = leading <> bs
         return $ ContentText text
     valid '"' = not breakDouble

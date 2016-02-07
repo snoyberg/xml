@@ -57,6 +57,7 @@ test-suite test
                           , conduit
                           , blaze-markup
                           , resourcet
+                          , conduit-extra
 
 source-repository head
   type:     git
