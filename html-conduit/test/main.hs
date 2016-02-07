@@ -36,9 +36,9 @@ main = hspec $ do
         it "multiple root elements" $
             X.parseLBS_ X.def "<html><foo><bar>baz&amp;foobar;</bar></foo><foo/></html>" @=?
             H.parseLBS        "<foo><bar>baz&foobar;</foo><foo>"
-        it "doesn't strip whitespace" $
-            X.parseLBS_ X.def "<foo>  hello</foo>" @=?
-            H.parseLBS        "<foo>  hello</foo>"
+        it "doesn't strip whitespace" $ do
+            let input = "<foo>  hello</foo>"
+            H.parseLBS input `shouldBe` X.parseLBS_ X.def { X.psPreserveWhiteSpace = True } input
         it "split code-points" $
             X.parseLBS_ X.def "<foo>&#xa0;</foo>" @=?
             H.parseBSChunks ["<foo>\xc2", "\xa0</foo>"]

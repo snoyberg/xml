@@ -54,6 +54,7 @@ module Text.XML
     , ParseSettings
     , psDecodeEntities
     , P.psRetainNamespaces
+    , P.psPreserveWhiteSpace
       -- *** Entity decoding
     , P.decodeXmlEntities
     , P.decodeHtmlEntities

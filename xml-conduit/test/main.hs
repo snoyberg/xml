@@ -19,15 +19,18 @@ import           Text.XML.Stream.Parse        (def)
 
 import Text.XML.Cursor ((&/), (&//), (&.//), ($|), ($/), ($//), ($.//))
 import Data.Text(Text)
+import Control.Arrow (first)
 import Control.Monad
 import Control.Applicative ((<$>))
 import Control.Monad.Trans.Class (lift)
+import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import qualified Data.Set as Set
-import Control.Exception (toException)
+import Control.Exception (SomeException, fromException, toException)
 
 import qualified Data.Conduit as C
 import qualified Control.Monad.Trans.Resource as C
+import qualified Data.Conduit.Attoparsec as CA
 import qualified Data.Conduit.List as CL
 import qualified Data.Map as Map
 import Text.Blaze (toMarkup)
@@ -48,6 +51,10 @@ main = hspec $ do
         it "strips duplicated attributes" stripDuplicateAttributes
         it "displays comments" testRenderComments
         it "conduit parser" testConduitParser
+        it "throws errors at illegal tag names" testIllegalTagNames
+        it "trims leading whitespace by default" testWhiteSpaceContent
+        it "can preserve whitespace by request" testWhiteSpaceContentPreserved
+        it "normalises new lines" normalisesWhiteSpace
     describe "XML Cursors" $ do
         it "has correct parent" cursorParent
         it "has correct ancestor" cursorAncestor
@@ -141,9 +148,9 @@ combinators = C.runResourceT $ P.parseLBS def input C.$$ do
         P.force "need child2" $ P.tagNoAttr "child2" $ return ()
         P.force "need child3" $ P.tagNoAttr "child3" $ do
             x <- P.contentMaybe
-            liftIO $ x @?= Just "combine <all> &content"
+            liftIO $ x @?= Just "\160 combine <all> &content together"
   where
-    input = L.concat
+    input = L.unlines
         [ "<?xml version='1.0'?>"
         , "<!DOCTYPE foo []>\n"
         , "<hello world='true'>"
@@ -151,12 +158,88 @@ combinators = C.runResourceT $ P.parseLBS def input C.$$ do
         , "<child1 xmlns='mynamespace'/>"
         , "<!-- this should be ignored -->"
         , "<child2>   </child2>"
-        , "<child3>combine &lt;all&gt; <![CDATA[&content]]></child3>\n"
+        , "<child3>&#160; combine &lt;all&gt; <![CDATA[&content]]> together</child3>\n"
         , "</hello>"
         ]
 
+-- XML processors MUST normalise whitespace.
+normalisesWhiteSpace :: Assertion
+normalisesWhiteSpace = C.runResourceT $ P.parseLBS settings input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        c <- P.contentMaybe
+        liftIO $ c @?= Just "newline\ncrlf\ncr\n"
+  where
+    settings = def { P.psPreserveWhiteSpace = True }
+    input = L.unlines
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>newline\ncrlf\r\ncr\r</hello>"
+        ]
+
+testWhiteSpaceContentPreserved :: Assertion
+testWhiteSpaceContentPreserved = C.runResourceT $ P.parseLBS settings input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        c <- P.contentMaybe
+        liftIO $ c @?= Just "\n untrimmed is OK \n"
+  where
+    settings = def { P.psPreserveWhiteSpace = True }
+    input = L.unlines
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , " untrimmed is OK "
+        , "</hello>"
+        ]
+
+testWhiteSpaceContent :: Assertion
+testWhiteSpaceContent = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        c <- P.contentMaybe
+        liftIO $ c @?= Just "trimmed is OK"
+  where
+    input = L.unlines
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , " trimmed is OK "
+        , "</hello>"
+        ]
+
+testIllegalTagNames :: Assertion
+testIllegalTagNames = do
+    CA.Position 1 7 `errorPositionEq`
+        Res.parseLBS def "<root><01abc/></root>"
+    CA.Position 1 12 `errorPositionEq`
+        Res.parseLBS def "<root><abc><a[a]/></abc></root>"
+
+errorPositionEq :: CA.Position -> Either SomeException a -> IO ()
+errorPositionEq _ (Right _) = fail "expected error"
+errorPositionEq r (Left e) = Just r @=? fmap CA.errorPosition (fromException e)
+
 testChoose :: Assertion
-testChoose = C.runResourceT $ P.parseLBS def input C.$$ do
+testChoose = do
+    chooseBetweenFailureAndSuccess
+    chooseBetweenTagAndContent
+
+chooseBetweenTagAndContent :: Assertion
+chooseBetweenTagAndContent = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.choose
+            [ P.tagNoAttr "failure" $ return (T.pack "boom!")
+            , P.contentMaybe
+            ]
+        liftIO $ x @?= Just "\160success"
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "&#160;success"
+        , "</hello>"
+        ]
+    
+chooseBetweenFailureAndSuccess :: Assertion
+chooseBetweenFailureAndSuccess = C.runResourceT $ P.parseLBS def input C.$$ do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.tagNoAttr "failure" $ return 1

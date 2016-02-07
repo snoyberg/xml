@@ -92,6 +92,7 @@ module Text.XML.Stream.Parse
     , DecodeEntities
     , psDecodeEntities
     , psRetainNamespaces
+    , psPreserveWhiteSpace
       -- *** Entity decoding
     , decodeXmlEntities
     , decodeHtmlEntities
@@ -140,12 +141,14 @@ module Text.XML.Stream.Parse
     , EventPos
     ) where
 import qualified Control.Applicative          as A
+import           Control.Monad                (mzero)
 import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..),
                                                monadThrow)
-import           Data.Attoparsec.Text         (Parser, anyChar, char, manyTill,
-                                               skipWhile, string, takeWhile,
-                                               takeWhile1, try)
+import           Data.Attoparsec.Text         (Parser, anyChar, char, endOfLine, manyTill,
+                                               satisfy, skipWhile, string, takeWhile,
+                                               takeWhile1, (<?>))
 import qualified Data.Attoparsec.Text         as AT
+import qualified Data.Attoparsec.Combinator   as AC
 import           Data.Conduit.Attoparsec      (PositionRange, conduitParser)
 import           Data.XML.Types               (Content (..), Event (..),
                                                ExternalID (..),
@@ -154,13 +157,12 @@ import           Data.XML.Types               (Content (..), Event (..),
 import           Blaze.ByteString.Builder     (fromWord32be, toByteString)
 import           Control.Applicative          (Alternative (empty, (<|>)),
                                                Applicative (..), (<$>))
-import           Control.Arrow                ((***))
+import           Control.Arrow                ((***), (&&&))
 import           Control.Exception            (Exception (..), SomeException)
 import           Control.Monad                (ap, guard, liftM, void)
 import           Control.Monad.Trans.Class    (lift)
 import qualified Data.ByteString              as S
 import qualified Data.ByteString.Lazy         as L
-import           Data.Char                    (isSpace)
 import           Data.Conduit
 import           Data.Conduit.Binary          (sourceFile)
 import qualified Data.Conduit.Internal        as CI
@@ -170,6 +172,7 @@ import           Data.Default                 (Default (..))
 import           Data.List                    (foldl')
 import qualified Data.Map                     as Map
 import           Data.Maybe                   (fromMaybe, isNothing)
+import           Data.Monoid                  ((<>))
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
 import qualified Data.Text                    as TS
@@ -292,13 +295,13 @@ checkXMLDecl :: MonadThrow m
              -> Conduit S.ByteString m TS.Text
 checkXMLDecl bs (Just codec) = leftover bs >> CT.decode codec
 checkXMLDecl bs0 Nothing =
-    loop [] (AT.parse (parseToken decodeXmlEntities)) bs0
+    loop [] (AT.parse (parseToken decodeXmlEntities False)) bs0
   where
     loop chunks0 parser nextChunk =
         case parser $ decodeUtf8With lenientDecode nextChunk of
             AT.Fail _ _ _ -> fallback
             AT.Partial f -> await >>= maybe fallback (loop chunks f)
-            AT.Done _ (TokenBeginDocument attrs) -> findEncoding attrs
+            AT.Done _ [TokenBeginDocument attrs] -> findEncoding attrs
             AT.Done _ _ -> fallback
       where
         chunks = nextChunk : chunks0
@@ -406,23 +409,39 @@ data ParseSettings = ParseSettings
     -- Default: False
     --
     -- Since 1.2.1
+    , psPreserveWhiteSpace :: Bool
+    -- ^ Whether we should preserve literal XML whitespace within nodes.
+    --
+    -- Default: False
     }
 
 instance Default ParseSettings where
     def = ParseSettings
         { psDecodeEntities = decodeXmlEntities
         , psRetainNamespaces = False
+        , psPreserveWhiteSpace = False
         }
 
 conduitToken :: MonadThrow m => ParseSettings -> Conduit TS.Text m (PositionRange, Token)
-conduitToken = conduitParser . parseToken . psDecodeEntities
+conduitToken = (=$= flattenWithPos) . conduitParser . uncurry parseToken . (psDecodeEntities &&& psPreserveWhiteSpace)
 
-parseToken :: DecodeEntities -> Parser Token
-parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False False
+flattenWithPos :: MonadThrow m => Conduit (PositionRange, [Token]) m (PositionRange, Token)
+flattenWithPos = await >>= maybe (return ()) go 
+    where go (pos, xs) = do mapM_ (\x -> yield (pos, x)) xs
+                            flattenWithPos
+
+parseToken :: DecodeEntities -> Bool -> Parser [Token]
+parseToken de preserveWS =
+  nonContent <|> fmap return cdata <|> textNodes preserveWS <|> trailingWS
   where
+    trailingWS = takeWhile1 isXMLSpace >> return []
+    nonContent = do
+        skipSpace
+        void $ char '<'
+        return <$> parseLt
     parseLt =
         (char '?' >> parseInstr) <|>
-        (char '!' >> (parseComment <|> parseCdata <|> parseDoctype)) <|>
+        (char '!' >> (parseComment <|> parseDoctype)) <|>
         parseBegin <|>
         (char '/' >> parseEnd)
     parseInstr = do
@@ -437,17 +456,12 @@ parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False
                 return $ TokenBeginDocument as
             else do
                 skipSpace
-                x <- T.pack <$> manyTill anyChar (try $ string "?>")
+                x <- T.pack <$> manyTill anyChar (string "?>")
                 return $ TokenInstruction $ Instruction name x
     parseComment = do
-        char' '-'
-        char' '-'
+        void $ string "--"
         c <- T.pack <$> manyTill anyChar (string "-->") -- FIXME use takeWhile instead
         return $ TokenComment c 
-    parseCdata = do
-        _ <- string "[CDATA["
-        t <- T.pack <$> manyTill anyChar (string "]]>") -- FIXME use takeWhile instead
-        return $ TokenCDATA t
     parseDoctype = do
         _ <- string "DOCTYPE"
         skipSpace
@@ -474,7 +488,7 @@ parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False
         (parseEntity >>= \e -> parseEntities (front . (e:))) <|>
         (char '<' >> parseEntities front) <|>
         (skipWhile (\t -> t /= ']' && t /= '<') >> parseEntities front)
-    parseEntity = try $ do
+    parseEntity = do
         _ <- string "<!ENTITY"
         skipSpace
         i <- parseIdent
@@ -513,6 +527,35 @@ parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False
         isClose <- (char '/' >> skipSpace >> return True) <|> return False
         char' '>'
         return $ TokenBeginElement n as isClose 0
+    textNode preserve = TokenContent <$> parseContent de preserve False False
+    cdata = do
+        void $ string "<![CDATA["
+        t <- manyTill anyChar (string "]]>") -- FIXME use takeWhile instead
+        return $ TokenCDATA (T.pack t)
+    textNodes preserveWhiteSpace = do
+        tn <- textNode preserveWhiteSpace
+        tns <- AT.manyTill' (cdata <|> textNode True) noMoreTextNodes
+        if preserveWhiteSpace
+            then return (tn : tns)
+            else return $ trimLastContent (tn : tns)
+    noMoreTextNodes = do
+        c <- AT.peekChar 
+        case c of
+            Nothing -> return ()
+            Just '<' -> do continue <- nextIsCData
+                           if continue then mzero else return ()
+            _       -> mzero
+        where nextIsCData = AC.option False
+                              (AC.lookAhead (string "<![CDATA[") >> return True)
+
+trimLastContent :: [Token] -> [Token]
+trimLastContent [] = []
+trimLastContent [TokenContent (ContentText t)] =
+    case T.dropWhileEnd isXMLSpace t of
+      "" -> []
+      trimmed -> [TokenContent (ContentText trimmed)]
+trimLastContent [t] = [t]
+trimLastContent (t:ts) = t : trimLastContent ts
 
 parseAttribute :: DecodeEntities -> Parser TAttribute
 parseAttribute de = do
@@ -521,22 +564,54 @@ parseAttribute de = do
     skipSpace
     char' '='
     skipSpace
-    val <- squoted <|> dquoted
+    val <- (squoted <|> dquoted) <?> "attribute value"
     return (key, val)
   where
-    squoted = char '\'' *> manyTill (parseContent de False True) (char '\'')
-    dquoted = char  '"' *> manyTill (parseContent de True False) (char  '"')
+    squoted = char '\'' *> manyTill (parseContent de True False True) (char '\'')
+    dquoted = char  '"' *> manyTill (parseContent de True True False) (char  '"')
 
+-- The w3.org spec is clear about what defines a valid tag name:
+--
+--   NameStartChar ::= ":" | [A-Z] | "_" | [a-z] | [#xC0-#xD6] | [#xD8-#xF6]
+--                    | [#xF8-#x2FF] | [#x370-#x37D] | [#x37F-#x1FFF]
+--                    | [#x200C-#x200D] | [#x2070-#x218F] | [#x2C00-#x2FEF]
+--                    | [#x3001-#xD7FF] | [#xF900-#xFDCF] | [#xFDF0-#xFFFD]
+--                    | [#x10000-#xEFFFF]
+--   NameChar      ::= NameStartChar | "-" | "." | [0-9] | #xB7 | [#x0300-#x036F]
+--                    | [#x203F-#x2040]
+--   Name          ::= NameStartChar (NameChar)*
+--
+-- Due to the semantic importance of ':', it is handled separately, but allowed to appear
+-- in the local name.
+--
+-- We use range based tests to avoid testing each character.
 parseName :: Parser TName
-parseName =
-  name <$> parseIdent <*> A.optional (char ':' >> parseIdent)
-  where
-    name i1 Nothing = TName Nothing i1
-    name i1 (Just i2) = TName (Just i1) i2
+parseName = do
+    c <- satisfy isStartChar <?> "NameStartChar"
+    cs <- takeWhile nameChar <?> "NameChar"
+    ln <- A.optional (char ':' >> localName <?> "LocalName")
+    return $ name (T.cons c cs) ln
+    where isStartChar = (inAnyRange validStartChars)
+          nameChar = (inAnyRange validNameChars)
+          localName = takeWhile1 (inAnyRange (only ':' : validNameChars))
+
+          name i1 Nothing = TName Nothing i1
+          name i1 (Just i2) = TName (Just i1) i2
+
+          only c = (c, c)
+          inAnyRange [] _ = False
+          inAnyRange ((x, y):rs) c = if x <= c && c <= y then True else inAnyRange rs c
+          validStartChars = [('A', 'Z'), ('a', 'z'), ('\xC0', '\xD6'), ('\xD8', '\xF6')
+                            ,('\xF8', '\x2FF'),    ('\x370', '\x37D'),   ('\x37F', '\x1FFF')
+                            ,('\x200C', '\x200D'), ('\x2070', '\x218F'), ('\x2C00', '\x2FEF')
+                            ,('\x3001', '\xD7FF'), ('\xF900', '\xFDCF'), ('\xFDF0', '\xFFFD')
+                            ,('\x10000', '\xEFFFF')]
+          validNameChars = [only '-', only '.', only '\xB7', ('0', '9')] ++ validStartChars
+                            ++ [('\x0300', '\x036F'), ('\x203F', '\x2040')]
 
 parseIdent :: Parser Text
 parseIdent =
-    takeWhile1 valid
+    takeWhile1 valid <?> "valid identifier"
   where
     valid '&' = False
     valid '<' = False
@@ -550,24 +625,34 @@ parseIdent =
     valid c  = not $ isXMLSpace c
 
 parseContent :: DecodeEntities
+             -> Bool -- preserve XML whitespace
              -> Bool -- break on double quote
              -> Bool -- break on single quote
              -> Parser Content
-parseContent de breakDouble breakSingle =
+parseContent de preserveWhiteSpace breakDouble breakSingle =
     parseEntity <|> parseText'
   where
     parseEntity = do
         char' '&'
-        t <- takeWhile1 (/= ';')
+        t <- takeWhile1 (/= ';') <?> "not a semicolon"
         char' ';'
         return $ de t
     parseText' = do
-        bs <- takeWhile1 valid
-        return $ ContentText bs
+        leading <- if preserveWhiteSpace
+                    then takeWhile isXMLSpace
+                    else skipSpace >> return ""
+        bs <- if not (T.null leading) && preserveWhiteSpace
+                    then takeWhile valid <?> "valid content character"
+                    else takeWhile1 valid <?> "at least one valid content character"
+        le <- AT.option ""
+              $ (string "\n" <|> string "\r\n" <|> string "\r") >> return "\n"
+        return $ ContentText (leading <> bs <> le)
     valid '"' = not breakDouble
     valid '\'' = not breakSingle
     valid '&' = False -- amp
     valid '<' = False -- lt
+    valid '\r' = False -- lt
+    valid '\n' = False -- lt
     valid _  = True
 
 skipSpace :: Parser ()
@@ -580,14 +665,15 @@ skipSpace = skipWhile isXMLSpace
 --
 -- in <http://www.w3.org/TR/2008/REC-xml-20081126/#sec-common-syn>.
 isXMLSpace :: Char -> Bool
-isXMLSpace ' ' = True
-isXMLSpace '\t' = True
-isXMLSpace '\r' = True
-isXMLSpace '\n' = True
+isXMLSpace '\x20' = True
+isXMLSpace '\x09' = True
+isXMLSpace '\x0D' = True
+isXMLSpace '\x0A' = True
 isXMLSpace _ = False
 
+-- extends Attoparsec.newLine to also accept single '\r'
 newline :: Parser ()
-newline = ((char '\r' >> char '\n') <|> char '\n') >> return ()
+newline = endOfLine <|> (void $ char '\r')
 
 char' :: Char -> Parser ()
 char' = void . char
@@ -652,7 +738,7 @@ tag :: MonadThrow m
                                       --   of a tag, given the value return from the @AttrParser@
     -> CI.ConduitM Event o m (Maybe c)
 tag checkName attrParser f = do
-    x <- dropWS
+    x <- scanPastSkippable
     case x of
         Just (EventBeginElement name as) ->
             case checkName name of
@@ -662,7 +748,7 @@ tag checkName attrParser f = do
                         Right z -> do
                             CL.drop 1
                             z' <- f z
-                            a <- dropWS
+                            a <- scanPastSkippable
                             case a of
                                 Just (EventEndElement name')
                                     | name == name' -> CL.drop 1 >> return (Just z')
@@ -670,26 +756,19 @@ tag checkName attrParser f = do
                 Nothing -> return Nothing
         _ -> return Nothing
   where
-    -- Drop Events until we encount a non-whitespace element
-    dropWS = do
+    -- Drop Events comments and other meta-events
+    scanPastSkippable = do
         x <- CL.peek
-        let isWS =
+        let skippable =
                 case x of
+                    Just EventComment{} -> True
                     Just EventBeginDocument -> True
-                    Just EventEndDocument -> True
+                    -- Just EventEndDocument -> True
                     Just EventBeginDoctype{} -> True
                     Just EventEndDoctype -> True
                     Just EventInstruction{} -> True
-                    Just EventBeginElement{} -> False
-                    Just EventEndElement{} -> False
-                    Just (EventContent (ContentText t))
-                        | T.all isSpace t -> True
-                        | otherwise -> False
-                    Just (EventContent ContentEntity{}) -> False
-                    Just EventComment{} -> True
-                    Just EventCDATA{} -> False
-                    Nothing -> False
-        if isWS then CL.drop 1 >> dropWS else return x
+                    _ -> False
+        if skippable then CL.drop 1 >> scanPastSkippable else return x
     runAttrParser' p as =
         case runAttrParser p as of
             Left e -> Left e
