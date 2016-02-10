@@ -38,7 +38,7 @@ main = hspec $ do
     describe "XML parsing and rendering" $ do
         it "is idempotent to parse and render a document" documentParseRender
         it "has valid parser combinators" combinators
-        it "has working choose function" testChoose
+        context "has working choose function" testChoose
         it "has working many function" testMany
         it "has working many' function" testMany'
         it "has working manyYield function" testManyYield
@@ -155,8 +155,159 @@ combinators = C.runResourceT $ P.parseLBS def input C.$$ do
         , "</hello>"
         ]
 
-testChoose :: Assertion
-testChoose = C.runResourceT $ P.parseLBS def input C.$$ do
+testChoose :: Spec
+testChoose = do
+    it "can choose between elements"
+        testChooseEitherElem
+    it "can choose between elements and text, returning text"
+        testChooseElemOrTextIsText
+    it "can choose between elements and text, returning elements"
+        testChooseElemOrTextIsElem
+    it "can choose between text and elements, returning text"
+        testChooseTextOrElemIsText
+    it "can choose between text and elements, returning elements"
+        testChooseTextOrElemIsElem
+    it "can choose between text and elements, when the text is encoded"
+        testChooseElemOrTextIsEncoded
+    it "can choose between text and elements, when the text is whitespace"
+        testChooseElemOrTextIsWhiteSpace
+    it "can choose betwen text and elements, when the whitespace is both literal and encoded"
+        testChooseElemOrTextIsChunkedText
+    it "can choose between text and elements, when the text is chunked the other way"
+        testChooseElemOrTextIsChunkedText2
+
+testChooseElemOrTextIsText :: Assertion
+testChooseElemOrTextIsText = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.choose
+            [ P.tagNoAttr "failure" $ return "boom"
+            , P.contentMaybe
+            ]
+        liftIO $ x @?= Just " something "
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , " something "
+        , "</hello>"
+        ]
+
+testChooseElemOrTextIsEncoded :: Assertion
+testChooseElemOrTextIsEncoded = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.choose
+            [ P.tagNoAttr "failure" $ return "boom"
+            , P.contentMaybe
+            ]
+        liftIO $ x @?= Just "\160something\160"
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "&#160;something&#160;"
+        , "</hello>"
+        ]
+
+testChooseElemOrTextIsWhiteSpace :: Assertion
+testChooseElemOrTextIsWhiteSpace = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.choose
+            [ P.tagNoAttr "failure" $ return "boom"
+            , P.contentMaybe
+            ]
+        liftIO $ x @?= Just "\x20\x20\x20"
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>   </hello>"
+        ]
+
+testChooseElemOrTextIsChunkedText :: Assertion
+testChooseElemOrTextIsChunkedText = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.choose
+            [ P.tagNoAttr "failure" $ return "boom"
+            , P.contentMaybe
+            ]
+        liftIO $ x @?= Just "\x20\x20\x20"
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello> &#x20; </hello>"
+        ]
+
+testChooseElemOrTextIsChunkedText2 :: Assertion
+testChooseElemOrTextIsChunkedText2 = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.choose
+            [ P.tagNoAttr "failure" $ return "boom"
+            , P.contentMaybe
+            ]
+        liftIO $ x @?= Just "\x20\x20\x20"
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>&#x20; &#x20;</hello>"
+        ]
+
+testChooseElemOrTextIsElem :: Assertion
+testChooseElemOrTextIsElem = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.choose
+            [ P.tagNoAttr "success" $ return "success"
+            , P.contentMaybe
+            ]
+        liftIO $ x @?= Just "success"
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<success/>"
+        , "</hello>"
+        ]
+
+testChooseTextOrElemIsText :: Assertion
+testChooseTextOrElemIsText = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.choose
+            [ P.contentMaybe
+            , P.tagNoAttr "failure" $ return "boom"
+            ]
+        liftIO $ x @?= Just " something "
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , " something "
+        , "</hello>"
+        ]
+
+testChooseTextOrElemIsElem :: Assertion
+testChooseTextOrElemIsElem = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.choose
+            [ P.contentMaybe
+            , P.tagNoAttr "success" $ return "success"
+            ]
+        liftIO $ x @?= Just "success"
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "<success/>"
+        , "</hello>"
+        ]
+
+testChooseEitherElem :: Assertion
+testChooseEitherElem = C.runResourceT $ P.parseLBS def input C.$$ do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.tagNoAttr "failure" $ return 1
