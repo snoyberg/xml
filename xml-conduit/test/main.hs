@@ -169,6 +169,8 @@ testChoose = do
         testChooseTextOrElemIsElem
     it "can choose between text and elements, when the text is encoded"
         testChooseElemOrTextIsEncoded
+    it "can choose between text and elements, when the text is encoded, NBSP"
+        testChooseElemOrTextIsEncodedNBSP
     it "can choose between text and elements, when the text is whitespace"
         testChooseElemOrTextIsWhiteSpace
     it "can choose betwen text and elements, when the whitespace is both literal and encoded"
@@ -200,6 +202,23 @@ testChooseElemOrTextIsEncoded = C.runResourceT $ P.parseLBS def input C.$$ do
             [ P.tagNoAttr "failure" $ return "boom"
             , P.contentMaybe
             ]
+        liftIO $ x @?= Just "\x20something\x20"
+  where
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<hello>"
+        , "&#x20;something&#x20;"
+        , "</hello>"
+        ]
+
+testChooseElemOrTextIsEncodedNBSP :: Assertion
+testChooseElemOrTextIsEncodedNBSP = C.runResourceT $ P.parseLBS def input C.$$ do
+    P.force "need hello" $ P.tagNoAttr "hello" $ do
+        x <- P.choose
+            [ P.tagNoAttr "failure" $ return "boom"
+            , P.contentMaybe
+            ]
         liftIO $ x @?= Just "\160something\160"
   where
     input = L.concat
@@ -209,6 +228,7 @@ testChooseElemOrTextIsEncoded = C.runResourceT $ P.parseLBS def input C.$$ do
         , "&#160;something&#160;"
         , "</hello>"
         ]
+
 
 testChooseElemOrTextIsWhiteSpace :: Assertion
 testChooseElemOrTextIsWhiteSpace = C.runResourceT $ P.parseLBS def input C.$$ do
