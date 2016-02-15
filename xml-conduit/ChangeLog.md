@@ -1,3 +1,7 @@
+## 1.3.4
+
+* dropWS retains consumed whitespace values [#74](https://github.com/snoyberg/xml/issues/74) [#75](https://github.com/snoyberg/xml/pull/75) [#76](https://github.com/snoyberg/xml/pull/76)
+
 ## 1.3.3.1
 
 * Generalize signature of choose (Fixes [#72](https://github.com/snoyberg/xml/issues/72)) [#73](https://github.com/snoyberg/xml/pull/73)
