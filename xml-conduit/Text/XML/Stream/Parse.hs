@@ -1,7 +1,6 @@
 {-# LANGUAGE BangPatterns       #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE PatternGuards      #-}
 {-# LANGUAGE RankNTypes         #-}
