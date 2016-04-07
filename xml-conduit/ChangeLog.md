@@ -1,3 +1,7 @@
+## 1.3.4.1
+
+* Remove unneeded ImpredicativeTypes
+
 ## 1.3.4
 
 * dropWS retains consumed whitespace values [#74](https://github.com/snoyberg/xml/issues/74) [#75](https://github.com/snoyberg/xml/pull/75) [#76](https://github.com/snoyberg/xml/pull/76)
