@@ -26,7 +26,7 @@ library
                    , xml-types                 >= 0.3.4    && < 0.4
                    , attoparsec                >= 0.10
                    , blaze-builder             >= 0.2      && < 0.5
-                   , transformers              >= 0.2      && < 0.5
+                   , transformers              >= 0.2      && < 0.6
                    , data-default
                    , monad-control             >= 0.3      && < 1.1
                    , blaze-markup              >= 0.5
