@@ -23,7 +23,9 @@ module Text.XML.Unresolved
     , sinkDoc
       -- * Streaming functions
     , toEvents
+    , elementToEvents
     , fromEvents
+    , elementFromEvents
     , renderBuilder
     , renderBytes
     , renderText
@@ -130,10 +132,23 @@ renderBytes rs doc = CL.sourceList (toEvents doc) =$= R.renderBytes rs
 --renderText :: (MonadThrow m, MonadUnsafeIO m) => R.RenderSettings -> Document -> Producer m Text
 renderText rs doc = CL.sourceList (toEvents doc) =$= R.renderText rs
 
+manyTries :: Monad m => m (Maybe a) -> m [a]
+manyTries f =
+    go id
+  where
+    go front = do
+        x <- f
+        case x of
+            Nothing -> return $ front []
+            Just y -> go (front . (:) y)
+
+dropReturn :: Monad m => a -> ConduitM i o m a
+dropReturn x = CL.drop 1 >> return x
+
 fromEvents :: MonadThrow m => Consumer P.EventPos m Document
 fromEvents = do
     skip EventBeginDocument
-    d <- Document <$> goP <*> require goE <*> goM
+    d <- Document <$> goP <*> require elementFromEvents <*> goM
     skip EventEndDocument
     y <- CL.head
     case y of
@@ -145,15 +160,6 @@ fromEvents = do
     skip e = do
         x <- CL.peek
         when (fmap snd x == Just e) (CL.drop 1)
-    many f =
-        go id
-      where
-        go front = do
-            x <- f
-            case x of
-                Nothing -> return $ front []
-                Just y -> go (front . (:) y)
-    dropReturn x = CL.drop 1 >> return x
     require f = do
         x <- f
         case x of
@@ -165,7 +171,7 @@ fromEvents = do
                     Just (_, EventEndDocument) -> lift $ monadThrow MissingRootElement
                     Just y -> lift $ monadThrow $ ContentAfterRoot y
     goP = Prologue <$> goM <*> goD <*> goM
-    goM = many goM'
+    goM = manyTries goM'
     goM' = do
         x <- CL.peek
         case x of
@@ -193,6 +199,10 @@ fromEvents = do
             Just (_, EventEndDoctype) -> return ()
             Just epos -> lift $ monadThrow $ InvalidInlineDoctype epos
             Nothing -> lift $ monadThrow UnterminatedInlineDoctype
+
+elementFromEvents :: MonadThrow m => Consumer P.EventPos m (Maybe Element)
+elementFromEvents = goE
+  where
     goE = do
         x <- CL.peek
         case x of
@@ -200,7 +210,7 @@ fromEvents = do
             _ -> return Nothing
     goE' n as = do
         CL.drop 1
-        ns <- many goN
+        ns <- manyTries goN
         y <- CL.head
         if fmap snd y == Just (EventEndElement n)
             then return $ Element n as $ compressNodes ns
@@ -218,7 +228,7 @@ fromEvents = do
 toEvents :: Document -> [Event]
 toEvents (Document prol root epi) =
       (EventBeginDocument :)
-    . goP prol . goE root . goM epi $ [EventEndDocument]
+    . goP prol . elementToEvents' root . goM epi $ [EventEndDocument]
   where
     goP (Prologue before doctype after) =
         goM before . maybe id goD doctype . goM after
@@ -230,6 +240,13 @@ toEvents (Document prol root epi) =
     goD (Doctype name meid) =
         (:) (EventBeginDoctype name meid)
       . (:) EventEndDoctype
+
+elementToEvents :: Element -> [Event]
+elementToEvents e = elementToEvents' e []
+
+elementToEvents' :: Element -> [Event] -> [Event]
+elementToEvents' = goE
+  where
     goE (Element name as ns) =
           (EventBeginElement name as :)
         . goN ns
