@@ -1,3 +1,7 @@
+## 1.3.5
+
+* Improvements for using xml-conduit for streaming XML protocols [#85](https://github.com/snoyberg/xml/pull/85)
+
 ## 1.3.4.2
 
 * transformers dep bump

@@ -124,6 +124,8 @@ renderBuilder settings = CL.map Chunk =$= renderBuilder' yield' settings
 
 -- | Same as 'renderBuilder' but allows you to flush XML stream to ensure that all
 -- events at needed point are rendered.
+--
+-- @since 1.3.5
 renderBuilderFlush :: Monad m => RenderSettings -> Conduit (Flush Event) m (Flush Builder)
 renderBuilderFlush = renderBuilder' yield
 

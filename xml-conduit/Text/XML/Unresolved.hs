@@ -202,6 +202,8 @@ fromEvents = do
             Nothing -> lift $ monadThrow UnterminatedInlineDoctype
 
 -- | Try to parse a document element (as defined in XML) from a stream of events.
+--
+-- @since 1.3.5
 elementFromEvents :: MonadThrow m => Consumer P.EventPos m (Maybe Element)
 elementFromEvents = goE
   where
@@ -245,6 +247,8 @@ toEvents (Document prol root epi) =
       . (:) EventEndDoctype
 
 -- | Render a document element into events.
+--
+-- @since 1.3.5
 elementToEvents :: Element -> [Event]
 elementToEvents e = elementToEvents' e []
 
