@@ -145,6 +145,7 @@ manyTries f =
 dropReturn :: Monad m => a -> ConduitM i o m a
 dropReturn x = CL.drop 1 >> return x
 
+-- | Parse a document from a stream of events.
 fromEvents :: MonadThrow m => Consumer P.EventPos m Document
 fromEvents = do
     skip EventBeginDocument
@@ -200,6 +201,7 @@ fromEvents = do
             Just epos -> lift $ monadThrow $ InvalidInlineDoctype epos
             Nothing -> lift $ monadThrow UnterminatedInlineDoctype
 
+-- | Try to parse a document element (as defined in XML) from a stream of events.
 elementFromEvents :: MonadThrow m => Consumer P.EventPos m (Maybe Element)
 elementFromEvents = goE
   where
@@ -225,6 +227,7 @@ elementFromEvents = goE
             Just (_, EventCDATA t) -> dropReturn $ Just $ NodeContent $ ContentText t
             _ -> return Nothing
 
+-- | Render a document into events.
 toEvents :: Document -> [Event]
 toEvents (Document prol root epi) =
       (EventBeginDocument :)
@@ -241,6 +244,7 @@ toEvents (Document prol root epi) =
         (:) (EventBeginDoctype name meid)
       . (:) EventEndDoctype
 
+-- | Render a document element into events.
 elementToEvents :: Element -> [Event]
 elementToEvents e = elementToEvents' e []
 
