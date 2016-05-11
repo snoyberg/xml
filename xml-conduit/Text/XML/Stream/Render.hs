@@ -1,11 +1,13 @@
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes        #-}
 -- | 'Enumeratee's to render XML 'Event's. Unlike libxml-enumerator and
 -- expat-enumerator, this module does not provide IO and ST variants, since the
 -- underlying rendering operations are pure functions.
 module Text.XML.Stream.Render
     ( -- * Rendering XML files
       renderBuilder
+    , renderBuilderFlush
     , renderBytes
     , renderText
     , prettify
@@ -115,31 +117,47 @@ orderAttrs orderSpec = order
 -- the blaze-builder package, and allow the create of optimally sized
 -- 'ByteString's with minimal buffer copying.
 renderBuilder :: Monad m => RenderSettings -> Conduit Event m Builder
-renderBuilder RenderSettings { rsPretty = True, rsNamespaces = n, rsUseCDATA = useCDATA } = prettify =$= renderBuilder' n True useCDATA
-renderBuilder RenderSettings { rsPretty = False, rsNamespaces = n, rsUseCDATA = useCDATA } = renderBuilder' n False useCDATA
+renderBuilder settings = CL.map Chunk =$= renderBuilder' yield' settings
+  where
+    yield' Flush = return ()
+    yield' (Chunk bs) = yield bs
 
-renderBuilder' :: Monad m => [(Text, Text)] -> Bool -> (Content -> Bool) -> Conduit Event m Builder
-renderBuilder' namespaces0 isPretty useCDATA = do
+-- | Same as 'renderBuilder' but allows you to flush XML stream to ensure that all
+-- events at needed point are rendered.
+renderBuilderFlush :: Monad m => RenderSettings -> Conduit (Flush Event) m (Flush Builder)
+renderBuilderFlush = renderBuilder' yield
+
+renderBuilder' :: Monad m => (Flush Builder -> Producer m o) -> RenderSettings -> Conduit (Flush Event) m o
+renderBuilder' yield' settings =
+    if rsPretty settings
+    then prettify =$= renderEvent'
+    else renderEvent'
+  where
+    renderEvent' = renderEvent yield' settings
+
+renderEvent :: Monad m => (Flush Builder -> Producer m o) -> RenderSettings -> Conduit (Flush Event) m o
+renderEvent yield' RenderSettings { rsPretty = isPretty, rsNamespaces = namespaces0, rsUseCDATA = useCDATA } = do
     loop []
   where
     loop nslevels = await >>= maybe (return ()) (go nslevels)
 
-    go nslevels e =
+    go nslevels Flush = yield' Flush >> loop nslevels
+    go nslevels (Chunk e) =
         case e of
             EventBeginElement n1 as -> do
                 mnext <- CL.peek
                 isClosed <-
                     case mnext of
-                        Just (EventEndElement n2) | n1 == n2 -> do
+                        Just (Chunk (EventEndElement n2)) | n1 == n2 -> do
                             CL.drop 1
                             return True
                         _ -> return False
                 let (token, nslevels') = mkBeginToken isPretty isClosed namespaces0 nslevels n1 as
-                yield token
+                yield' $ Chunk token
                 loop nslevels'
             _ -> do
                 let (token, nslevels') = eventToToken nslevels useCDATA e
-                yield token
+                yield' $ Chunk token
                 loop nslevels'
 
 eventToToken :: Stack -> (Content -> Bool) -> Event -> (Builder, [NSLevel])
@@ -260,35 +278,40 @@ getPrefix ppref nsmap ns =
 
 -- | Convert a stream of 'Event's into a prettified one, adding extra
 -- whitespace. Note that this can change the meaning of your XML.
-prettify :: Monad m => Conduit Event m Event
+prettify :: Monad m => Conduit (Flush Event) m (Flush Event)
 prettify = prettify' 0
 
-prettify' :: Monad m => Int -> Conduit Event m Event
+prettify' :: Monad m => Int -> Conduit (Flush Event) m (Flush Event)
 prettify' level =
-    await >>= maybe (return ()) go
+    await >>= maybe (return ()) goC
   where
+    yield' = yield . Chunk
+
+    goC Flush = yield Flush >> prettify' level
+    goC (Chunk e) = go e
+
     go e@EventBeginDocument = do
-        yield e
-        yield $ EventContent $ ContentText "\n"
+        yield' e
+        yield' $ EventContent $ ContentText "\n"
         prettify' level
     go e@EventBeginElement{} = do
-        yield before
-        yield e
+        yield' before
+        yield' e
         mnext <- CL.peek
         case mnext of
-            Just next@EventEndElement{} -> do
+            Just (Chunk next@EventEndElement{}) -> do
                 CL.drop 1
-                yield next
-                yield after
+                yield' next
+                yield' after
                 prettify' level
             _ -> do
-                yield after
+                yield' after
                 prettify' $ level + 1
     go e@EventEndElement{} = do
         let level' = max 0 $ level - 1
-        yield $ before' level'
-        yield e
-        yield after
+        yield' $ before' level'
+        yield' e
+        yield' after
         prettify' level'
     go (EventContent c) = do
         cs <- takeContents (c:)
@@ -296,37 +319,37 @@ prettify' level =
         case cs' of
             [] -> return ()
             _ -> do
-                yield before
-                mapM_ (yield . EventContent) cs'
-                yield after
+                yield' before
+                mapM_ (yield' . EventContent) cs'
+                yield' after
         prettify' level
     go (EventCDATA t) = go $ EventContent $ ContentText t
     go e@EventInstruction{} = do
-        yield before
-        yield e
-        yield after
+        yield' before
+        yield' e
+        yield' after
         prettify' level
     go (EventComment t) = do
-        yield before
-        yield $ EventComment $ T.concat
+        yield' before
+        yield' $ EventComment $ T.concat
             [ " "
             , T.unwords $ T.words t
             , " "
             ]
-        yield after
+        yield' after
         prettify' level
 
-    go e@EventEndDocument = yield e >> prettify' level
-    go e@EventBeginDoctype{} = yield e >> prettify' level
-    go e@EventEndDoctype{} = yield e >> yield after >> prettify' level
+    go e@EventEndDocument = yield' e >> prettify' level
+    go e@EventBeginDoctype{} = yield' e >> prettify' level
+    go e@EventEndDoctype{} = yield' e >> yield' after >> prettify' level
 
     takeContents front = do
         me <- CL.peek
         case me of
-            Just (EventContent c) -> do
+            Just (Chunk (EventContent c)) -> do
                 CL.drop 1
                 takeContents $ front . (c:)
-            Just (EventCDATA t) -> do
+            Just (Chunk (EventCDATA t)) -> do
                 CL.drop 1
                 takeContents $ front . (ContentText t:)
             _ -> return $ front []
