@@ -605,7 +605,7 @@ contentMaybe = do
     case pc' x of
         Ignore -> CL.drop 1 >> contentMaybe
         IsContent t -> CL.drop 1 >> fmap Just (takeContents (t:))
-        IsError e -> lift $ monadThrow $ XmlException e x
+        IsError e -> lift $ monadThrow $ InvalidEntity e x
         NotContent -> return Nothing
   where
     pc' Nothing = NotContent
@@ -626,7 +626,7 @@ contentMaybe = do
         case pc' x of
             Ignore -> CL.drop 1 >> takeContents front
             IsContent t -> CL.drop 1 >> takeContents (front . (:) t)
-            IsError e -> lift $ monadThrow $ XmlException e x
+            IsError e -> lift $ monadThrow $ InvalidEntity e x
             NotContent -> return $ T.concat $ front []
 
 -- | Grabs the next piece of content. If none if available, returns 'T.empty'.
@@ -668,7 +668,7 @@ tag checkName attrParser f = do
                             case a of
                                 Just (EventEndElement name')
                                     | name == name' -> return (Just z')
-                                _ -> lift $ monadThrow $ XmlException ("Expected end tag for: " ++ show name) a
+                                _ -> lift $ monadThrow $ InvalidEndElement name a
                 Nothing -> return Nothing
         _ -> return Nothing
 
@@ -861,11 +861,21 @@ data XmlException = XmlException
     { xmlErrorMessage :: String
     , xmlBadInput :: Maybe Event
     }
-                  | InvalidEndElement Name
-                  | InvalidEntity Text
+                  | InvalidEndElement Name (Maybe Event)
+                  | InvalidEntity String (Maybe Event)
+                  | MissingAttribute String
                   | UnparsedAttributes [(Name, [Content])]
     deriving (Show, Typeable)
-instance Exception XmlException
+
+instance Exception XmlException where
+  displayException (XmlException msg (Just event)) = "Error while parsing XML event " ++ show event ++ ": " ++ msg
+  displayException (XmlException msg _) = "Error while parsing XML: " ++ msg
+  displayException (InvalidEndElement name (Just event)) = "Error while parsing XML event: expected </" ++ TS.unpack (nameLocalName name) ++ ">, got " ++ show event
+  displayException (InvalidEndElement name _) = "Error while parsing XML event: expected </" ++ show name ++ ">, got nothing"
+  displayException (InvalidEntity msg (Just event)) = "Error while parsing XML entity " ++ show event ++ ": " ++ msg
+  displayException (InvalidEntity msg _) = "Error while parsing XML entity: " ++ msg
+  displayException (MissingAttribute msg) = "Missing required attribute: " ++ msg
+  displayException (UnparsedAttributes attrs) = show (length attrs) ++ " remaining unparsed attributes: \n" ++ unlines (show <$> attrs)
 
 -- | A monad for parsing attributes. By default, it requires you to deal with
 -- all attributes present on an element, and will throw an exception if there
@@ -905,7 +915,7 @@ optionalAttrRaw f =
 
 requireAttrRaw :: String -> ((Name, [Content]) -> Maybe b) -> AttrParser b
 requireAttrRaw msg f = optionalAttrRaw f >>=
-    maybe (AttrParser $ const $ Left $ toException $ XmlException msg Nothing)
+    maybe (AttrParser $ const $ Left $ toException $ MissingAttribute msg)
           return
 
 -- | Return the value for an attribute if present.
