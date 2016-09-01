@@ -1,9 +1,9 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP                #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternGuards #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE FlexibleContexts   #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE PatternGuards      #-}
+{-# LANGUAGE RankNTypes         #-}
 -- | DOM-based parsing and rendering.
 --
 -- This module requires that all entities be resolved at parsing. If you need
@@ -73,58 +73,55 @@ module Text.XML
     , fromXMLElement
     ) where
 
-import qualified Data.XML.Types as X
-import Data.XML.Types
-    ( Prologue (..)
-    , Miscellaneous (..)
-    , Instruction (..)
-    , Name (..)
-    , Doctype (..)
-    , ExternalID (..)
-    )
-import Data.Typeable (Typeable)
-import Data.Data (Data)
-import Control.DeepSeq(NFData(rnf))
-import Data.Text (Text)
-import qualified Text.XML.Stream.Parse as P
-import qualified Text.XML.Unresolved as D
-import qualified Text.XML.Stream.Render as R
-import qualified Data.Text as T
-import Data.Either (partitionEithers)
-import Control.Monad.Trans.Resource (MonadThrow, monadThrow, runExceptionT, runResourceT)
-import Prelude hiding (readFile, writeFile)
-import Control.Exception (SomeException, Exception, throwIO, handle)
-import Text.XML.Stream.Parse (ParseSettings, def, psDecodeEntities)
-import Data.ByteString (ByteString)
-import qualified Data.ByteString.Lazy as L
-import Control.Monad.ST (runST)
-import qualified Data.Set as Set
-import qualified Data.Map as Map
-import Data.Set (Set)
+import           Control.DeepSeq              (NFData (rnf))
+import           Control.Exception            (Exception, SomeException, handle,
+                                               throw, throwIO)
+import           Control.Monad.ST             (runST)
+import           Control.Monad.Trans.Resource (MonadThrow, monadThrow,
+                                               runExceptionT, runResourceT)
+import           Data.ByteString              (ByteString)
+import qualified Data.ByteString.Lazy         as L
+import           Data.Data                    (Data)
+import           Data.Either                  (partitionEithers)
+import qualified Data.Map                     as Map
+import           Data.Set                     (Set)
+import qualified Data.Set                     as Set
+import           Data.Text                    (Text)
+import qualified Data.Text                    as T
+import           Data.Typeable                (Typeable)
+import           Data.XML.Types               (Doctype (..), ExternalID (..),
+                                               Instruction (..),
+                                               Miscellaneous (..), Name (..),
+                                               Prologue (..))
+import qualified Data.XML.Types               as X
+import           Prelude                      hiding (readFile, writeFile)
+import           Text.XML.Stream.Parse        (ParseSettings, def,
+                                               psDecodeEntities)
+import qualified Text.XML.Stream.Parse        as P
+import qualified Text.XML.Stream.Render       as R
+import qualified Text.XML.Unresolved          as D
 
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Encoding as TLE
-import Data.Conduit
-import qualified Data.Conduit.List as CL
-import qualified Data.Conduit.Binary as CB
-import System.IO.Unsafe (unsafePerformIO)
-import Control.Exception (throw)
-import Control.Monad.Trans.Resource (runExceptionT)
-import Control.Monad.Trans.Class (lift)
-import Data.Conduit.Lazy (lazyConsume)
+import           Control.Monad.Trans.Class    (lift)
+import           Data.Conduit
+import qualified Data.Conduit.Binary          as CB
+import           Data.Conduit.Lazy            (lazyConsume)
+import qualified Data.Conduit.List            as CL
+import qualified Data.Text.Lazy               as TL
+import qualified Data.Text.Lazy.Encoding      as TLE
+import           System.IO.Unsafe             (unsafePerformIO)
 
-import qualified Text.Blaze as B
-import qualified Text.Blaze.Html as B
-import qualified Text.Blaze.Html5 as B5
-import qualified Text.Blaze.Internal as BI
-import Data.Monoid (mempty, mappend)
-import Data.String (fromString)
-import Data.List (foldl')
-import Control.Arrow (first)
+import           Control.Arrow                (first)
+import           Data.List                    (foldl')
+import           Data.Monoid                  (mappend, mempty)
+import           Data.String                  (fromString)
+import qualified Text.Blaze                   as B
+import qualified Text.Blaze.Html              as B
+import qualified Text.Blaze.Html5             as B5
+import qualified Text.Blaze.Internal          as BI
 
 data Document = Document
     { documentPrologue :: Prologue
-    , documentRoot :: Element
+    , documentRoot     :: Element
     , documentEpilogue :: [Miscellaneous]
     }
   deriving (Show, Eq, Typeable, Data)
@@ -143,16 +140,16 @@ data Node
 
 #if MIN_VERSION_containers(0, 4, 2)
 instance NFData Node where
-  rnf (NodeElement e) = rnf e `seq` ()
+  rnf (NodeElement e)     = rnf e `seq` ()
   rnf (NodeInstruction i) = rnf i `seq` ()
-  rnf (NodeContent t) = rnf t `seq` ()
-  rnf (NodeComment t) = rnf t `seq` ()
+  rnf (NodeContent t)     = rnf t `seq` ()
+  rnf (NodeComment t)     = rnf t `seq` ()
 #endif
 
 data Element = Element
-    { elementName :: Name
+    { elementName       :: Name
     , elementAttributes :: Map.Map Name Text
-    , elementNodes :: [Node]
+    , elementNodes      :: [Node]
     }
   deriving (Show, Eq, Ord, Typeable, Data)
 
@@ -186,24 +183,24 @@ toXMLNode :: Node -> X.Node
 toXMLNode = toXMLNode' def
 
 toXMLNode' :: R.RenderSettings -> Node -> X.Node
-toXMLNode' rs (NodeElement e) = X.NodeElement $ toXMLElement' rs e
-toXMLNode' _ (NodeContent t) = X.NodeContent $ X.ContentText t
-toXMLNode' _ (NodeComment c) = X.NodeComment c
+toXMLNode' rs (NodeElement e)    = X.NodeElement $ toXMLElement' rs e
+toXMLNode' _ (NodeContent t)     = X.NodeContent $ X.ContentText t
+toXMLNode' _ (NodeComment c)     = X.NodeComment c
 toXMLNode' _ (NodeInstruction i) = X.NodeInstruction i
 
 fromXMLDocument :: X.Document -> Either (Set Text) Document
 fromXMLDocument (X.Document a b c) =
     case fromXMLElement b of
-        Left es -> Left es
+        Left es  -> Left es
         Right b' -> Right $ Document a b' c
 
 fromXMLElement :: X.Element -> Either (Set Text) Element
 fromXMLElement (X.Element name as nodes) =
     case (lnodes, las) of
         ([], []) -> Right $ Element name ras rnodes
-        (x, []) -> Left $ Set.unions x
-        ([], y) -> Left $ Set.unions y
-        (x, y) -> Left $ Set.unions x `Set.union` Set.unions y
+        (x, [])  -> Left $ Set.unions x
+        ([], y)  -> Left $ Set.unions y
+        (x, y)   -> Left $ Set.unions x `Set.union` Set.unions y
   where
     enodes = map fromXMLNode nodes
     (lnodes, rnodes) = partitionEithers enodes
@@ -212,16 +209,15 @@ fromXMLElement (X.Element name as nodes) =
     ras = Map.fromList ras'
     go (x, y) =
         case go' [] id y of
-            Left es -> Left es
+            Left es  -> Left es
             Right y' -> Right (x, y')
-    go' [] front [] = Right $ T.concat $ front []
-    go' errs _ [] = Left $ Set.fromList errs
-    go' errs front (X.ContentText t:ys) = go' errs (front . (:) t) ys
+    go' [] front []                       = Right $ T.concat $ front []
+    go' errs _ []                         = Left $ Set.fromList errs
+    go' errs front (X.ContentText t:ys)   = go' errs (front . (:) t) ys
     go' errs front (X.ContentEntity t:ys) = go' (t : errs) front ys
 
 fromXMLNode :: X.Node -> Either (Set Text) Node
-fromXMLNode (X.NodeElement e) =
-    either Left (Right . NodeElement) $ fromXMLElement e
+fromXMLNode (X.NodeElement e) = NodeElement <$> fromXMLElement e
 fromXMLNode (X.NodeContent (X.ContentText t)) = Right $ NodeContent t
 fromXMLNode (X.NodeContent (X.ContentEntity t)) = Left $ Set.singleton t
 fromXMLNode (X.NodeComment c) = Right $ NodeComment c
@@ -324,7 +320,7 @@ instance B.ToMarkup Element where
         childrenHtml =
             case (name `elem` ["style", "script"], children) of
                 (True, [NodeContent t]) -> B.preEscapedToMarkup t
-                _ -> mapM_ B.toMarkup children
+                _                       -> mapM_ B.toMarkup children
 
         isVoid = nameLocalName name' `Set.member` voidElems
 
@@ -339,13 +335,13 @@ instance B.ToMarkup Element where
         close = fromString $ concat ["</", name, ">"]
 
         attrs' :: [B.Attribute]
-        attrs' = map goAttr $ map (first nameLocalName) $ Map.toList attrs
+        attrs' = map (goAttr . first nameLocalName) $ Map.toList attrs
         goAttr (key, value) = B.customAttribute (B.textTag key) $ B.toValue value
 
 instance B.ToMarkup Node where
     toMarkup (NodeElement e) = B.toMarkup e
     toMarkup (NodeContent t) = B.toMarkup t
-    toMarkup _ = mempty
+    toMarkup _               = mempty
 
 voidElems :: Set.Set T.Text
 voidElems = Set.fromAscList $ T.words $ T.pack "area base br col command embed hr img input keygen link meta param source track wbr"

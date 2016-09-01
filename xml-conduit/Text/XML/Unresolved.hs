@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE FlexibleContexts   #-}
+{-# LANGUAGE RankNTypes         #-}
 -- | DOM-based XML parsing and rendering.
 --
 -- In this module, attribute values and content nodes can contain either raw
@@ -43,31 +43,31 @@ module Text.XML.Unresolved
     , R.rsNamespaces
     ) where
 
-import Prelude hiding (writeFile, readFile)
-import Data.XML.Types
-import Control.Exception (Exception, SomeException)
-import Data.Typeable (Typeable)
-import Blaze.ByteString.Builder (Builder)
-import qualified Text.XML.Stream.Render as R
-import qualified Text.XML.Stream.Parse as P
-import Text.XML.Stream.Parse (ParseSettings)
-import Data.ByteString (ByteString)
-import Data.Text (Text)
-import Control.Applicative ((<$>), (<*>))
-import Control.Monad       (when)
-import qualified Data.Text as T
-import qualified Data.Text.Lazy as TL
-import Data.Char (isSpace)
-import qualified Data.ByteString.Lazy as L
-import System.IO.Unsafe (unsafePerformIO)
-import Data.Conduit
-import qualified Data.Conduit.List as CL
-import qualified Data.Conduit.Binary as CB
-import Control.Exception (throw)
-import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Resource (MonadThrow, monadThrow, runExceptionT, runResourceT)
-import Control.Monad.ST (runST)
-import Data.Conduit.Lazy (lazyConsume)
+import           Blaze.ByteString.Builder     (Builder)
+import           Control.Applicative          ((<$>), (<*>))
+import           Control.Exception            (Exception, SomeException, throw)
+import           Control.Monad                (when)
+import           Control.Monad.ST             (runST)
+import           Control.Monad.Trans.Class    (lift)
+import           Control.Monad.Trans.Resource (MonadThrow, monadThrow,
+                                               runExceptionT, runResourceT)
+import           Data.ByteString              (ByteString)
+import qualified Data.ByteString.Lazy         as L
+import           Data.Char                    (isSpace)
+import           Data.Conduit
+import qualified Data.Conduit.Binary          as CB
+import           Data.Conduit.Lazy            (lazyConsume)
+import qualified Data.Conduit.List            as CL
+import           Data.Text                    (Text)
+import qualified Data.Text                    as T
+import qualified Data.Text.Lazy               as TL
+import           Data.Typeable                (Typeable)
+import           Data.XML.Types
+import           Prelude                      hiding (readFile, writeFile)
+import           System.IO.Unsafe             (unsafePerformIO)
+import           Text.XML.Stream.Parse        (ParseSettings)
+import qualified Text.XML.Stream.Parse        as P
+import qualified Text.XML.Stream.Render       as R
 
 readFile :: P.ParseSettings -> FilePath -> IO Document
 readFile ps fp = runResourceT $ CB.sourceFile fp $$ sinkDoc ps
@@ -114,7 +114,7 @@ instance Show InvalidEventStream where
     show UnterminatedInlineDoctype = "Unterminated doctype declaration"
 
 mShowPos :: Maybe P.PositionRange -> String
-mShowPos Nothing = ""
+mShowPos Nothing    = ""
 mShowPos (Just pos) = show pos ++ ": "
 
 prettyShowE :: Event -> String
@@ -140,7 +140,7 @@ manyTries f =
         x <- f
         case x of
             Nothing -> return $ front []
-            Just y -> go (front . (:) y)
+            Just y  -> go (front . (:) y)
 
 dropReturn :: Monad m => a -> ConduitM i o m a
 dropReturn x = CL.drop 1 >> return x
@@ -211,7 +211,7 @@ elementFromEvents = goE
         x <- CL.peek
         case x of
             Just (_, EventBeginElement n as) -> Just <$> goE' n as
-            _ -> return Nothing
+            _                                -> return Nothing
     goE' n as = do
         CL.drop 1
         ns <- manyTries goN
@@ -237,11 +237,11 @@ toEvents (Document prol root epi) =
   where
     goP (Prologue before doctype after) =
         goM before . maybe id goD doctype . goM after
-    goM [] = id
-    goM [x] = (goM' x :)
+    goM []     = id
+    goM [x]    = (goM' x :)
     goM (x:xs) = (goM' x :) . goM xs
     goM' (MiscInstruction i) = EventInstruction i
-    goM' (MiscComment t) = EventComment t
+    goM' (MiscComment t)     = EventComment t
     goD (Doctype name meid) =
         (:) (EventBeginDoctype name meid)
       . (:) EventEndDoctype
@@ -259,13 +259,13 @@ elementToEvents' = goE
           (EventBeginElement name as :)
         . goN ns
         . (EventEndElement name :)
-    goN [] = id
-    goN [x] = goN' x
+    goN []     = id
+    goN [x]    = goN' x
     goN (x:xs) = goN' x . goN xs
-    goN' (NodeElement e) = goE e
+    goN' (NodeElement e)     = goE e
     goN' (NodeInstruction i) = (EventInstruction i :)
-    goN' (NodeContent c) = (EventContent c :)
-    goN' (NodeComment t) = (EventComment t :)
+    goN' (NodeContent c)     = (EventContent c :)
+    goN' (NodeComment t)     = (EventComment t :)
 
 compressNodes :: [Node] -> [Node]
 compressNodes [] = []

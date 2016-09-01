@@ -108,7 +108,7 @@ orderAttrs orderSpec = order
   where
     order elt attrMap =
       let initialAttrs = fromMaybe [] $ lookup elt orderSpec
-          mkPair attr = fmap ((,) attr) $ Map.lookup attr attrMap
+          mkPair attr = (,) attr <$> Map.lookup attr attrMap
           otherAttrMap =
             Map.filterWithKey (const . not . (`elem` initialAttrs)) attrMap
       in mapMaybe mkPair initialAttrs ++ Map.toAscList otherAttrMap
@@ -138,7 +138,7 @@ renderBuilder' yield' settings =
     renderEvent' = renderEvent yield' settings
 
 renderEvent :: Monad m => (Flush Builder -> Producer m o) -> RenderSettings -> Conduit (Flush Event) m o
-renderEvent yield' RenderSettings { rsPretty = isPretty, rsNamespaces = namespaces0, rsUseCDATA = useCDATA } = do
+renderEvent yield' RenderSettings { rsPretty = isPretty, rsNamespaces = namespaces0, rsUseCDATA = useCDATA } =
     loop []
   where
     loop nslevels = await >>= maybe (return ()) (go nslevels)
@@ -178,8 +178,8 @@ eventToToken s _ (EventEndElement name) =
     (tokenToBuilder $ TokenEndElement $ nameToTName sl name, s')
   where
     (sl:s') = s
-eventToToken s useCDATA (EventContent c) 
-    | useCDATA c = 
+eventToToken s useCDATA (EventContent c)
+    | useCDATA c =
         case c of
           ContentText txt -> (tokenToBuilder $ TokenCDATA txt, s)
           ContentEntity txt -> (tokenToBuilder $ TokenCDATA txt, s)

@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE PatternGuards      #-}
 {-# LANGUAGE RankNTypes         #-}
+{-# LANGUAGE TupleSections      #-}
 -- | This module provides both a native Haskell solution for parsing XML
 -- documents into a stream of events, and a set of parser combinators for
 -- dealing with a stream of events.
@@ -139,6 +140,7 @@ module Text.XML.Stream.Parse
     , EventPos
     ) where
 import qualified Control.Applicative          as A
+import           Control.Monad.Fix (fix)
 import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..),
                                                monadThrow)
 import           Data.Attoparsec.Text         (Parser, anyChar, char, manyTill,
@@ -274,15 +276,15 @@ detectUtf =
         (x, y) = S.splitAt 4 bs
         (toDrop, mcodec) =
             case S.unpack x of
-                [0x00, 0x00, 0xFE, 0xFF] -> (4, Just $ CT.utf32_be)
-                [0xFF, 0xFE, 0x00, 0x00] -> (4, Just $ CT.utf32_le)
-                0xFE : 0xFF: _           -> (2, Just $ CT.utf16_be)
-                0xFF : 0xFE: _           -> (2, Just $ CT.utf16_le)
-                0xEF : 0xBB: 0xBF : _    -> (3, Just $ CT.utf8)
-                [0x00, 0x00, 0x00, 0x3C] -> (0, Just $ CT.utf32_be)
-                [0x3C, 0x00, 0x00, 0x00] -> (0, Just $ CT.utf32_le)
-                [0x00, 0x3C, 0x00, 0x3F] -> (0, Just $ CT.utf16_be)
-                [0x3C, 0x00, 0x3F, 0x00] -> (0, Just $ CT.utf16_le)
+                [0x00, 0x00, 0xFE, 0xFF] -> (4, Just CT.utf32_be)
+                [0xFF, 0xFE, 0x00, 0x00] -> (4, Just CT.utf32_le)
+                0xFE : 0xFF: _           -> (2, Just CT.utf16_be)
+                0xFF : 0xFE: _           -> (2, Just CT.utf16_le)
+                0xEF : 0xBB: 0xBF : _    -> (3, Just CT.utf8)
+                [0x00, 0x00, 0x00, 0x3C] -> (0, Just CT.utf32_be)
+                [0x3C, 0x00, 0x00, 0x00] -> (0, Just CT.utf32_le)
+                [0x00, 0x3C, 0x00, 0x3F] -> (0, Just CT.utf16_be)
+                [0x3C, 0x00, 0x3F, 0x00] -> (0, Just CT.utf16_le)
                 _                        -> (0, Nothing) -- Assuming UTF-8
 
 checkXMLDecl :: MonadThrow m
@@ -295,10 +297,10 @@ checkXMLDecl bs0 Nothing =
   where
     loop chunks0 parser nextChunk =
         case parser $ decodeUtf8With lenientDecode nextChunk of
-            AT.Fail _ _ _ -> fallback
+            AT.Fail{} -> fallback
             AT.Partial f -> await >>= maybe fallback (loop chunks f)
             AT.Done _ (TokenBeginDocument attrs) -> findEncoding attrs
-            AT.Done _ _ -> fallback
+            AT.Done{} -> fallback
       where
         chunks = nextChunk : chunks0
         fallback = complete CT.utf8
@@ -442,7 +444,7 @@ parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False
         char' '-'
         char' '-'
         c <- T.pack <$> manyTill anyChar (string "-->") -- FIXME use takeWhile instead
-        return $ TokenComment c 
+        return $ TokenComment c
     parseCdata = do
         _ <- string "[CDATA["
         t <- T.pack <$> manyTill anyChar (string "]]>") -- FIXME use takeWhile instead
@@ -586,7 +588,7 @@ isXMLSpace '\n' = True
 isXMLSpace _ = False
 
 newline :: Parser ()
-newline = ((char '\r' >> char '\n') <|> char '\n') >> return ()
+newline = void $ (char '\r' >> char '\n') <|> char '\n'
 
 char' :: Char -> Parser ()
 char' = void . char
@@ -636,6 +638,8 @@ content = fromMaybe T.empty <$> contentMaybe
 -- this is the correct tag name, an 'AttrParser' for handling attributes, and
 -- then a parser for dealing with content.
 --
+-- 'Events' are consumed if and only if the predicate holds.
+--
 -- This function automatically absorbs its balancing closing tag, and will
 -- throw an exception if not all of the attributes or child elements are
 -- consumed. If you want to allow extra attributes, see 'ignoreAttrs'.
@@ -678,31 +682,25 @@ tag checkName attrParser f = do
 
     return res
   where
+    isWhitespace EventBeginDocument = True
+    isWhitespace EventEndDocument = True
+    isWhitespace EventBeginDoctype{} = True
+    isWhitespace EventEndDoctype = True
+    isWhitespace EventInstruction{} = True
+    isWhitespace (EventContent (ContentText t)) = T.all isSpace t
+    isWhitespace EventComment{} = True
+    isWhitespace _ = False
+
     -- Drop Events until we encounter a non-whitespace element. Return all of
     -- the events consumed here (including the first non-whitespace event) so
     -- that the calling function can treat them as leftovers if the parse fails
     dropWS leftovers = do
         x <- await
-        let isWS =
-                case x of
-                    Just EventBeginDocument -> True
-                    Just EventEndDocument -> True
-                    Just EventBeginDoctype{} -> True
-                    Just EventEndDoctype -> True
-                    Just EventInstruction{} -> True
-                    Just EventBeginElement{} -> False
-                    Just EventEndElement{} -> False
-                    Just (EventContent (ContentText t))
-                        | T.all isSpace t -> True
-                        | otherwise -> False
-                    Just (EventContent ContentEntity{}) -> False
-                    Just EventComment{} -> True
-                    Just EventCDATA{} -> False
-                    Nothing -> False
-            leftovers' = maybe id (:) x leftovers
-        if isWS
-            then dropWS leftovers'
-            else return (x, leftovers')
+        let leftovers' = maybe id (:) x leftovers
+
+        case isWhitespace <$> x of
+          Just True -> dropWS leftovers'
+          _ -> return (x, leftovers')
     runAttrParser' p as =
         case runAttrParser p as of
             Left e -> Left e
@@ -729,7 +727,7 @@ tagPredicate p attrParser = tag (guard . p) (const attrParser)
 -- to match the tag @c@ in the XML namespace @http://a/b@
 tagName :: MonadThrow m
      => Name -- ^ The tag name this parser matches to (includes namespaces)
-     -> AttrParser a -- ^ The attribute parser to be used for tags matching the predicate 
+     -> AttrParser a -- ^ The attribute parser to be used for tags matching the predicate
      -> (a -> CI.ConduitM Event o m b) -- ^ Handler function to handle the attributes and children
                                        --   of a tag, given the value return from the @AttrParser@
      -> CI.ConduitM Event o m (Maybe b)
@@ -791,7 +789,7 @@ ignoreTree :: MonadThrow m
           => (Name -> Bool) -- ^ The predicate name to match to
           -> ConduitM Event o m (Maybe ())
 ignoreTree namePred =
-    tagPredicateIgnoreAttrs namePred (const () <$> many ignoreAllTreesContent)
+    tagPredicateIgnoreAttrs namePred (void $ many ignoreAllTreesContent)
 
 -- | Like 'ignoreTagName', but also ignores non-empty tabs
 ignoreTreeName :: MonadThrow m
@@ -822,9 +820,8 @@ ignoreAllTreesContent = (void <$> contentMaybe) `orE` ignoreAllTrees
 orE :: Monad m
     => Consumer Event m (Maybe a) -- ^ The first (preferred) parser
     -> Consumer Event m (Maybe a) -- ^ The second parser, only executed if the first parser fails
-    -> Consumer Event m (Maybe a) 
-orE a b =
-    a >>= \x -> maybe b (const $ return x) x
+    -> Consumer Event m (Maybe a)
+orE a b = a >>= \x -> maybe b (const $ return x) x
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
@@ -833,8 +830,7 @@ choose :: Monad m
        -> ConduitM Event o m (Maybe a)   -- ^ Result of the first parser to succeed, or @Nothing@
                                          --   if no parser succeeded
 choose [] = return Nothing
-choose (i:is) =
-    i >>= maybe (choose is) (return . Just)
+choose (i:is) = i >>= maybe (choose is) (return . Just)
 
 -- | Force an optional parser into a required parser. All of the 'tag'
 -- functions, 'attr', 'choose' and 'many' deal with 'Maybe' parsers. Use this when you
@@ -873,11 +869,11 @@ instance Exception XmlException
 
 -- | A monad for parsing attributes. By default, it requires you to deal with
 -- all attributes present on an element, and will throw an exception if there
--- are unhandled attributes. Use the 'requireAttr', 'optionalAttr' et al
+-- are unhandled attributes. Use the 'requireAttr', 'attr' et al
 -- functions for handling an attribute, and 'ignoreAttrs' if you would like to
 -- skip the rest of the attributes on an element.
 --
--- 'Alternative' instance behave like 'First' monoid. It chooses first
+-- 'Alternative' instance behaves like 'First' monoid: it chooses first
 -- parser which doesn't fail.
 newtype AttrParser a = AttrParser { runAttrParser :: [(Name, [Content])] -> Either SomeException ([(Name, [Content])], a) }
 
@@ -914,23 +910,22 @@ requireAttrRaw msg f = optionalAttrRaw f >>=
 
 -- | Return the value for an attribute if present.
 attr :: Name -> AttrParser (Maybe Text)
-attr = optionalAttr
+attr n = optionalAttrRaw
+    (\(x, y) -> if x == n then Just (contentsToText y) else Nothing)
 
 -- | Shortcut composition of 'force' and 'attr'.
 requireAttr :: Name -> AttrParser Text
 requireAttr n = force ("Missing attribute: " ++ show n) $ attr n
 
+
 {-# DEPRECATED optionalAttr "Please use 'attr'." #-}
 optionalAttr :: Name -> AttrParser (Maybe Text)
-optionalAttr n = optionalAttrRaw
-    (\(x, y) -> if x == n then Just (contentsToText y) else Nothing)
+optionalAttr = attr
 
 contentsToText :: [Content] -> Text
-contentsToText =
-    T.concat . map toText
-  where
-    toText (ContentText t) = t
-    toText (ContentEntity e) = T.concat ["&", e, ";"]
+contentsToText = T.concat . map toText where
+  toText (ContentText t) = t
+  toText (ContentEntity e) = T.concat ["&", e, ";"]
 
 -- | Skip the remaining attributes on an element. Since this will clear the
 -- list of attributes, you must call this /after/ any calls to 'requireAttr',
@@ -942,12 +937,7 @@ ignoreAttrs = AttrParser $ const $ Right ([], ())
 many :: Monad m
      => Consumer Event m (Maybe a)
      -> Consumer Event m [a]
-many i =
-    go id
-  where
-    go front = i >>=
-        maybe (return $ front [])
-              (\y -> go $ front . (:) y)
+many i = manyIgnore i $ return Nothing
 
 -- | Keep parsing elements as long as the parser returns 'Just'
 --   or the ignore parser returns 'Just'.
@@ -967,34 +957,30 @@ manyIgnore i ignored =
 -- | Like @many@, but any tags and content the consumer doesn't match on
 --   are silently ignored.
 many' :: MonadThrow m
-           => Consumer Event m (Maybe a)
-           -> Consumer Event m [a]
+      => Consumer Event m (Maybe a)
+      -> Consumer Event m [a]
 many' consumer = manyIgnore consumer ignoreAllTreesContent
 
 -- | Like 'many', but uses 'yield' so the result list can be streamed
---   to downstream conduits without waiting for 'manyYield' to finished
+--   to downstream conduits without waiting for 'manyYield' to finish
 manyYield :: Monad m
           => ConduitM a b m (Maybe b)
           -> Conduit a m b
-manyYield consumer =
-    loop
-  where
-    loop = consumer >>= maybe (return ()) (\x -> yield x >> loop)
+manyYield consumer = fix $ \loop ->
+  consumer >>= maybe (return ()) (\x -> yield x >> loop)
 
 -- | Like @manyIgnore@, but uses 'yield' so the result list can be streamed
---   to downstream conduits without waiting for 'manyYield' to finished
+--   to downstream conduits without waiting for 'manyYield' to finish
 manyIgnoreYield :: MonadThrow m
                 => ConduitM Event b m (Maybe b) -- ^ Consuming parser that generates the result stream
                 -> Consumer Event m (Maybe ()) -- ^ Ignore parser that consumes elements to be ignored
                 -> Conduit Event m b
-manyIgnoreYield consumer ignoreParser =
-    loop
-  where
-    loop = consumer >>= maybe onFail (\x -> yield x >> loop)
-    onFail = ignoreParser >>= maybe (return ()) (const loop)
+manyIgnoreYield consumer ignoreParser = fix $ \loop ->
+  consumer >>= maybe (onFail loop) (\x -> yield x >> loop)
+  where onFail loop = ignoreParser >>= maybe (return ()) (const loop)
 
 -- | Like @many'@, but uses 'yield' so the result list can be streamed
---   to downstream conduits without waiting for 'manyYield' to finished
+--   to downstream conduits without waiting for 'manyYield' to finish
 manyYield' :: MonadThrow m
            => ConduitM Event b m (Maybe b)
            -> Conduit Event m b
