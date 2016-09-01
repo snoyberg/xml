@@ -133,6 +133,7 @@ module Text.XML.Stream.Parse
     , manyYield
     , manyIgnoreYield
     , manyYield'
+    , takeScopedC
       -- * Exceptions
     , XmlException (..)
       -- * Other types
@@ -755,6 +756,48 @@ tagPredicateIgnoreAttrs :: MonadThrow m
                         -> CI.ConduitM Event o m a -- ^ Handler function to handle the children of the matched tag
                         -> CI.ConduitM Event o m (Maybe a)
 tagPredicateIgnoreAttrs namePred f = tagPredicate namePred ignoreAttrs $ const f
+
+-- | Forward 'Event's as long as they remain in current scope. For example:
+--
+-- >>> runResourceT $ parseLBS def "text<a></a>" $$ takeScopedC =$= consume
+-- Just [ EventContent (ContentText "text"), EventBeginElement "a" [], EventEndElement "a"]
+--
+-- >>> runResourceT $ parseLBS def "</a><b></b>" $$ takeScopedC =$= consume
+-- Just [ ]
+--
+-- >>> runResourceT $ parseLBS def "<b><c></c></b></a>text" $$ takeScopedC =$= consume
+-- Just [ EventBeginElement "b" [], EventBeginElement "c" [], EventEndElement "c", EventEndElement "b" ]
+takeScopedC :: MonadThrow m => ConduitM Event Event m ()
+takeScopedC = do
+  event <- await
+  case event of
+    Just e@EventBeginDoctype{} -> do
+      yield e
+      takeScopedC
+      endEvent <- await
+      case endEvent of
+        Just e@EventEndDoctype -> yield e >> takeScopedC
+        _ -> lift $ monadThrow $ XmlException "Expected end of doctype" endEvent
+    Just e@EventBeginDocument -> do
+      yield e
+      takeScopedC
+      endEvent <- await
+      case endEvent of
+        Just e@EventEndDocument -> yield e >> takeScopedC
+        _ -> lift $ monadThrow $ XmlException "Expected end of document" endEvent
+    Just e@(EventBeginElement name _) -> do
+      yield e
+      takeScopedC
+      endEvent <- await
+      case endEvent of
+        Just e@(EventEndElement name') | name == name' -> yield e >> takeScopedC
+        _ -> lift $ monadThrow $ InvalidEndElement name endEvent
+    Just e@EventComment{} -> yield e >> takeScopedC
+    Just e@EventContent{} -> yield e >> takeScopedC
+    Just e@EventInstruction{} -> yield e >> takeScopedC
+    Just e -> leftover e
+    _ -> return ()
+
 
 -- | Ignore an empty tag and all of its attributes by predicate.
 --   This does not ignore the tag recursively

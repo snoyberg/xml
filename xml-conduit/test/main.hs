@@ -41,6 +41,7 @@ main = hspec $ do
         it "has working many function" testMany
         it "has working many' function" testMany'
         it "has working manyYield function" testManyYield
+        it "has working takeScopedC function" testTakeScopedC
         it "has working orE" testOrE
         it "is idempotent to parse and pretty render a document" documentParsePrettyRender
         it "ignores the BOM" parseIgnoreBOM
@@ -380,6 +381,30 @@ testManyYield = do
         , "<success/>"
         , "</hello>"
         ]
+
+testTakeScopedC :: Assertion
+testTakeScopedC = do
+    result <- runResourceT $ P.parseLBS def input C.$$ rootParser
+    result @?= Just
+      [ EventBeginElement "b" []
+      , EventContent (ContentText "Hello ")
+      , EventBeginElement "em" []
+      , EventContent (ContentText "world")
+      , EventEndElement "em"
+      , EventContent (ContentText " !")
+      , EventEndElement "b"
+      , EventContent (ContentText " Welcome !")
+      ]
+  where
+    rootParser = P.tagNoAttr "root" $ P.takeScopedC =$= CL.consume
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<root>"
+        , "<b>Hello <em>world</em> !</b> Welcome !"
+        , "</root>"
+        ]
+
 
 testMany :: Assertion
 testMany = runResourceT $ P.parseLBS def input C.$$ do
