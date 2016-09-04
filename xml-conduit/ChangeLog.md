@@ -1,3 +1,8 @@
+## 1.4.0
+
+* Improve XmlException definition and usage
+* Add 'takeScopedC' function
+
 ## 1.3.5
 
 * Improvements for using xml-conduit for streaming XML protocols [#85](https://github.com/snoyberg/xml/pull/85)

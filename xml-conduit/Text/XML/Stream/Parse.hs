@@ -767,6 +767,8 @@ tagPredicateIgnoreAttrs namePred f = tagPredicate namePred ignoreAttrs $ const f
 --
 -- >>> runResourceT $ parseLBS def "<b><c></c></b></a>text" $$ takeScopedC =$= consume
 -- Just [ EventBeginElement "b" [], EventBeginElement "c" [], EventEndElement "c", EventEndElement "b" ]
+--
+-- Since 1.4.0
 takeScopedC :: MonadThrow m => ConduitM Event Event m ()
 takeScopedC = do
   event <- await
