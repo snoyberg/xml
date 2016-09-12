@@ -19,7 +19,7 @@ import Text.HTML.TagStream.Types
 
 import qualified Data.Conduit.List as CL
 import Data.Maybe (fromMaybe, isJust)
-import Control.Arrow (first)
+import Control.Arrow (first,second)
 
 -- | A conduit to decode entities from a stream of tokens into a new stream of tokens.
 decodeEntities :: (Monad m
@@ -34,11 +34,22 @@ decodeEntities dec =
   where
     start = await >>= maybe (return ()) (\token -> start' token >> start)
     start' (Text t) = (yield t >> yieldWhileText) =$= decodeEntities' dec =$= CL.mapMaybe go
+    start' (TagOpen name attrs bool) = yield (TagOpen name (map (second (decodeString dec)) attrs) bool)
     start' token = yield token
 
     go t
         | t == ""   = Nothing
         | otherwise = Just (Text t)
+
+-- | Decode entities in a complete string.
+decodeString
+  :: (Eq a, IsString a, Monoid builder, Monoid a)
+  => Dec builder a -> a -> a
+decodeString dec input =
+  case makeEntityDecoder dec input of
+    (value', remainder)
+      | value' /= mempty -> value' <> decodeString dec remainder
+      | otherwise -> input
 
 decodeEntities' :: (Monad m
                    ,Monoid string

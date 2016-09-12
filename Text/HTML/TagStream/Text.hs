@@ -291,7 +291,7 @@ tokenStreamBS = do
 
     let codec = fromMaybe C.utf8 (mencoding >>= getCodec . CI.mk)
 
-    when yieldToken $ lift (mapM (decodeBS codec) tk) >>= yield
+    when yieldToken $ (lift (mapM (decodeBS codec) tk) >>= yield) =$= decodeEntitiesText
 
 #if MIN_VERSION_conduit(1, 0, 0)
     C.decode codec =$= tokenStream

@@ -225,9 +225,31 @@ testcases =
   , text "foo &" "foo &"
   , text "foo &amp" "foo &amp"
   , text "foo &amp;" "foo &"
+
+  -- Attribute entity decoding
+  , attr "" ""
+  , attr "&" "&"
+  , attr "& hello" "& hello"
+  , attr "&amp" "&amp"
+  , attr "&amp;" "&"
+  , attr "&quot;" "\""
+  , attr "&unknown;" "&unknown;"
+  , attr "a &unknown b" "a &unknown b"
+  , attr "\"&unknown\"" "\"&unknown\""
+  , attr "foo &bar; mu" "foo &bar; mu"
+  , attr "&foo; &bar &quot;mu&lt; zot &hello;" "&foo; &bar \"mu< zot &hello;"
+  , attr "&lt;p&gt;" "<p>"
+  , attr "&#60;" "<"
+  , attr "a&#97;a" "aaa"
+  , attr "foo &" "foo &"
+  , attr "foo &amp" "foo &amp"
+  , attr "foo &amp;" "foo &"
   ]
   where text b a = ("<p>" <> b <> "</p>"
                    ,concat [[TagOpen "p" [] False],[Text a | not (T.null a)],[TagClose "p"]])
+        attr b a = ("<a title='" <> b <> "'></a><a title='" <> b <> "'></a>"
+                   ,concat [[TagOpen "a" [("title",a)] False],[TagClose "a"]
+                           ,[TagOpen "a" [("title",a)] False],[TagClose "a"]])
 
 testChar :: Gen Char
 testChar = growingElements "<>/=\"' \t\r\nabcde\\"
