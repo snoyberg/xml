@@ -1,7 +1,7 @@
 ## 1.4.0
 
 * Improve XmlException definition and usage
-* Add 'takeScopedC' function
+* Add 'takeAllTreesContent' function
 
 ## 1.3.5
 

@@ -133,7 +133,7 @@ module Text.XML.Stream.Parse
     , manyYield
     , manyIgnoreYield
     , manyYield'
-    , takeScopedC
+    , takeAllTreesContent
       -- * Exceptions
     , XmlException (..)
       -- * Other types
@@ -757,50 +757,6 @@ tagPredicateIgnoreAttrs :: MonadThrow m
                         -> CI.ConduitM Event o m (Maybe a)
 tagPredicateIgnoreAttrs namePred f = tagPredicate namePred ignoreAttrs $ const f
 
--- | Forward 'Event's as long as they remain in current scope. For example:
---
--- >>> runResourceT $ parseLBS def "text<a></a>" $$ takeScopedC =$= consume
--- Just [ EventContent (ContentText "text"), EventBeginElement "a" [], EventEndElement "a"]
---
--- >>> runResourceT $ parseLBS def "</a><b></b>" $$ takeScopedC =$= consume
--- Just [ ]
---
--- >>> runResourceT $ parseLBS def "<b><c></c></b></a>text" $$ takeScopedC =$= consume
--- Just [ EventBeginElement "b" [], EventBeginElement "c" [], EventEndElement "c", EventEndElement "b" ]
---
--- Since 1.4.0
-takeScopedC :: MonadThrow m => ConduitM Event Event m ()
-takeScopedC = do
-  event <- await
-  case event of
-    Just e@EventBeginDoctype{} -> do
-      yield e
-      takeScopedC
-      endEvent <- await
-      case endEvent of
-        Just e@EventEndDoctype -> yield e >> takeScopedC
-        _ -> lift $ monadThrow $ XmlException "Expected end of doctype" endEvent
-    Just e@EventBeginDocument -> do
-      yield e
-      takeScopedC
-      endEvent <- await
-      case endEvent of
-        Just e@EventEndDocument -> yield e >> takeScopedC
-        _ -> lift $ monadThrow $ XmlException "Expected end of document" endEvent
-    Just e@(EventBeginElement name _) -> do
-      yield e
-      takeScopedC
-      endEvent <- await
-      case endEvent of
-        Just e@(EventEndElement name') | name == name' -> yield e >> takeScopedC
-        _ -> lift $ monadThrow $ InvalidEndElement name endEvent
-    Just e@EventComment{} -> yield e >> takeScopedC
-    Just e@EventContent{} -> yield e >> takeScopedC
-    Just e@EventInstruction{} -> yield e >> takeScopedC
-    Just e -> leftover e
-    _ -> return ()
-
-
 -- | Ignore an empty tag and all of its attributes by predicate.
 --   This does not ignore the tag recursively
 --   (i.e. it assumes there are no child elements).
@@ -1041,6 +997,52 @@ manyYield' :: MonadThrow m
            => ConduitM Event b m (Maybe b)
            -> Conduit Event m b
 manyYield' consumer = manyIgnoreYield consumer ignoreAllTreesContent
+
+
+-- | Like 'ignoreAllTreesContent', but stream the corresponding 'Event's rather than ignoring them.
+-- Incomplete elements (without a closing-tag) will trigger an 'XmlException'.
+--
+-- >>> runResourceT $ parseLBS def "text<a></a>" $$ takeAllTreesContent =$= consume
+-- Just [ EventContent (ContentText "text"), EventBeginElement "a" [], EventEndElement "a"]
+--
+-- >>> runResourceT $ parseLBS def "</a><b></b>" $$ takeAllTreesContent =$= consume
+-- Just [ ]
+--
+-- >>> runResourceT $ parseLBS def "<b><c></c></b></a>text" $$ takeAllTreesContent =$= consume
+-- Just [ EventBeginElement "b" [], EventBeginElement "c" [], EventEndElement "c", EventEndElement "b" ]
+--
+-- Since 1.4.0
+takeAllTreesContent :: MonadThrow m => Conduit Event m Event
+takeAllTreesContent = do
+  event <- await
+  case event of
+    Just e@EventBeginDoctype{} -> do
+      yield e
+      takeAllTreesContent
+      endEvent <- await
+      case endEvent of
+        Just e@EventEndDoctype -> yield e >> takeAllTreesContent
+        _ -> lift $ monadThrow $ XmlException "Expected end of doctype" endEvent
+    Just e@EventBeginDocument -> do
+      yield e
+      takeAllTreesContent
+      endEvent <- await
+      case endEvent of
+        Just e@EventEndDocument -> yield e >> takeAllTreesContent
+        _ -> lift $ monadThrow $ XmlException "Expected end of document" endEvent
+    Just e@(EventBeginElement name _) -> do
+      yield e
+      takeAllTreesContent
+      endEvent <- await
+      case endEvent of
+        Just e@(EventEndElement name') | name == name' -> yield e >> takeAllTreesContent
+        _ -> lift $ monadThrow $ InvalidEndElement name endEvent
+    Just e@EventComment{} -> yield e >> takeAllTreesContent
+    Just e@EventContent{} -> yield e >> takeAllTreesContent
+    Just e@EventInstruction{} -> yield e >> takeAllTreesContent
+    Just e -> leftover e
+    _ -> return ()
+
 
 type DecodeEntities = Text -> Content
 
