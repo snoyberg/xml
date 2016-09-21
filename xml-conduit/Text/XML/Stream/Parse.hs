@@ -140,7 +140,7 @@ module Text.XML.Stream.Parse
     , EventPos
     ) where
 import qualified Control.Applicative          as A
-import           Control.Monad.Fix (fix)
+import           Control.Monad.Fix            (fix)
 import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..),
                                                monadThrow)
 import           Data.Attoparsec.Text         (Parser, anyChar, char, manyTill,
@@ -174,7 +174,8 @@ import           Data.Maybe                   (fromMaybe, isNothing)
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
 import qualified Data.Text                    as TS
-import           Data.Text.Encoding           (decodeUtf32BEWith, decodeUtf8With)
+import           Data.Text.Encoding           (decodeUtf32BEWith,
+                                               decodeUtf8With)
 import           Data.Text.Encoding.Error     (ignore, lenientDecode)
 import           Data.Text.Read               (Reader, decimal, hexadecimal)
 import           Data.Typeable                (Typeable)
@@ -191,7 +192,7 @@ tokenToEvent ps es n (TokenBeginElement name as isClosed _) =
     (es, n', if isClosed then [begin, end] else [begin])
   where
     l0 = case n of
-            [] -> NSLevel Nothing Map.empty
+            []  -> NSLevel Nothing Map.empty
             x:_ -> x
     (as', l') = foldl' go (id, l0) as
     go (front, l) (TName kpref kname, val) =
@@ -231,7 +232,7 @@ tokenToEvent _ es n (TokenEndElement name) =
   where
     (l, n') =
         case n of
-            [] -> (NSLevel Nothing Map.empty, [])
+            []   -> (NSLevel Nothing Map.empty, [])
             x:xs -> (x, xs)
 tokenToEvent _ es n (TokenContent (ContentEntity e))
     | Just t <- lookup e es = (es, n, [EventContent $ ContentText t])
@@ -310,8 +311,8 @@ checkXMLDecl bs0 Nothing =
         findEncoding ((TName _ "encoding", [ContentText enc]):_) =
             case enc of
                 "iso-8859-1" -> complete CT.iso8859_1
-                "utf-8" -> complete CT.utf8
-                _ -> complete CT.utf8
+                "utf-8"      -> complete CT.utf8
+                _            -> complete CT.utf8
         findEncoding (_:xs) = findEncoding xs
 
 type EventPos = (Maybe PositionRange, Event)
@@ -397,7 +398,7 @@ toEventC ps =
             (es', levels', events) = tokenToEvent ps es levels token
 
 data ParseSettings = ParseSettings
-    { psDecodeEntities :: DecodeEntities
+    { psDecodeEntities   :: DecodeEntities
     , psRetainNamespaces :: Bool
     -- ^ Whether the original xmlns attributes should be retained in the parsed
     -- values. For more information on motivation, see:
@@ -455,7 +456,7 @@ parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False
         name <- parseName
         let i =
                 case name of
-                    TName Nothing x -> x
+                    TName Nothing x  -> x
                     TName (Just x) y -> T.concat [x, ":", y]
         skipSpace
         eid <- fmap Just parsePublicID <|>
@@ -532,23 +533,23 @@ parseName :: Parser TName
 parseName =
   name <$> parseIdent <*> A.optional (char ':' >> parseIdent)
   where
-    name i1 Nothing = TName Nothing i1
+    name i1 Nothing   = TName Nothing i1
     name i1 (Just i2) = TName (Just i1) i2
 
 parseIdent :: Parser Text
 parseIdent =
     takeWhile1 valid
   where
-    valid '&' = False
-    valid '<' = False
-    valid '>' = False
-    valid ':' = False
-    valid '?' = False
-    valid '=' = False
-    valid '"' = False
+    valid '&'  = False
+    valid '<'  = False
+    valid '>'  = False
+    valid ':'  = False
+    valid '?'  = False
+    valid '='  = False
+    valid '"'  = False
     valid '\'' = False
-    valid '/' = False
-    valid c  = not $ isXMLSpace c
+    valid '/'  = False
+    valid c    = not $ isXMLSpace c
 
 parseContent :: DecodeEntities
              -> Bool -- break on double quote
@@ -565,11 +566,11 @@ parseContent de breakDouble breakSingle =
     parseText' = do
         bs <- takeWhile1 valid
         return $ ContentText bs
-    valid '"' = not breakDouble
+    valid '"'  = not breakDouble
     valid '\'' = not breakSingle
-    valid '&' = False -- amp
-    valid '<' = False -- lt
-    valid _  = True
+    valid '&'  = False -- amp
+    valid '<'  = False -- lt
+    valid _    = True
 
 skipSpace :: Parser ()
 skipSpace = skipWhile isXMLSpace
@@ -581,11 +582,11 @@ skipSpace = skipWhile isXMLSpace
 --
 -- in <http://www.w3.org/TR/2008/REC-xml-20081126/#sec-common-syn>.
 isXMLSpace :: Char -> Bool
-isXMLSpace ' ' = True
+isXMLSpace ' '  = True
 isXMLSpace '\t' = True
 isXMLSpace '\r' = True
 isXMLSpace '\n' = True
-isXMLSpace _ = False
+isXMLSpace _    = False
 
 newline :: Parser ()
 newline = void $ (char '\r' >> char '\n') <|> char '\n'
@@ -603,12 +604,12 @@ contentMaybe :: MonadThrow m => Consumer Event m (Maybe Text)
 contentMaybe = do
     x <- CL.peek
     case pc' x of
-        Ignore -> CL.drop 1 >> contentMaybe
+        Ignore      -> CL.drop 1 >> contentMaybe
         IsContent t -> CL.drop 1 >> fmap Just (takeContents (t:))
-        IsError e -> lift $ monadThrow $ InvalidEntity e x
-        NotContent -> return Nothing
+        IsError e   -> lift $ monadThrow $ InvalidEntity e x
+        NotContent  -> return Nothing
   where
-    pc' Nothing = NotContent
+    pc' Nothing  = NotContent
     pc' (Just x) = pc x
     pc (EventContent (ContentText t)) = IsContent t
     pc (EventContent (ContentEntity e)) = IsError $ "Unknown entity: " ++ show e
@@ -624,10 +625,10 @@ contentMaybe = do
     takeContents front = do
         x <- CL.peek
         case pc' x of
-            Ignore -> CL.drop 1 >> takeContents front
+            Ignore      -> CL.drop 1 >> takeContents front
             IsContent t -> CL.drop 1 >> takeContents (front . (:) t)
-            IsError e -> lift $ monadThrow $ InvalidEntity e x
-            NotContent -> return $ T.concat $ front []
+            IsError e   -> lift $ monadThrow $ InvalidEntity e x
+            NotContent  -> return $ T.concat $ front []
 
 -- | Grabs the next piece of content. If none if available, returns 'T.empty'.
 -- This is simply a wrapper around 'contentMaybe'.
@@ -678,18 +679,18 @@ tag checkName attrParser f = do
         Nothing -> mapM_ leftover leftovers
         -- Parse succeeded, discard all of those whitespace events and the
         -- first parsed event
-        Just _ -> return ()
+        Just _  -> return ()
 
     return res
   where
-    isWhitespace EventBeginDocument = True
-    isWhitespace EventEndDocument = True
-    isWhitespace EventBeginDoctype{} = True
-    isWhitespace EventEndDoctype = True
-    isWhitespace EventInstruction{} = True
+    isWhitespace EventBeginDocument             = True
+    isWhitespace EventEndDocument               = True
+    isWhitespace EventBeginDoctype{}            = True
+    isWhitespace EventEndDoctype                = True
+    isWhitespace EventInstruction{}             = True
     isWhitespace (EventContent (ContentText t)) = T.all isSpace t
-    isWhitespace EventComment{} = True
-    isWhitespace _ = False
+    isWhitespace EventComment{}                 = True
+    isWhitespace _                              = False
 
     -- Drop Events until we encounter a non-whitespace element. Return all of
     -- the events consumed here (including the first non-whitespace event) so
@@ -700,11 +701,11 @@ tag checkName attrParser f = do
 
         case isWhitespace <$> x of
           Just True -> dropWS leftovers'
-          _ -> return (x, leftovers')
+          _         -> return (x, leftovers')
     runAttrParser' p as =
         case runAttrParser p as of
-            Left e -> Left e
-            Right ([], x) -> Right x
+            Left e          -> Left e
+            Right ([], x)   -> Right x
             Right (attr, _) -> Left $ toException $ UnparsedAttributes attr
 
 -- | A simplified version of 'tag' which matches against boolean predicates.
@@ -829,7 +830,7 @@ choose :: Monad m
        => [ConduitM Event o m (Maybe a)] -- ^ List of parsers that will be tried in order.
        -> ConduitM Event o m (Maybe a)   -- ^ Result of the first parser to succeed, or @Nothing@
                                          --   if no parser succeeded
-choose [] = return Nothing
+choose []     = return Nothing
 choose (i:is) = i >>= maybe (choose is) (return . Just)
 
 -- | Force an optional parser into a required parser. All of the 'tag'
@@ -859,7 +860,7 @@ parseLBS ps lbs = CL.sourceList (L.toChunks lbs) =$= parseBytes ps
 
 data XmlException = XmlException
     { xmlErrorMessage :: String
-    , xmlBadInput :: Maybe Event
+    , xmlBadInput     :: Maybe Event
     }
                   | InvalidEndElement Name (Maybe Event)
                   | InvalidEntity String (Maybe Event)
@@ -934,7 +935,7 @@ optionalAttr = attr
 
 contentsToText :: [Content] -> Text
 contentsToText = T.concat . map toText where
-  toText (ContentText t) = t
+  toText (ContentText t)   = t
   toText (ContentEntity e) = T.concat ["&", e, ";"]
 
 -- | Skip the remaining attributes on an element. Since this will clear the
