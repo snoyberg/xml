@@ -1,5 +1,5 @@
 Name:                xml-hamlet
-Version:             0.4.0.11
+Version:             0.4.0.12
 Synopsis:            Hamlet-style quasiquoter for XML content
 Homepage:            http://www.yesodweb.com/
 License:             BSD3
@@ -19,7 +19,7 @@ Library
   
   Build-depends:       base                       >= 4        && < 5
                      , shakespeare                >= 1.0      && < 2.2
-                     , xml-conduit                >= 1.0      && < 1.4
+                     , xml-conduit                >= 1.0      && < 1.5
                      , text                       >= 0.10
                      , template-haskell
                      , parsec                     >= 2.0      && < 3.2
