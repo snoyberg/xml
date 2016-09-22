@@ -29,6 +29,7 @@ module Text.XML.Stream.Render
     ) where
 
 import           Blaze.ByteString.Builder
+import           Control.Applicative          ((<$>))
 import           Control.Monad.Trans.Resource (MonadThrow)
 import           Data.ByteString              (ByteString)
 import           Data.Conduit
