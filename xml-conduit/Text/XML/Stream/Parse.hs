@@ -141,6 +141,7 @@ module Text.XML.Stream.Parse
     , EventPos
     ) where
 import qualified Control.Applicative          as A
+import           Control.Applicative          ((<$>))
 import           Control.Monad.Fix            (fix)
 import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..),
                                                monadThrow)
