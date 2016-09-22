@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns       #-}
+{-# LANGUAGE CPP                #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts   #-}
 {-# LANGUAGE OverloadedStrings  #-}
@@ -871,6 +872,7 @@ data XmlException = XmlException
     deriving (Show, Typeable)
 
 instance Exception XmlException where
+#if MIN_VERSION_base(4, 8, 0)
   displayException (XmlException msg (Just event)) = "Error while parsing XML event " ++ show event ++ ": " ++ msg
   displayException (XmlException msg _) = "Error while parsing XML: " ++ msg
   displayException (InvalidEndElement name (Just event)) = "Error while parsing XML event: expected </" ++ TS.unpack (nameLocalName name) ++ ">, got " ++ show event
@@ -879,6 +881,7 @@ instance Exception XmlException where
   displayException (InvalidEntity msg _) = "Error while parsing XML entity: " ++ msg
   displayException (MissingAttribute msg) = "Missing required attribute: " ++ msg
   displayException (UnparsedAttributes attrs) = show (length attrs) ++ " remaining unparsed attributes: \n" ++ unlines (show <$> attrs)
+#endif
 
 -- | A monad for parsing attributes. By default, it requires you to deal with
 -- all attributes present on an element, and will throw an exception if there

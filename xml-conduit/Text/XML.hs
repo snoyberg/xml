@@ -73,6 +73,7 @@ module Text.XML
     , fromXMLElement
     ) where
 
+import           Control.Applicative          ((<$>))
 import           Control.DeepSeq              (NFData (rnf))
 import           Control.Exception            (Exception, SomeException, handle,
                                                throw, throwIO)
