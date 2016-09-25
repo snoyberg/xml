@@ -1044,6 +1044,7 @@ takeAllTreesContent = do
     Just e@EventComment{} -> yield e >> takeAllTreesContent
     Just e@EventContent{} -> yield e >> takeAllTreesContent
     Just e@EventInstruction{} -> yield e >> takeAllTreesContent
+    Just e@EventCDATA{} -> yield e >> takeAllTreesContent
     Just e -> leftover e
     _ -> return ()
 
