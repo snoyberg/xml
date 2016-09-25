@@ -1,3 +1,7 @@
+## 1.4.0.1
+
+* Handle CDATA in takeAllTreesContent [#88](https://github.com/snoyberg/xml/pull/88)
+
 ## 1.4.0
 
 * Improve XmlException definition and usage
