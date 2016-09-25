@@ -312,7 +312,7 @@ checkXMLDecl bs0 Nothing =
 
         findEncoding [] = fallback
         findEncoding ((TName _ "encoding", [ContentText enc]):_) =
-            case enc of
+            case TS.toLower enc of
                 "iso-8859-1" -> complete CT.iso8859_1
                 "utf-8"      -> complete CT.utf8
                 _            -> complete CT.utf8
