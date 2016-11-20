@@ -1,3 +1,8 @@
+## 1.4.0.2
+
+* Parse XML encoding case-insensitively
+* Remove extra EOL when printing XmlException
+
 ## 1.4.0.1
 
 * Handle CDATA in takeAllTreesContent [#88](https://github.com/snoyberg/xml/pull/88)
