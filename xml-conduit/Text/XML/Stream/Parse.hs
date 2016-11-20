@@ -151,6 +151,7 @@ import           Data.Attoparsec.Text         (Parser, anyChar, char, manyTill,
                                                takeWhile1, try)
 import qualified Data.Attoparsec.Text         as AT
 import           Data.Conduit.Attoparsec      (PositionRange, conduitParser)
+import           Data.List                    (intercalate)
 import           Data.XML.Types               (Content (..), Event (..),
                                                ExternalID (..),
                                                Instruction (..), Name (..))
@@ -312,7 +313,7 @@ checkXMLDecl bs0 Nothing =
 
         findEncoding [] = fallback
         findEncoding ((TName _ "encoding", [ContentText enc]):_) =
-            case enc of
+            case TS.toLower enc of
                 "iso-8859-1" -> complete CT.iso8859_1
                 "utf-8"      -> complete CT.utf8
                 _            -> complete CT.utf8
@@ -880,7 +881,7 @@ instance Exception XmlException where
   displayException (InvalidEntity msg (Just event)) = "Error while parsing XML entity " ++ show event ++ ": " ++ msg
   displayException (InvalidEntity msg _) = "Error while parsing XML entity: " ++ msg
   displayException (MissingAttribute msg) = "Missing required attribute: " ++ msg
-  displayException (UnparsedAttributes attrs) = show (length attrs) ++ " remaining unparsed attributes: \n" ++ unlines (show <$> attrs)
+  displayException (UnparsedAttributes attrs) = show (length attrs) ++ " remaining unparsed attributes: \n" ++ intercalate "\n" (show <$> attrs)
 #endif
 
 -- | A monad for parsing attributes. By default, it requires you to deal with
