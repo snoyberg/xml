@@ -59,11 +59,11 @@ main = hspec $ do
     it "handles attributes" $ [xml|
 <foo>
     <bar here=there>
-        <baz :False:false=false :True:true=#{true}>
+        <baz :False:false=false :True:true=#{true} *{attrs}>
 |] @?=
         [ X.NodeElement $ X.Element "foo" Map.empty
             [ X.NodeElement $ X.Element "bar" (Map.singleton "here" "there")
-                [ X.NodeElement $ X.Element "baz" (Map.singleton "true" "true") []
+                [ X.NodeElement $ X.Element "baz" (Map.fromList (("true", "true") : attrs)) []
                 ]
             ]
         ]
@@ -119,6 +119,34 @@ $else
         , X.NodeElement $ X.Element "four" Map.empty []
         , X.NodeElement $ X.Element "seven" Map.empty []
         ]
+    it "case on Maybe" $
+      let nothing  = Nothing
+          justTrue = Just True
+      in [xml|
+$case nothing
+    $of Just val
+    $of Nothing
+        <one>
+$case justTrue
+    $of Just val
+        $if val
+            <two>
+    $of Nothing
+$case (Just $ not False)
+    $of Nothing
+    $of Just val
+        $if val
+            <three>
+$case Nothing
+    $of Just val
+    $of _
+        <four>
+|] @?=
+        [ X.NodeElement $ X.Element "one" Map.empty []
+        , X.NodeElement $ X.Element "two" Map.empty []
+        , X.NodeElement $ X.Element "three" Map.empty []
+        , X.NodeElement $ X.Element "four" Map.empty []
+        ]
     it "recognizes clark notation" $ [xml|
 <{foo}bar {baz}bin="x">
 |] @?= [X.NodeElement $ X.Element "{foo}bar" (Map.singleton "{baz}bin" "x") []]
@@ -131,10 +159,12 @@ $else
      bin=bin>content
 |] @?= [xml|<foo bar=baz bin=bin>content|]
     it "short circuiting of attributes" $ [xml|<foo :False:x=#{undefined}>|] @?= [xml|<foo>|]
+    it "Hash in attribute value" $ [xml|<a href=#>|] @?= [xml|<a href="#">|]
   where
     bin = "bin"
     nodes = [X.NodeInstruction $ X.Instruction "ifoo" "ibar"]
     true = "true"
+    attrs = [("one","a"), ("two","b")]
     xs = ["foo", "bar", "baz"]
     comment = [X.NodeComment "somecomment"]
 

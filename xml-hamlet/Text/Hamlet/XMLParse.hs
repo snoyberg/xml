@@ -6,12 +6,16 @@ module Text.Hamlet.XMLParse
     , Content (..)
     , Doc (..)
     , parseDoc
+    , Binding (..)
+    , DataConstr (..)
+    , Module (..)
     )
     where
 
 import Text.Shakespeare.Base
 import Control.Applicative ((<$>), Applicative (..))
 import Control.Monad
+import Data.Char (isUpper)
 import Data.Data
 import Text.ParserCombinators.Parsec hiding (Line)
 
@@ -33,17 +37,20 @@ data Content = ContentRaw String
              | ContentEmbed Deref
     deriving (Show, Eq, Read, Data, Typeable)
 
-data Line = LineForall Deref Ident
+data Line = LineForall Deref Binding
           | LineIf Deref
           | LineElseIf Deref
           | LineElse
-          | LineWith [(Deref, Ident)]
-          | LineMaybe Deref Ident
+          | LineWith [(Deref, Binding)]
+          | LineMaybe Deref Binding
           | LineNothing
+          | LineCase Deref
+          | LineOf Binding
           | LineTag
             { _lineTagName :: String
             , _lineAttr :: [(Maybe Deref, String, [Content])]
             , _lineContent :: [Content]
+            , _lineAttrs :: [Deref]
             }
           | LineContent [Content]
     deriving (Eq, Show, Read)
@@ -57,7 +64,7 @@ parseLines s =
 parseLine :: Parser (Int, Line)
 parseLine = do
     ss <- fmap sum $ many ((char ' ' >> return 1) <|>
-                           (char '\t' >> return 4))
+                           (char '\t' >> fail "Tabs are not allowed in Hamlet indentation"))
     x <- comment <|>
          htmlComment <|>
          backslash <|>
@@ -68,7 +75,10 @@ parseLine = do
          (try (string "$nothing") >> spaceTabs >> eol >> return LineNothing) <|>
          controlForall <|>
          controlWith <|>
+         controlCase <|>
+         controlOf <|>
          angle <|>
+         invalidDollar <|>
          (eol' >> return (LineContent [])) <|>
          (do
             cs <- content InContent
@@ -80,7 +90,9 @@ parseLine = do
   where
     eol' = (char '\n' >> return ()) <|> (string "\r\n" >> return ())
     eol = eof <|> eol'
-    spaceTabs = many $ oneOf " \t"
+    invalidDollar = do
+        _ <- char '$'
+        fail "Received a command I did not understand. If you wanted a literal $, start the line with a backslash."
     comment = do
         _ <- try $ string "$#"
         _ <- many $ noneOf "\r\n"
@@ -117,7 +129,7 @@ parseLine = do
         eol
         return $ LineElseIf x
     binding = do
-        y <- ident
+        y <- identPattern
         spaces
         _ <- string "<-"
         spaces
@@ -142,10 +154,24 @@ parseLine = do
         spaces
         bindings <- (binding `sepBy` bindingSep) `endBy` eol
         return $ LineWith $ concat bindings -- concat because endBy returns a [[(Deref,Ident)]]
+    controlCase = do
+        _ <- try $ string "$case"
+        spaces
+        x <- parseDeref
+        _ <- spaceTabs
+        eol
+        return $ LineCase x
+    controlOf = do
+        _   <- try $ string "$of"
+        spaces
+        x <- identPattern
+        _   <- spaceTabs
+        eol
+        return $ LineOf x
     content cr = do
         x <- many $ content' cr
         case cr of
-            InQuotes -> char '"' >> return ()
+            InQuotes -> void $ char '"'
             NotInQuotes -> return ()
             NotInQuotesAttr -> return ()
             InContent -> eol
@@ -154,10 +180,15 @@ parseLine = do
         cc [] = []
         cc (ContentRaw a:ContentRaw b:c) = cc $ ContentRaw (a ++ b) : c
         cc (a:b) = a : cc b
-    content' cr = contentHash <|> contentCaret <|> contentReg cr
-    contentHash = do
+    content' cr =     contentHash cr
+                  <|> contentCaret
+                  <|> contentReg cr
+    contentHash cr = do
         x <- parseHash
         case x of
+            Left "#" -> case cr of
+                          NotInQuotes -> fail "Expected hash at end of line, got Id"
+                          _ -> return $ ContentRaw "#"
             Left str -> return $ ContentRaw str
             Right deref -> return $ ContentVar deref
     contentCaret = do
@@ -168,40 +199,147 @@ parseLine = do
     contentReg InContent = (ContentRaw . return) <$> noneOf "#@^\r\n"
     contentReg NotInQuotes = (ContentRaw . return) <$> noneOf "@^#. \t\n\r>"
     contentReg NotInQuotesAttr = (ContentRaw . return) <$> noneOf "@^ \t\n\r>"
-    contentReg InQuotes = (ContentRaw . return) <$> noneOf "#@^\\\"\n\r>"
+    contentReg InQuotes = (ContentRaw . return) <$> noneOf "#@^\"\n\r"
     tagAttribValue notInQuotes = do
         cr <- (char '"' >> return InQuotes) <|> return notInQuotes
         content cr
     tagCond = do
-        _ <- char ':'
-        d <- parseDeref
-        _ <- char ':'
+        d <- between (char ':') (char ':') parseDeref
         tagAttrib (Just d)
     tagAttrib cond = do
         s <- many1 $ noneOf " \t=\r\n><"
-        v <- (do
-            _ <- char '='
-            s' <- tagAttribValue NotInQuotesAttr
-            return s') <|> return []
+        v <- (char '=' >> tagAttribValue NotInQuotesAttr) <|> return []
         return $ TagAttrib (cond, s, v)
-    tag' = foldr tag'' ("div", [])
-    tag'' (TagName s) (_, y) = (s, y)
-    tag'' (TagAttrib s) (x, y) = (x, s : y)
-    ident = Ident <$> many1 (alphaNum <|> char '_' <|> char '\'')
+
+    tagAttrs = do
+        _ <- char '*'
+        d <- between (char '{') (char '}') parseDeref
+        return $ TagAttribs d
+
+    tag' = foldr tag'' ("div", [], [])
+    tag'' (TagName s) (_, y, as) = (s, y, as)
+    tag'' (TagAttrib s) (x, y, as) = (x, s : y, as)
+    tag'' (TagAttribs s) (x, y, as) = (x, y, s : as)
+
+    ident :: Parser Ident
+    ident = do
+      i <- many1 (alphaNum <|> char '_' <|> char '\'')
+      white
+      return (Ident i)
+     <?> "identifier"
+
+    parens = between (char '(' >> white) (char ')' >> white)
+
+    brackets = between (char '[' >> white) (char ']' >> white)
+
+    braces = between (char '{' >> white) (char '}' >> white)
+
+    comma = char ',' >> white
+
+    atsign = char '@' >> white
+
+    equals = char '=' >> white
+
+    white = skipMany $ char ' '
+
+    wildDots = string ".." >> white
+
+    isVariable (Ident (x:_)) = not (isUpper x)
+    isVariable (Ident []) = error "isVariable: bad identifier"
+
+    isConstructor (Ident (x:_)) = isUpper x
+    isConstructor (Ident []) = error "isConstructor: bad identifier"
+
+    identPattern :: Parser Binding
+    identPattern = gcon True <|> apat
+      where
+      apat = choice
+        [ varpat
+        , gcon False
+        , parens tuplepat
+        , brackets listpat
+        ]
+
+      varpat = do
+        v <- try $ do v <- ident
+                      guard (isVariable v)
+                      return v
+        option (BindVar v) $ do
+          atsign
+          b <- apat
+          return (BindAs v b)
+       <?> "variable"
+
+      gcon :: Bool -> Parser Binding
+      gcon allowArgs = do
+        c <- try $ do c <- dataConstr
+                      return c
+        choice
+          [ record c
+          , fmap (BindConstr c) (guard allowArgs >> many apat)
+          , return (BindConstr c [])
+          ]
+       <?> "constructor"
+
+      dataConstr = do
+        p <- dcPiece
+        ps <- many dcPieces
+        return $ toDataConstr p ps
+
+      dcPiece = do
+        x@(Ident y) <- ident
+        guard $ isConstructor x
+        return y
+
+      dcPieces = do
+        _ <- char '.'
+        dcPiece
+
+      toDataConstr x [] = DCUnqualified $ Ident x
+      toDataConstr x (y:ys) =
+          go (x:) y ys
+        where
+          go front next [] = DCQualified (Module $ front []) (Ident next)
+          go front next (rest:rests) = go (front . (next:)) rest rests
+
+      record c = braces $ do
+        (fields, wild) <- option ([], False) $ go
+        return (BindRecord c fields wild)
+        where
+        go = (wildDots >> return ([], True))
+           <|> (do x         <- recordField
+                   (xs,wild) <- option ([],False) (comma >> go)
+                   return (x:xs,wild))
+
+      recordField = do
+        field <- ident
+        p <- option (BindVar field) -- support punning
+                    (equals >> identPattern)
+        return (field,p)
+
+      tuplepat = do
+        xs <- identPattern `sepBy` comma
+        return $ case xs of
+          [x] -> x
+          _   -> BindTuple xs
+
+      listpat = BindList <$> identPattern `sepBy` comma
+
     angle = do
         _ <- char '<'
         name' <- many  $ noneOf " \t\r\n>"
         let name = if null name' then "div" else name'
         xs <- many $ try ((many $ oneOf " \t\r\n") >>
-              (tagCond <|> tagAttrib Nothing))
-        _ <- many $ oneOf " \t"
+              (tagCond <|> tagAttrs <|> tagAttrib Nothing))
+        _ <- many $ oneOf " \t\r\n"
         _ <- char '>'
         c <- content InContent
-        let (tn, attr) = tag' $ TagName name : xs
-        return $ LineTag tn attr c
+        let (tn, attr, attrsd) = tag' $ TagName name : xs
+        return $ LineTag tn attr c attrsd
 
 data TagPiece = TagName String
               | TagAttrib (Maybe Deref, String, [Content])
+              | TagAttribs Deref
     deriving Show
 
 data ContentRule = InQuotes | NotInQuotes | NotInQuotesAttr | InContent
@@ -214,11 +352,12 @@ nestLines ((i, l):rest) =
     let (deeper, rest') = span (\(i', _) -> i' > i) rest
      in Nest l (nestLines deeper) : nestLines rest'
 
-data Doc = DocForall Deref Ident [Doc]
-         | DocWith [(Deref,Ident)] [Doc]
+data Doc = DocForall Deref Binding [Doc]
+         | DocWith [(Deref, Binding)] [Doc]
          | DocCond [(Deref, [Doc])] (Maybe [Doc])
-         | DocMaybe Deref Ident [Doc] (Maybe [Doc])
-         | DocTag String [(Maybe Deref, String, [Content])] [Doc]
+         | DocMaybe Deref Binding [Doc] (Maybe [Doc])
+         | DocCase Deref [(Binding, [Doc])]
+         | DocTag String [(Maybe Deref, String, [Content])] [Deref] [Doc]
          | DocContent Content
          -- FIXME PIs
     deriving (Show, Eq, Read, Data, Typeable)
@@ -248,10 +387,18 @@ nestToDoc (Nest (LineMaybe d i) inside:rest) = do
             _ -> return (Nothing, rest)
     rest'' <- nestToDoc rest'
     Ok $ DocMaybe d i inside' nothing : rest''
-nestToDoc (Nest (LineTag tn attrs content) inside:rest) = do
+nestToDoc (Nest (LineCase d) inside:rest) = do
+    let getOf (Nest (LineOf x) insideC) = do
+            insideC' <- nestToDoc insideC
+            Ok (x, insideC')
+        getOf _ = Error "Inside a $case there may only be $of.  Use '$of _' for a wildcard."
+    cases <- mapM getOf inside
+    rest' <- nestToDoc rest
+    Ok $ DocCase d cases : rest'
+nestToDoc (Nest (LineTag tn attrs content attrsD) inside:rest) = do
     inside' <- nestToDoc inside
     rest' <- nestToDoc rest
-    Ok $ (DocTag tn attrs $ map DocContent content ++ inside') : rest'
+    Ok $ (DocTag tn attrs attrsD $ map DocContent content ++ inside') : rest'
 nestToDoc (Nest (LineContent content) inside:rest) = do
     inside' <- nestToDoc inside
     rest' <- nestToDoc rest
@@ -259,6 +406,7 @@ nestToDoc (Nest (LineContent content) inside:rest) = do
 nestToDoc (Nest (LineElseIf _) _:_) = Error "Unexpected elseif"
 nestToDoc (Nest LineElse _:_) = Error "Unexpected else"
 nestToDoc (Nest LineNothing _:_) = Error "Unexpected nothing"
+nestToDoc (Nest (LineOf _) _:_) = Error "Unexpected 'of' (did you forget a $case?)"
 
 parseDoc :: String -> Result [Doc]
 parseDoc s = do
@@ -279,3 +427,21 @@ parseConds front (Nest (LineElseIf d) inside:rest) = do
     inside' <- nestToDoc inside
     parseConds (front . (:) (d, inside')) rest
 parseConds front rest = Ok (front [], Nothing, rest)
+
+data Binding = BindVar Ident
+             | BindAs Ident Binding
+             | BindConstr DataConstr [Binding]
+             | BindTuple [Binding]
+             | BindList [Binding]
+             | BindRecord DataConstr [(Ident, Binding)] Bool
+    deriving (Eq, Show, Read, Data, Typeable)
+
+data DataConstr = DCQualified Module Ident
+                | DCUnqualified Ident
+    deriving (Eq, Show, Read, Data, Typeable)
+
+newtype Module = Module [String]
+    deriving (Eq, Show, Read, Data, Typeable)
+
+spaceTabs :: Parser String
+spaceTabs = many $ oneOf " \t"
