@@ -984,7 +984,7 @@ many' consumer = manyIgnore consumer ignoreAllTreesContent
 skipMany :: MonadThrow m
          => Consumer Event m (Maybe a)
          -> Consumer Event m ()
-skipMany consumer = manyIgnoreYield (return Nothing) ((() <$) <$> consumer)
+skipMany consumer = manyIgnoreYield (return Nothing) (void <$> consumer)
 
 -- | Like 'many', but uses 'yield' so the result list can be streamed
 --   to downstream conduits without waiting for 'manyYield' to finish
