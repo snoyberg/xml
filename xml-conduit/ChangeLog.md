@@ -1,3 +1,7 @@
+## 1.4.0.3
+
+* Compatibility with blaze-markup-0.8.0.0 [#95](https://github.com/snoyberg/xml/issues/95)
+
 ## 1.4.0.2
 
 * Parse XML encoding case-insensitively

@@ -328,7 +328,11 @@ instance B.ToMarkup Element where
         parent :: B.Html -> B.Html
         parent = BI.Parent tag open close
         leaf :: B.Html
+#if MIN_VERSION_blaze_markup(0,8,0)
+        leaf = BI.Leaf tag open (fromString " />") ()
+#else
         leaf = BI.Leaf tag open (fromString " />")
+#endif
 
         name = T.unpack $ nameLocalName name'
         tag = fromString name
