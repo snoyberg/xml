@@ -1026,7 +1026,7 @@ manyYield' consumer = manyIgnoreYield consumer ignoreAllTreesContent
 -- Just [ EventBeginElement "b" [], EventBeginElement "c" [], EventEndElement "c", EventEndElement "b" ]
 --
 -- Since 1.4.0
-takeAllTreesContent :: MonadThrow m => Conduit Event m Event
+takeAllTreesContent :: MonadThrow m => ConduitM Event Event m (Maybe ())
 takeAllTreesContent = do
   event <- await
   case event of
@@ -1035,28 +1035,28 @@ takeAllTreesContent = do
       many_ takeAllTreesContent
       endEvent <- await
       case endEvent of
-        Just e@EventEndDoctype -> yield e
+        Just e@EventEndDoctype -> yield e >> return (Just ())
         _ -> lift $ monadThrow $ XmlException "Expected end of doctype" endEvent
     Just e@EventBeginDocument -> do
       yield e
       many_ takeAllTreesContent
       endEvent <- await
       case endEvent of
-        Just e@EventEndDocument -> yield e
+        Just e@EventEndDocument -> yield e >> return (Just ())
         _ -> lift $ monadThrow $ XmlException "Expected end of document" endEvent
     Just e@(EventBeginElement name _) -> do
       yield e
       many_ takeAllTreesContent
       endEvent <- await
       case endEvent of
-        Just e@(EventEndElement name') | name == name' -> yield e
+        Just e@(EventEndElement name') | name == name' -> yield e >> return (Just ())
         _ -> lift $ monadThrow $ InvalidEndElement name endEvent
-    Just e@EventComment{} -> yield e
-    Just e@EventContent{} -> yield e
-    Just e@EventInstruction{} -> yield e
-    Just e@EventCDATA{} -> yield e
-    Just e -> leftover e
-    _ -> return ()
+    Just e@EventComment{} -> yield e >> return (Just ())
+    Just e@EventContent{} -> yield e >> return (Just ())
+    Just e@EventInstruction{} -> yield e >> return (Just ())
+    Just e@EventCDATA{} -> yield e >> return (Just ())
+    Just e -> leftover e >> return (Just ())
+    _ -> return Nothing
 
 
 type DecodeEntities = Text -> Content
