@@ -1035,21 +1035,21 @@ takeAllTreesContent = do
       takeAllTreesContent
       endEvent <- await
       case endEvent of
-        Just e@EventEndDoctype -> yield e >> takeAllTreesContent
+        Just e@EventEndDoctype -> yield e
         _ -> lift $ monadThrow $ XmlException "Expected end of doctype" endEvent
     Just e@EventBeginDocument -> do
       yield e
       takeAllTreesContent
       endEvent <- await
       case endEvent of
-        Just e@EventEndDocument -> yield e >> takeAllTreesContent
+        Just e@EventEndDocument -> yield e
         _ -> lift $ monadThrow $ XmlException "Expected end of document" endEvent
     Just e@(EventBeginElement name _) -> do
       yield e
       takeAllTreesContent
       endEvent <- await
       case endEvent of
-        Just e@(EventEndElement name') | name == name' -> yield e >> takeAllTreesContent
+        Just e@(EventEndElement name') | name == name' -> yield e
         _ -> lift $ monadThrow $ InvalidEndElement name endEvent
     Just e@EventComment{} -> yield e >> takeAllTreesContent
     Just e@EventContent{} -> yield e >> takeAllTreesContent
