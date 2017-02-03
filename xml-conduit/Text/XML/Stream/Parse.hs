@@ -656,6 +656,7 @@ tag :: MonadThrow m
                          --   If this returns @Nothing@, the function will also return @Nothing@
     -> (a -> AttrParser b) -- ^ Given the value returned by the name checker, this function will
                            --   be used to get an @AttrParser@ appropriate for the specific tag.
+                           --   If the @AttrParser@ fails, the function will also return @Nothing@
     -> (b -> CI.ConduitM Event o m c) -- ^ Handler function to handle the attributes and children
                                       --   of a tag, given the value return from the @AttrParser@
     -> CI.ConduitM Event o m (Maybe c)
@@ -666,7 +667,7 @@ tag checkName attrParser f = do
             case checkName name of
                 Just y ->
                     case runAttrParser' (attrParser y) as of
-                        Left e -> lift $ monadThrow e
+                        Left e -> return Nothing
                         Right z -> do
                             z' <- f z
                             (a, _leftovers') <- dropWS []
