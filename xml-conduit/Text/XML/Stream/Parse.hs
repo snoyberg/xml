@@ -129,6 +129,7 @@ module Text.XML.Stream.Parse
     , many
     , manyIgnore
     , many'
+    , skipMany
     , force
       -- * Streaming combinators
     , manyYield
@@ -978,6 +979,13 @@ many' :: MonadThrow m
       => Consumer Event m (Maybe a)
       -> Consumer Event m [a]
 many' consumer = manyIgnore consumer ignoreAllTreesContent
+
+-- | Keep parsing elements as long as the parser returns 'Just', but throw the
+--   elements away without building an intermediate list.
+skipMany :: MonadThrow m
+         => Consumer Event m (Maybe a)
+         -> Consumer Event m ()
+skipMany consumer = manyIgnoreYield (return Nothing) (void <$> consumer)
 
 -- | Like 'many', but uses 'yield' so the result list can be streamed
 --   to downstream conduits without waiting for 'manyYield' to finish
