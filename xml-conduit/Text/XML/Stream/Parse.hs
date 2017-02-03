@@ -127,9 +127,9 @@ module Text.XML.Stream.Parse
     , orE
     , choose
     , many
+    , many_
     , manyIgnore
     , many'
-    , skipMany
     , force
       -- * Streaming combinators
     , manyYield
@@ -958,6 +958,12 @@ many :: Monad m
      -> Consumer Event m [a]
 many i = manyIgnore i $ return Nothing
 
+-- | Like 'many' but discards the results without but building an intermediate list.
+many_ :: MonadThrow m
+      => Consumer Event m (Maybe a)
+      -> Consumer Event m ()
+many_ consumer = manyIgnoreYield (return Nothing) (void <$> consumer)
+
 -- | Keep parsing elements as long as the parser returns 'Just'
 --   or the ignore parser returns 'Just'.
 manyIgnore :: Monad m
@@ -980,12 +986,6 @@ many' :: MonadThrow m
       -> Consumer Event m [a]
 many' consumer = manyIgnore consumer ignoreAllTreesContent
 
--- | Keep parsing elements as long as the parser returns 'Just', but throw the
---   elements away without building an intermediate list.
-skipMany :: MonadThrow m
-         => Consumer Event m (Maybe a)
-         -> Consumer Event m ()
-skipMany consumer = manyIgnoreYield (return Nothing) (void <$> consumer)
 
 -- | Like 'many', but uses 'yield' so the result list can be streamed
 --   to downstream conduits without waiting for 'manyYield' to finish
