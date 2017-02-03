@@ -764,7 +764,7 @@ tagPredicateIgnoreAttrs namePred f = tagPredicate namePred ignoreAttrs $ const f
 -- | Ignore an empty tag and all of its attributes by predicate.
 --   This does not ignore the tag recursively
 --   (i.e. it assumes there are no child elements).
---   This functions returns 'Just' if the tag matched.
+--   This functions returns 'Just ()' if the tag matched.
 ignoreTag :: MonadThrow m
           => (Name -> Bool) -- ^ The predicate name to match to
           -> ConduitM Event o m (Maybe ())
@@ -797,7 +797,7 @@ ignoreTree :: MonadThrow m
 ignoreTree namePred =
     tagPredicateIgnoreAttrs namePred (void $ many ignoreAllTreesContent)
 
--- | Like 'ignoreTagName', but also ignores non-empty tabs
+-- | Like 'ignoreTagName', but also ignores non-empty tags
 ignoreTreeName :: MonadThrow m
                => Name
                -> ConduitM Event o m (Maybe ())
@@ -987,8 +987,8 @@ manyYield :: Monad m
 manyYield consumer = fix $ \loop ->
   consumer >>= maybe (return ()) (\x -> yield x >> loop)
 
--- | Like @manyIgnore@, but uses 'yield' so the result list can be streamed
---   to downstream conduits without waiting for 'manyYield' to finish
+-- | Like 'manyIgnore', but uses 'yield' so the result list can be streamed
+--   to downstream conduits without waiting for 'manyIgnoreYield' to finish
 manyIgnoreYield :: MonadThrow m
                 => ConduitM Event b m (Maybe b) -- ^ Consuming parser that generates the result stream
                 -> Consumer Event m (Maybe ()) -- ^ Ignore parser that consumes elements to be ignored
@@ -997,8 +997,8 @@ manyIgnoreYield consumer ignoreParser = fix $ \loop ->
   consumer >>= maybe (onFail loop) (\x -> yield x >> loop)
   where onFail loop = ignoreParser >>= maybe (return ()) (const loop)
 
--- | Like @many'@, but uses 'yield' so the result list can be streamed
---   to downstream conduits without waiting for 'manyYield' to finish
+-- | Like 'many'', but uses 'yield' so the result list can be streamed
+--   to downstream conduits without waiting for 'manyYield'' to finish
 manyYield' :: MonadThrow m
            => ConduitM Event b m (Maybe b)
            -> Conduit Event m b
