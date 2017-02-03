@@ -449,13 +449,17 @@ testOrE = runResourceT $ P.parseLBS def input C.$$ do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.tagNoAttr "failure" (return 1) `P.orE`
              P.tagNoAttr "success" (return 2)
+        y <- P.tagName "success" (P.requireAttr "failure") (const $ return 1) `P.orE`
+             P.tagName "success" (P.requireAttr "success") (const $ return 2)
         liftIO $ x @?= Just (2 :: Int)
+        liftIO $ y @?= Just (2 :: Int)
   where
     input = L.concat
         [ "<?xml version='1.0'?>"
         , "<!DOCTYPE foo []>\n"
         , "<hello>"
         , "<success/>"
+        , "<success success=\"0\"/>"
         , "</hello>"
         ]
 
