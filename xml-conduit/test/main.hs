@@ -393,10 +393,9 @@ testTakeAllTreesContent = do
       , EventEndElement "em"
       , EventContent (ContentText " !")
       , EventEndElement "b"
-      , EventContent (ContentText " Welcome !")
       ]
   where
-    rootParser = P.tagNoAttr "root" $ P.takeAllTreesContent =$= CL.consume
+    rootParser = P.tagNoAttr "root" $ (P.takeAllTreesContent >> void P.ignoreAllTreesContent) =$= CL.consume
     input = L.concat
         [ "<?xml version='1.0'?>"
         , "<!DOCTYPE foo []>\n"
