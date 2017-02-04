@@ -954,36 +954,32 @@ ignoreAttrs = AttrParser $ const $ Right ([], ())
 
 -- | Keep parsing elements as long as the parser returns 'Just'.
 many :: Monad m
-     => Consumer Event m (Maybe a)
-     -> Consumer Event m [a]
+     => ConduitM Event o m (Maybe a)
+     -> ConduitM Event o m [a]
 many i = manyIgnore i $ return Nothing
 
 -- | Like 'many' but discards the results without but building an intermediate list.
 many_ :: MonadThrow m
-      => Consumer Event m (Maybe a)
-      -> Consumer Event m ()
+      => ConduitM Event o m (Maybe a)
+      -> ConduitM Event o m ()
 many_ consumer = manyIgnoreYield (return Nothing) (void <$> consumer)
 
 -- | Keep parsing elements as long as the parser returns 'Just'
 --   or the ignore parser returns 'Just'.
 manyIgnore :: Monad m
-           => Consumer Event m (Maybe a)
-           -> Consumer Event m (Maybe ())
-           -> Consumer Event m [a]
-manyIgnore i ignored =
-    go id
-  where
-    go front = i >>=
-        maybe (onFail front) (\y -> go $ front . (:) y)
-    -- onFail is called if the main parser fails
-    onFail front =
-        ignored >>= maybe (return $ front []) (const $ go front)
+           => ConduitM Event o m (Maybe a)
+           -> ConduitM Event o m (Maybe ())
+           -> ConduitM Event o m [a]
+manyIgnore i ignored = go id where
+  go front = i >>= maybe (onFail front) (\y -> go $ front . (:) y)
+  -- onFail is called if the main parser fails
+  onFail front = ignored >>= maybe (return $ front []) (const $ go front)
 
 -- | Like @many@, but any tags and content the consumer doesn't match on
 --   are silently ignored.
 many' :: MonadThrow m
-      => Consumer Event m (Maybe a)
-      -> Consumer Event m [a]
+      => ConduitM Event o m (Maybe a)
+      -> ConduitM Event o m [a]
 many' consumer = manyIgnore consumer ignoreAllTreesContent
 
 
@@ -999,7 +995,7 @@ manyYield consumer = fix $ \loop ->
 --   to downstream conduits without waiting for 'manyIgnoreYield' to finish
 manyIgnoreYield :: MonadThrow m
                 => ConduitM Event b m (Maybe b) -- ^ Consuming parser that generates the result stream
-                -> Consumer Event m (Maybe ()) -- ^ Ignore parser that consumes elements to be ignored
+                -> ConduitM Event b m (Maybe ()) -- ^ Ignore parser that consumes elements to be ignored
                 -> Conduit Event m b
 manyIgnoreYield consumer ignoreParser = fix $ \loop ->
   consumer >>= maybe (onFail loop) (\x -> yield x >> loop)
