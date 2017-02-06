@@ -135,7 +135,7 @@ documentParsePrettyRender =
 
 combinators :: Assertion
 combinators = runResourceT $ P.parseLBS def input C.$$ do
-    P.force "need hello" $ P.tagName "hello" (P.requireAttr "world") $ \world -> do
+    P.force "need hello" $ P.tag' "hello" (P.requireAttr "world") $ \world -> do
         liftIO $ world @?= "true"
         P.force "need child1" $ P.tagNoAttr "{mynamespace}child1" $ return ()
         P.force "need child2" $ P.tagNoAttr "child2" $ return ()
@@ -448,8 +448,8 @@ testOrE = runResourceT $ P.parseLBS def input C.$$ do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.tagNoAttr "failure" (return 1) `P.orE`
              P.tagNoAttr "success" (return 2)
-        y <- P.tagName "success" (P.requireAttr "failure") (const $ return 1) `P.orE`
-             P.tagName "success" (P.requireAttr "success") (const $ return 2)
+        y <- P.tag' "success" (P.requireAttr "failure") (const $ return 1) `P.orE`
+             P.tag' "success" (P.requireAttr "success") (const $ return 2)
         liftIO $ x @?= Just (2 :: Int)
         liftIO $ y @?= Just (2 :: Int)
   where

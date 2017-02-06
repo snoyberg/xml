@@ -1,11 +1,16 @@
-{-# LANGUAGE BangPatterns       #-}
-{-# LANGUAGE CPP                #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE PatternGuards      #-}
-{-# LANGUAGE RankNTypes         #-}
-{-# LANGUAGE TupleSections      #-}
+{-# LANGUAGE BangPatterns               #-}
+{-# LANGUAGE CPP                        #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PatternGuards              #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeFamilies               #-}
 -- | This module provides both a native Haskell solution for parsing XML
 -- documents into a stream of events, and a set of parser combinators for
 -- dealing with a stream of events.
@@ -98,23 +103,20 @@ module Text.XML.Stream.Parse
     , decodeHtmlEntities
       -- * Event parsing
     , tag
-    , tagPredicate
-    , tagName
+    , tag'
     , tagNoAttr
     , tagIgnoreAttrs
-    , tagPredicateIgnoreAttrs
     , content
     , contentMaybe
       -- * Ignoring tags/trees
     , ignoreTag
-    , ignoreTagName
-    , ignoreAnyTagName
-    , ignoreAllTags
     , ignoreTree
-    , ignoreTreeName
-    , ignoreAnyTreeName
-    , ignoreAllTrees
     , ignoreAllTreesContent
+      -- * Tag name matching
+    , NameMatcher(..)
+    , matching
+    , anyOf
+    , anyName
       -- * Attribute parsing
     , AttrParser
     , attr
@@ -176,6 +178,7 @@ import           Data.Default                 (Default (..))
 import           Data.List                    (foldl')
 import qualified Data.Map                     as Map
 import           Data.Maybe                   (fromMaybe, isNothing)
+import           Data.String                  (IsString (..))
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
 import qualified Data.Text                    as TS
@@ -652,42 +655,40 @@ content = fromMaybe T.empty <$> contentMaybe
 --
 -- This function automatically ignores comments, instructions and whitespace.
 tag :: MonadThrow m
-    => (Name -> Maybe a) -- ^ Check if this is a correct tag name
-                         --   and return a value that can be used to get an @AttrParser@.
-                         --   If this returns @Nothing@, the function will also return @Nothing@
+    => NameMatcher a -- ^ Check if this is a correct tag name
+                     --   and return a value that can be used to get an @AttrParser@.
+                     --   If this fails, the function will return @Nothing@
     -> (a -> AttrParser b) -- ^ Given the value returned by the name checker, this function will
                            --   be used to get an @AttrParser@ appropriate for the specific tag.
                            --   If the @AttrParser@ fails, the function will also return @Nothing@
-    -> (b -> CI.ConduitM Event o m c) -- ^ Handler function to handle the attributes and children
-                                      --   of a tag, given the value return from the @AttrParser@
-    -> CI.ConduitM Event o m (Maybe c)
-tag checkName attrParser f = do
-    (x, leftovers) <- dropWS []
-    res <- case x of
-        Just (EventBeginElement name as) ->
-            case checkName name of
-                Just y ->
-                    case runAttrParser' (attrParser y) as of
-                        Left e -> return Nothing
-                        Right z -> do
-                            z' <- f z
-                            (a, _leftovers') <- dropWS []
-                            case a of
-                                Just (EventEndElement name')
-                                    | name == name' -> return (Just z')
-                                _ -> lift $ monadThrow $ InvalidEndElement name a
-                Nothing -> return Nothing
-        _ -> return Nothing
+    -> (b -> ConduitM Event o m c) -- ^ Handler function to handle the attributes and children
+                                   --   of a tag, given the value return from the @AttrParser@
+    -> ConduitM Event o m (Maybe c)
+tag nameMatcher attrParser f = do
+  (x, leftovers) <- dropWS []
+  res <- case x of
+    Just (EventBeginElement name as) -> case runNameMatcher nameMatcher name of
+      Just y -> case runAttrParser' (attrParser y) as of
+        Left _ -> return Nothing
+        Right z -> do
+          z' <- f z
+          (a, _leftovers') <- dropWS []
+          case a of
+            Just (EventEndElement name')
+              | name == name' -> return (Just z')
+            _ -> lift $ monadThrow $ InvalidEndElement name a
+      Nothing -> return Nothing
+    _ -> return Nothing
 
-    case res of
-        -- Did not parse, put back all of the leading whitespace events and the
-        -- final observed event generated by dropWS
-        Nothing -> mapM_ leftover leftovers
-        -- Parse succeeded, discard all of those whitespace events and the
-        -- first parsed event
-        Just _  -> return ()
+  case res of
+    -- Did not parse, put back all of the leading whitespace events and the
+    -- final observed event generated by dropWS
+    Nothing -> mapM_ leftover leftovers
+    -- Parse succeeded, discard all of those whitespace events and the
+    -- first parsed event
+    Just _  -> return ()
 
-    return res
+  return res
   where
     isWhitespace EventBeginDocument             = True
     isWhitespace EventEndDocument               = True
@@ -714,111 +715,49 @@ tag checkName attrParser f = do
             Right ([], x)   -> Right x
             Right (attr, _) -> Left $ toException $ UnparsedAttributes attr
 
--- | A simplified version of 'tag' which matches against boolean predicates.
-tagPredicate :: MonadThrow m
-             => (Name -> Bool) -- ^ Name predicate that returns @True@ if the name matches the parser
-             -> AttrParser a -- ^ The attribute parser to be used for tags matching the predicate
-             -> (a -> CI.ConduitM Event o m b) -- ^ Handler function to handle the attributes and children
-                                               --   of a tag, given the value return from the @AttrParser@
-             -> CI.ConduitM Event o m (Maybe b)
-tagPredicate p attrParser = tag (guard . p) (const attrParser)
-
--- | A simplified version of 'tag' which matches for specific tag names instead
--- of taking a predicate function. This is often sufficient, and when combined
--- with OverloadedStrings and the IsString instance of 'Name', can prove to be
--- very concise.
--- .
--- Note that @Name@ is namespace sensitive. When using the @IsString@ instance of name,
--- use
--- > "{http://a/b}c" :: Name
--- to match the tag @c@ in the XML namespace @http://a/b@
-tagName :: MonadThrow m
-     => Name -- ^ The tag name this parser matches to (includes namespaces)
-     -> AttrParser a -- ^ The attribute parser to be used for tags matching the predicate
-     -> (a -> CI.ConduitM Event o m b) -- ^ Handler function to handle the attributes and children
-                                       --   of a tag, given the value return from the @AttrParser@
-     -> CI.ConduitM Event o m (Maybe b)
-tagName name = tagPredicate (== name)
+-- | A simplified version of 'tag' where the 'NameMatcher' result isn't forwarded to the attributes parser.
+tag' :: MonadThrow m
+     => NameMatcher a -> AttrParser b -> (b -> ConduitM Event o m c)
+     -> ConduitM Event o m (Maybe c)
+tag' a b = tag a (const b)
 
 -- | A further simplified tag parser, which requires that no attributes exist.
 tagNoAttr :: MonadThrow m
-          => Name -- ^ The name this parser matches to
-          -> CI.ConduitM Event o m a -- ^ Handler function to handle the children of the matched tag
-          -> CI.ConduitM Event o m (Maybe a)
-tagNoAttr name f = tagName name (return ()) $ const f
+          => NameMatcher a -- ^ Check if this is a correct tag name
+          -> ConduitM Event o m b -- ^ Handler function to handle the children of the matched tag
+          -> ConduitM Event o m (Maybe b)
+tagNoAttr name f = tag' name (return ()) $ const f
 
 
 -- | A further simplified tag parser, which ignores all attributes, if any exist
 tagIgnoreAttrs :: MonadThrow m
-               => Name -- ^ The name this parser matches to
-               -> CI.ConduitM Event o m a -- ^ Handler function to handle the children of the matched tag
-               -> CI.ConduitM Event o m (Maybe a)
-tagIgnoreAttrs name f = tagName name ignoreAttrs $ const f
+               => NameMatcher a -- ^ Check if this is a correct tag name
+               -> ConduitM Event o m b -- ^ Handler function to handle the children of the matched tag
+               -> ConduitM Event o m (Maybe b)
+tagIgnoreAttrs name f = tag' name ignoreAttrs $ const f
 
--- | A further simplified tag parser, which ignores all attributes, if any exist
-tagPredicateIgnoreAttrs :: MonadThrow m
-                        => (Name -> Bool) -- ^ The name predicate this parser matches to
-                        -> CI.ConduitM Event o m a -- ^ Handler function to handle the children of the matched tag
-                        -> CI.ConduitM Event o m (Maybe a)
-tagPredicateIgnoreAttrs namePred f = tagPredicate namePred ignoreAttrs $ const f
 
 -- | Ignore an empty tag and all of its attributes by predicate.
 --   This does not ignore the tag recursively
 --   (i.e. it assumes there are no child elements).
 --   This functions returns 'Just ()' if the tag matched.
 ignoreTag :: MonadThrow m
-          => (Name -> Bool) -- ^ The predicate name to match to
+          => NameMatcher a -- ^ Check if this is a correct tag name
           -> ConduitM Event o m (Maybe ())
-ignoreTag namePred = tagPredicateIgnoreAttrs namePred (return ())
-
--- | Like 'ignoreTag', but matches an exact name
-ignoreTagName :: MonadThrow m
-              => Name -- ^ The name to match to
-              -> ConduitM Event o m (Maybe ())
-ignoreTagName name = ignoreTag (== name)
-
--- | Like 'ignoreTagName', but matches any name from a list of names.
-ignoreAnyTagName :: MonadThrow m
-                 => [Name] -- ^ The name to match to
-                 -> ConduitM Event o m (Maybe ())
-ignoreAnyTagName names = ignoreTag (`elem` names)
-
--- | Like 'ignoreTag', but matches all tag name.
---
---   > ignoreAllTags = ignoreTag (const True)
-ignoreAllTags :: MonadThrow m => ConduitM Event o m (Maybe ())
-ignoreAllTags = ignoreTag $ const True
+ignoreTag namePred = tagIgnoreAttrs namePred (return ())
 
 -- | Ignore an empty tag, its attributes and its children subtree recursively.
 --   Both content and text events are ignored.
 --   This functions returns 'Just' if the tag matched.
 ignoreTree :: MonadThrow m
-          => (Name -> Bool) -- ^ The predicate name to match to
+          => NameMatcher a -- ^ Check if this is a correct tag name
           -> ConduitM Event o m (Maybe ())
-ignoreTree namePred =
-    tagPredicateIgnoreAttrs namePred (void $ many ignoreAllTreesContent)
+ignoreTree namePred = tagIgnoreAttrs namePred (void $ many ignoreAllTreesContent)
 
--- | Like 'ignoreTagName', but also ignores non-empty tags
-ignoreTreeName :: MonadThrow m
-               => Name
-               -> ConduitM Event o m (Maybe ())
-ignoreTreeName name = ignoreTree (== name)
-
--- | Like 'ignoreTagName', but matches any name from a list of names.
-ignoreAnyTreeName :: MonadThrow m
-                 => [Name] -- ^ The name to match to
-                 -> ConduitM Event o m (Maybe ())
-ignoreAnyTreeName names = ignoreTree (`elem` names)
-
--- | Like 'ignoreAllTags', but ignores entire subtrees.
---
---   > ignoreAllTrees = ignoreTree (const True)
-ignoreAllTrees :: MonadThrow m => ConduitM Event o m (Maybe ())
-ignoreAllTrees = ignoreTree $ const True
 
 -- | Like 'ignoreAllTrees', but also ignores all content events
 ignoreAllTreesContent :: MonadThrow m => ConduitM Event o m (Maybe ())
-ignoreAllTreesContent = (void <$> contentMaybe) `orE` ignoreAllTrees
+ignoreAllTreesContent = (void <$> contentMaybe) `orE` ignoreTree anyName
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return @Just@), this function returns 'Nothing'.
@@ -885,6 +824,37 @@ instance Exception XmlException where
   displayException (MissingAttribute msg) = "Missing required attribute: " ++ msg
   displayException (UnparsedAttributes attrs) = show (length attrs) ++ " remaining unparsed attributes: \n" ++ intercalate "\n" (show <$> attrs)
 #endif
+
+
+-- | A @NameMatcher@ describes which names a tag parser is allowed to match.
+newtype NameMatcher a = NameMatcher { runNameMatcher :: Name -> Maybe a }
+
+deriving instance Functor NameMatcher
+
+instance Applicative NameMatcher where
+  pure a = NameMatcher $ const $ pure a
+  NameMatcher f <*> NameMatcher a = NameMatcher $ \name -> f name <*> a name
+
+-- | 'NameMatcher's can be combined with '(<|>)'
+instance Alternative NameMatcher where
+  empty = NameMatcher $ const Nothing
+  NameMatcher f <|> NameMatcher g = NameMatcher (\a -> f a <|> g a)
+
+-- | Match a single 'Name' in a concise way.
+-- Note that 'Name' is namespace sensitive. When using the 'IsString' instance of name,
+-- use @ "{http:\/\/a\/b}c" :: Name@ to match the tag @c@ in the XML namespace @http://a/b@
+instance (a ~ Name) => IsString (NameMatcher a) where
+  fromString s = matching (== fromString s)
+
+matching :: (Name -> Bool) -> NameMatcher Name
+matching f = NameMatcher $ \name -> if f name then Just name else Nothing
+
+anyName :: NameMatcher Name
+anyName = matching (const True)
+
+anyOf :: [Name] -> NameMatcher Name
+anyOf values = matching (`elem` values)
+
 
 -- | A monad for parsing attributes. By default, it requires you to deal with
 -- all attributes present on an element, and will throw an exception if there
