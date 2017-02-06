@@ -1,36 +1,37 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings  #-}
 
 import           Control.Exception            (Exception, toException)
 import           Control.Monad.IO.Class       (liftIO)
-import           Data.Typeable                (Typeable)
-import           Data.XML.Types
-import           Test.HUnit                   hiding (Test)
-import           Test.Hspec
 import qualified Data.ByteString.Char8        as S
 import qualified Data.ByteString.Lazy.Char8   as L
-import qualified Text.XML.Unresolved          as D
-import qualified Text.XML.Stream.Parse        as P
+import           Data.Typeable                (Typeable)
+import           Data.XML.Types
+import           Test.Hspec
+import           Test.HUnit                   hiding (Test)
 import qualified Text.XML                     as Res
 import qualified Text.XML.Cursor              as Cu
 import           Text.XML.Stream.Parse        (def)
+import qualified Text.XML.Stream.Parse        as P
+import qualified Text.XML.Unresolved          as D
 
-import Text.XML.Cursor ((&/), (&//), (&.//), ($|), ($/), ($//), ($.//))
-import Data.Text(Text)
-import Control.Monad
-import Control.Applicative ((<$>))
-import Control.Monad.Trans.Class (lift)
-import qualified Data.Text as T
-import qualified Data.Set as Set
+import           Control.Applicative          ((<$>))
+import           Control.Monad
+import           Control.Monad.Trans.Class    (lift)
+import qualified Data.Set                     as Set
+import           Data.Text                    (Text)
+import qualified Data.Text                    as T
+import           Text.XML.Cursor              (($.//), ($/), ($//), ($|),
+                                               (&.//), (&/), (&//))
 
-import Data.Conduit ((=$=))
-import qualified Data.Conduit as C
-import Control.Monad.Trans.Resource (runResourceT)
+import           Control.Monad.Trans.Resource (runResourceT)
 import qualified Control.Monad.Trans.Resource as C
-import qualified Data.Conduit.List as CL
-import qualified Data.Map as Map
-import Text.Blaze (toMarkup)
-import Text.Blaze.Renderer.String (renderMarkup)
+import           Data.Conduit                 ((=$=))
+import qualified Data.Conduit                 as C
+import qualified Data.Conduit.List            as CL
+import qualified Data.Map                     as Map
+import           Text.Blaze                   (toMarkup)
+import           Text.Blaze.Renderer.String   (renderMarkup)
 
 main :: IO ()
 main = hspec $ do
@@ -763,7 +764,7 @@ caseAttrReorder = do
         rs = def { Res.rsAttrOrder = \name m ->
                         case name of
                             "foo" -> reverse $ Map.toAscList m
-                            _ -> Map.toAscList m
+                            _     -> Map.toAscList m
                  }
         attrs = Map.fromList [("a", "a"), ("b", "b"), ("c", "c")]
         doc = Res.Document (Res.Prologue [] Nothing [])

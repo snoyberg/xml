@@ -144,8 +144,8 @@ module Text.XML.Stream.Parse
     , PositionRange
     , EventPos
     ) where
-import qualified Control.Applicative          as A
 import           Control.Applicative          ((<$>))
+import qualified Control.Applicative          as A
 import           Control.Monad.Fix            (fix)
 import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..),
                                                monadThrow)
@@ -171,7 +171,6 @@ import qualified Data.ByteString.Lazy         as L
 import           Data.Char                    (isSpace)
 import           Data.Conduit
 import           Data.Conduit.Binary          (sourceFile)
-import qualified Data.Conduit.Internal        as CI
 import qualified Data.Conduit.List            as CL
 import qualified Data.Conduit.Text            as CT
 import           Data.Default                 (Default (..))
@@ -602,8 +601,7 @@ newline = void $ (char '\r' >> char '\n') <|> char '\n'
 char' :: Char -> Parser ()
 char' = void . char
 
-data ContentType =
-    Ignore | IsContent Text | IsError String | NotContent
+data ContentType = Ignore | IsContent Text | IsError String | NotContent
 
 -- | Grabs the next piece of content if available. This function skips over any
 -- comments and instructions and concatenates all content until the next start
