@@ -180,7 +180,6 @@ import           Data.Maybe                   (fromMaybe, isNothing)
 import           Data.String                  (IsString (..))
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
-import qualified Data.Text                    as TS
 import           Data.Text.Encoding           (decodeUtf32BEWith,
                                                decodeUtf8With)
 import           Data.Text.Encoding.Error     (ignore, lenientDecode)
@@ -262,7 +261,7 @@ tnameToName _ (NSLevel _ m) (TName (Just pref) name) =
 -- first checks for BOMs, removing them as necessary, and then check for the
 -- equivalent of <?xml for each of UTF-8, UTF-16LE/BE, and UTF-32LE/BE. It
 -- defaults to assuming UTF-8.
-detectUtf :: MonadThrow m => Conduit S.ByteString m TS.Text
+detectUtf :: MonadThrow m => Conduit S.ByteString m T.Text
 detectUtf =
     conduit id
   where
@@ -298,7 +297,7 @@ detectUtf =
 checkXMLDecl :: MonadThrow m
              => S.ByteString
              -> Maybe CT.Codec
-             -> Conduit S.ByteString m TS.Text
+             -> Conduit S.ByteString m T.Text
 checkXMLDecl bs (Just codec) = leftover bs >> CT.decode codec
 checkXMLDecl bs0 Nothing =
     loop [] (AT.parse (parseToken decodeXmlEntities)) bs0
@@ -316,7 +315,7 @@ checkXMLDecl bs0 Nothing =
 
         findEncoding [] = fallback
         findEncoding ((TName _ "encoding", [ContentText enc]):_) =
-            case TS.toLower enc of
+            case T.toLower enc of
                 "iso-8859-1" -> complete CT.iso8859_1
                 "utf-8"      -> complete CT.utf8
                 _            -> complete CT.utf8
@@ -342,7 +341,7 @@ parseBytesPos :: MonadThrow m
               -> Conduit S.ByteString m EventPos
 parseBytesPos ps = detectUtf =$= parseTextPos ps
 
-dropBOM :: Monad m => Conduit TS.Text m TS.Text
+dropBOM :: Monad m => Conduit T.Text m T.Text
 dropBOM =
     await >>= maybe (return ()) push
   where
@@ -365,13 +364,13 @@ dropBOM =
 -- Since 1.2.4
 parseText' :: MonadThrow m
            => ParseSettings
-           -> Conduit TS.Text m Event
+           -> Conduit T.Text m Event
 parseText' = mapOutput snd . parseTextPos
 
 {-# DEPRECATED parseText "Please use 'parseText'' or 'parseTextPos'." #-}
 parseText :: MonadThrow m
           => ParseSettings
-          -> Conduit TS.Text m EventPos
+          -> Conduit T.Text m EventPos
 parseText = parseTextPos
 
 -- | Same as 'parseText'', but includes the position of each event.
@@ -379,7 +378,7 @@ parseText = parseTextPos
 -- Since 1.2.4
 parseTextPos :: MonadThrow m
           => ParseSettings
-          -> Conduit TS.Text m EventPos
+          -> Conduit T.Text m EventPos
 parseTextPos de =
     dropBOM
         =$= tokenize
@@ -423,7 +422,7 @@ instance Default ParseSettings where
         , psRetainNamespaces = False
         }
 
-conduitToken :: MonadThrow m => ParseSettings -> Conduit TS.Text m (PositionRange, Token)
+conduitToken :: MonadThrow m => ParseSettings -> Conduit T.Text m (PositionRange, Token)
 conduitToken = conduitParser . parseToken . psDecodeEntities
 
 parseToken :: DecodeEntities -> Parser Token
@@ -815,7 +814,7 @@ instance Exception XmlException where
 #if MIN_VERSION_base(4, 8, 0)
   displayException (XmlException msg (Just event)) = "Error while parsing XML event " ++ show event ++ ": " ++ msg
   displayException (XmlException msg _) = "Error while parsing XML: " ++ msg
-  displayException (InvalidEndElement name (Just event)) = "Error while parsing XML event: expected </" ++ TS.unpack (nameLocalName name) ++ ">, got " ++ show event
+  displayException (InvalidEndElement name (Just event)) = "Error while parsing XML event: expected </" ++ T.unpack (nameLocalName name) ++ ">, got " ++ show event
   displayException (InvalidEndElement name _) = "Error while parsing XML event: expected </" ++ show name ++ ">, got nothing"
   displayException (InvalidEntity msg (Just event)) = "Error while parsing XML entity " ++ show event ++ ": " ++ msg
   displayException (InvalidEntity msg _) = "Error while parsing XML entity: " ++ msg
