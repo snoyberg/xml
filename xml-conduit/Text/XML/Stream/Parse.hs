@@ -561,22 +561,18 @@ parseContent :: DecodeEntities
              -> Bool -- break on double quote
              -> Bool -- break on single quote
              -> Parser Content
-parseContent de breakDouble breakSingle =
-    parseEntity <|> parseText'
-  where
-    parseEntity = do
-        char' '&'
-        t <- takeWhile1 (/= ';')
-        char' ';'
-        return $ de t
-    parseText' = do
-        bs <- takeWhile1 valid
-        return $ ContentText bs
-    valid '"'  = not breakDouble
-    valid '\'' = not breakSingle
-    valid '&'  = False -- amp
-    valid '<'  = False -- lt
-    valid _    = True
+parseContent de breakDouble breakSingle = parseEntity <|> parseTextContent where
+  parseEntity = do
+    char' '&'
+    t <- takeWhile1 (/= ';')
+    char' ';'
+    return $ de t
+  parseTextContent = ContentText <$> takeWhile1 valid
+  valid '"'  = not breakDouble
+  valid '\'' = not breakSingle
+  valid '&'  = False -- amp
+  valid '<'  = False -- lt
+  valid _    = True
 
 skipSpace :: Parser ()
 skipSpace = skipWhile isXMLSpace
