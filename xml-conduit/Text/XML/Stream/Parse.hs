@@ -931,7 +931,7 @@ many_ consumer = manyIgnoreYield (return Nothing) (void <$> consumer)
 --   or the ignore parser returns 'Just'.
 manyIgnore :: Monad m
            => ConduitM Event o m (Maybe a)
-           -> ConduitM Event o m (Maybe ())
+           -> ConduitM Event o m (Maybe b)
            -> ConduitM Event o m [a]
 manyIgnore i ignored = go id where
   go front = i >>= maybe (onFail front) (\y -> go $ front . (:) y)
