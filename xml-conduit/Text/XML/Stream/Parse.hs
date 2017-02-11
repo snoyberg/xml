@@ -640,11 +640,11 @@ contentMaybe = do
 content :: MonadThrow m => Consumer Event m Text
 content = fromMaybe T.empty <$> contentMaybe
 
--- | The most generic way to parse a tag. It takes a predicate for checking if
--- this is the correct tag name, an 'AttrParser' for handling attributes, and
--- then a parser for dealing with content.
+-- | The most generic way to parse a tag. It takes a 'NameMatcher' to check whether
+-- this is a correct tag name, an 'AttrParser' to handle attributes, and
+-- then a parser to deal with content.
 --
--- 'Events' are consumed if and only if the predicate holds.
+-- 'Events' are consumed if and only if the tag name and its attributes match.
 --
 -- This function automatically absorbs its balancing closing tag, and will
 -- throw an exception if not all of the attributes or child elements are
@@ -925,7 +925,7 @@ many :: Monad m
      -> ConduitM Event o m [a]
 many i = manyIgnore i $ return Nothing
 
--- | Like 'many' but discards the results without but building an intermediate list.
+-- | Like 'many' but discards the results without building an intermediate list.
 many_ :: MonadThrow m
       => ConduitM Event o m (Maybe a)
       -> ConduitM Event o m ()
