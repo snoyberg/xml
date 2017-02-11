@@ -977,51 +977,71 @@ manyYield' :: MonadThrow m
 manyYield' consumer = manyIgnoreYield consumer ignoreAllTreesContent
 
 
--- | Like 'ignoreAllTreesContent', but stream the corresponding 'Event's rather than ignoring them.
--- Incomplete elements (without a closing-tag) will trigger an 'XmlException'.
+-- | Stream 'Event's corresponding to a single node tree:
+-- - if next node is a comment, content, instruction or CDATA, then only one 'Event' is consumed;
+-- - if next node is a doctype, document or element, that matches the given 'NameMatcher' and 'AttrParser', then 'Event's of the whole node tree are consumed, from the opening- to the closing-tag; if no matching closing-tag is found, an 'XmlException' is thrown.
 --
--- >>> runResourceT $ parseLBS def "text<a></a>" $$ takeAllTreesContent =$= consume
--- Just [ EventContent (ContentText "text"), EventBeginElement "a" [], EventEndElement "a"]
+-- Returns 'Just ()' if at least one 'Event' was consumed, 'Nothing' otherwise.
 --
--- >>> runResourceT $ parseLBS def "</a><b></b>" $$ takeAllTreesContent =$= consume
--- Just [ ]
---
--- >>> runResourceT $ parseLBS def "<b><c></c></b></a>text" $$ takeAllTreesContent =$= consume
--- Just [ EventBeginElement "b" [], EventBeginElement "c" [], EventEndElement "c", EventEndElement "b" ]
---
--- Since 1.4.0
-takeAllTreesContent :: MonadThrow m => ConduitM Event Event m (Maybe ())
-takeAllTreesContent = do
+-- Since 1.5.0
+takeNodeTree :: MonadThrow m
+             => NameMatcher a
+             -> AttrParser b
+             -> ConduitM Event Event m (Maybe ())
+takeNodeTree nameMatcher attrParser = do
   event <- await
   case event of
     Just e@EventBeginDoctype{} -> do
       yield e
-      many_ takeAllTreesContent
+      whileJust takeAllTreesContent
       endEvent <- await
       case endEvent of
         Just e@EventEndDoctype -> yield e >> return (Just ())
         _ -> lift $ monadThrow $ XmlException "Expected end of doctype" endEvent
     Just e@EventBeginDocument -> do
       yield e
-      many_ takeAllTreesContent
+      whileJust takeAllTreesContent
       endEvent <- await
       case endEvent of
         Just e@EventEndDocument -> yield e >> return (Just ())
         _ -> lift $ monadThrow $ XmlException "Expected end of document" endEvent
-    Just e@(EventBeginElement name _) -> do
-      yield e
-      many_ takeAllTreesContent
-      endEvent <- await
-      case endEvent of
-        Just e@(EventEndElement name') | name == name' -> yield e >> return (Just ())
-        _ -> lift $ monadThrow $ InvalidEndElement name endEvent
+    Just e@(EventBeginElement name as) -> case runNameMatcher nameMatcher name of
+      Just _ -> case runAttrParser attrParser as of
+        Right _ -> do
+          yield e
+          whileJust takeAllTreesContent
+          endEvent <- await
+          case endEvent of
+            Just e@(EventEndElement name') | name == name' -> yield e >> return (Just ())
+            _ -> lift $ monadThrow $ InvalidEndElement name endEvent
+        _ -> leftover e >> return Nothing
+      _ -> leftover e >> return Nothing
     Just e@EventComment{} -> yield e >> return (Just ())
     Just e@EventContent{} -> yield e >> return (Just ())
     Just e@EventInstruction{} -> yield e >> return (Just ())
     Just e@EventCDATA{} -> yield e >> return (Just ())
     Just e -> leftover e >> return Nothing
     _ -> return Nothing
+  where
+    whileJust f = fix $ \loop -> f >>= maybe (return ()) (const loop)
 
+-- | Like 'takeNodeTree', without checking for tag name or attributes.
+--
+-- >>> runResourceT $ parseLBS def "text<a></a>" $$ takeAnyNodeTree =$= consume
+-- Just [ EventContent (ContentText "text"), EventBeginElement "a" [], EventEndElement "a"]
+--
+-- >>> runResourceT $ parseLBS def "</a><b></b>" $$ takeAnyNodeTree =$= consume
+-- Just [ ]
+--
+-- >>> runResourceT $ parseLBS def "<b><c></c></b></a>text" $$ takeAnyNodeTree =$= consume
+-- Just [ EventBeginElement "b" [], EventBeginElement "c" [], EventEndElement "c", EventEndElement "b" ]
+takeAnyNodeTree :: MonadThrow m
+                => ConduitM Event Event m (Maybe ())
+takeAnyNodeTree = takeNodeTree anyName ignoreAttrs
+
+{-# DEPRECATED takeAllTreesContent "Please use 'takeAnyNodeTree'." #-}
+takeAllTreesContent :: MonadThrow m => ConduitM Event Event m (Maybe ())
+takeAllTreesContent = takeAnyNodeTree
 
 type DecodeEntities = Text -> Content
 
