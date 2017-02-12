@@ -112,6 +112,12 @@ module Text.XML.Stream.Parse
     , ignoreTag
     , ignoreTree
     , ignoreAllTreesContent
+      -- * Streaming events
+    , takeContent
+    , takeTree
+    , takeTreeContent
+    , takeAnyTreeContent
+    , takeAllTreesContent
       -- * Tag name matching
     , NameMatcher(..)
     , matching
@@ -636,6 +642,19 @@ contentMaybe = do
 content :: MonadThrow m => Consumer Event m Text
 content = fromMaybe T.empty <$> contentMaybe
 
+
+isWhitespace :: Event -> Bool
+isWhitespace EventBeginDocument             = True
+isWhitespace EventEndDocument               = True
+isWhitespace EventBeginDoctype{}            = True
+isWhitespace EventEndDoctype                = True
+isWhitespace EventInstruction{}             = True
+isWhitespace (EventContent (ContentText t)) = T.all isSpace t
+isWhitespace EventComment{}                 = True
+isWhitespace (EventCDATA t)                 = T.all isSpace t
+isWhitespace _                              = False
+
+
 -- | The most generic way to parse a tag. It takes a 'NameMatcher' to check whether
 -- this is a correct tag name, an 'AttrParser' to handle attributes, and
 -- then a parser to deal with content.
@@ -683,15 +702,6 @@ tag nameMatcher attrParser f = do
 
   return res
   where
-    isWhitespace EventBeginDocument             = True
-    isWhitespace EventEndDocument               = True
-    isWhitespace EventBeginDoctype{}            = True
-    isWhitespace EventEndDoctype                = True
-    isWhitespace EventInstruction{}             = True
-    isWhitespace (EventContent (ContentText t)) = T.all isSpace t
-    isWhitespace EventComment{}                 = True
-    isWhitespace _                              = False
-
     -- Drop Events until we encounter a non-whitespace element. Return all of
     -- the events consumed here (including the first non-whitespace event) so
     -- that the calling function can treat them as leftovers if the parse fails
@@ -972,71 +982,80 @@ manyYield' :: MonadThrow m
 manyYield' consumer = manyIgnoreYield consumer ignoreAllTreesContent
 
 
--- | Stream 'Event's corresponding to a single node tree:
--- - if next node is a comment, content, instruction or CDATA, then only one 'Event' is consumed;
--- - if next node is a doctype, document or element, that matches the given 'NameMatcher' and 'AttrParser', then 'Event's of the whole node tree are consumed, from the opening- to the closing-tag; if no matching closing-tag is found, an 'XmlException' is thrown.
+-- | Stream a content 'Event'. If next event isn't a content, nothing is consumed.
 --
--- Returns 'Just ()' if at least one 'Event' was consumed, 'Nothing' otherwise.
+-- Returns @Just ()@ if a content 'Event' was consumed, @Nothing@ otherwise.
 --
 -- Since 1.5.0
-takeNodeTree :: MonadThrow m
-             => NameMatcher a
-             -> AttrParser b
-             -> ConduitM Event Event m (Maybe ())
-takeNodeTree nameMatcher attrParser = do
+takeContent :: MonadThrow m => ConduitM Event Event m (Maybe ())
+takeContent = do
   event <- await
   case event of
-    Just e@EventBeginDoctype{} -> do
-      yield e
-      whileJust takeAllTreesContent
-      endEvent <- await
-      case endEvent of
-        Just e@EventEndDoctype -> yield e >> return (Just ())
-        _ -> lift $ monadThrow $ XmlException "Expected end of doctype" endEvent
-    Just e@EventBeginDocument -> do
-      yield e
-      whileJust takeAllTreesContent
-      endEvent <- await
-      case endEvent of
-        Just e@EventEndDocument -> yield e >> return (Just ())
-        _ -> lift $ monadThrow $ XmlException "Expected end of document" endEvent
+    Just e@(EventContent ContentText{}) -> yield e >> return (Just ())
+    Just e@EventCDATA{}                 -> yield e >> return (Just ())
+    Just e -> if isWhitespace e then yield e >> takeContent else leftover e >> return Nothing
+    _ -> return Nothing
+
+-- | Stream 'Event's corresponding to a single element that matches given 'NameMatcher' and 'AttrParser', from the opening- to the closing-tag.
+--
+-- If next 'Event' isn't an element, nothing is consumed.
+--
+-- If an opening-tag is consumed but no matching closing-tag is found, an 'XmlException' is thrown.
+--
+-- This function automatically ignores comments, instructions and whitespace.
+--
+-- Returns @Just ()@ if an element was consumed, 'Nothing' otherwise.
+--
+-- Since 1.5.0
+takeTree :: MonadThrow m => NameMatcher a -> AttrParser b -> ConduitM Event Event m (Maybe ())
+takeTree nameMatcher attrParser = do
+  event <- await
+  case event of
     Just e@(EventBeginElement name as) -> case runNameMatcher nameMatcher name of
       Just _ -> case runAttrParser attrParser as of
         Right _ -> do
           yield e
-          whileJust takeAllTreesContent
+          whileJust takeAnyTreeContent
           endEvent <- await
           case endEvent of
-            Just e@(EventEndElement name') | name == name' -> yield e >> return (Just ())
+            Just e'@(EventEndElement name') | name == name' -> yield e' >> return (Just ())
             _ -> lift $ monadThrow $ InvalidEndElement name endEvent
         _ -> leftover e >> return Nothing
       _ -> leftover e >> return Nothing
-    Just e@EventComment{} -> yield e >> return (Just ())
-    Just e@EventContent{} -> yield e >> return (Just ())
-    Just e@EventInstruction{} -> yield e >> return (Just ())
-    Just e@EventCDATA{} -> yield e >> return (Just ())
-    Just e -> leftover e >> return Nothing
+
+    Just e -> if isWhitespace e then yield e >> takeTree nameMatcher attrParser else leftover e >> return Nothing
     _ -> return Nothing
   where
     whileJust f = fix $ \loop -> f >>= maybe (return ()) (const loop)
 
--- | Like 'takeNodeTree', without checking for tag name or attributes.
+-- | Like 'takeTree', but can also stream a content 'Event'.
 --
--- >>> runResourceT $ parseLBS def "text<a></a>" $$ takeAnyNodeTree =$= consume
--- Just [ EventContent (ContentText "text"), EventBeginElement "a" [], EventEndElement "a"]
+-- Since 1.5.0
+takeTreeContent :: MonadThrow m
+                => NameMatcher a
+                -> AttrParser b
+                -> ConduitM Event Event m (Maybe ())
+takeTreeContent nameMatcher attrParser = runMaybeT $ MaybeT (takeTree nameMatcher attrParser) <|> MaybeT takeContent
+
+-- | Like 'takeTreeContent', without checking for tag name or attributes.
 --
--- >>> runResourceT $ parseLBS def "</a><b></b>" $$ takeAnyNodeTree =$= consume
+-- >>> runResourceT $ parseLBS def "text<a></a>" $$ takeAnyTreeContent =$= consume
+-- Just [ EventContent (ContentText "text") ]
+--
+-- >>> runResourceT $ parseLBS def "</a><b></b>" $$ takeAnyTreeContent =$= consume
 -- Just [ ]
 --
--- >>> runResourceT $ parseLBS def "<b><c></c></b></a>text" $$ takeAnyNodeTree =$= consume
+-- >>> runResourceT $ parseLBS def "<b><c></c></b></a>text" $$ takeAnyTreeContent =$= consume
 -- Just [ EventBeginElement "b" [], EventBeginElement "c" [], EventEndElement "c", EventEndElement "b" ]
-takeAnyNodeTree :: MonadThrow m
+--
+-- Since 1.5.0
+takeAnyTreeContent :: MonadThrow m
                 => ConduitM Event Event m (Maybe ())
-takeAnyNodeTree = takeNodeTree anyName ignoreAttrs
+takeAnyTreeContent = takeTreeContent anyName ignoreAttrs
 
-{-# DEPRECATED takeAllTreesContent "Please use 'takeAnyNodeTree'." #-}
+{-# DEPRECATED takeAllTreesContent "Please use 'takeAnyTreeContent'." #-}
 takeAllTreesContent :: MonadThrow m => ConduitM Event Event m (Maybe ())
-takeAllTreesContent = takeAnyNodeTree
+takeAllTreesContent = takeAnyTreeContent
 
 type DecodeEntities = Text -> Content
 

@@ -42,7 +42,9 @@ main = hspec $ do
         it "has working many function" testMany
         it "has working many' function" testMany'
         it "has working manyYield function" testManyYield
-        it "has working takeAllTreesContent function" testTakeAllTreesContent
+        it "has working takeContent function" testTakeContent
+        it "has working takeTree function" testTakeTree
+        it "has working takeAnyTreeContent function" testTakeAnyTreeContent
         it "has working orE" testOrE
         it "is idempotent to parse and pretty render a document" documentParsePrettyRender
         it "ignores the BOM" parseIgnoreBOM
@@ -383,8 +385,49 @@ testManyYield = do
         , "</hello>"
         ]
 
-testTakeAllTreesContent :: Assertion
-testTakeAllTreesContent = do
+testTakeContent :: Assertion
+testTakeContent = do
+    result <- runResourceT $ P.parseLBS def input C.$$ rootParser
+    result @?= Just
+      [ EventContent (ContentText "Hello world !")
+      ]
+  where
+    rootParser = P.tagNoAttr "root" $ void (P.takeContent >> P.takeContent) =$= CL.consume
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<root>"
+        , "Hello world !"
+        , "</root>"
+        ]
+
+testTakeTree :: Assertion
+testTakeTree = do
+    result <- runResourceT $ P.parseLBS def input C.$$ rootParser
+    result @?=
+      [ EventBeginDocument
+      , EventBeginDoctype "foo" Nothing
+      , EventEndDoctype
+      , EventBeginElement "a" []
+      , EventBeginElement "em" []
+      , EventContent (ContentText "Hello world !")
+      , EventEndElement "em"
+      , EventEndElement "a"
+      ]
+  where
+    rootParser = void (P.takeTree "a" P.ignoreAttrs) =$= CL.consume
+    input = L.concat
+        [ "<?xml version='1.0'?>"
+        , "<!DOCTYPE foo []>\n"
+        , "<a>"
+        , "<em>Hello world !</em>"
+        , "</a>"
+        , "<b>"
+        , "</b>"
+        ]
+
+testTakeAnyTreeContent :: Assertion
+testTakeAnyTreeContent = do
     result <- runResourceT $ P.parseLBS def input C.$$ rootParser
     result @?= Just
       [ EventBeginElement "b" []
