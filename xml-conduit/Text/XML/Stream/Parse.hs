@@ -110,7 +110,10 @@ module Text.XML.Stream.Parse
     , contentMaybe
       -- * Ignoring tags/trees
     , ignoreTag
+    , ignoreEmptyTag
     , ignoreTree
+    , ignoreTreeContent
+    , ignoreAnyTreeContent
     , ignoreAllTreesContent
       -- * Streaming events
     , takeContent
@@ -141,9 +144,8 @@ module Text.XML.Stream.Parse
     , force
       -- * Streaming combinators
     , manyYield
-    , manyIgnoreYield
     , manyYield'
-    , takeAllTreesContent
+    , manyIgnoreYield
       -- * Exceptions
     , XmlException (..)
       -- * Other types
@@ -740,27 +742,48 @@ tagIgnoreAttrs :: MonadThrow m
 tagIgnoreAttrs name f = tag' name ignoreAttrs $ const f
 
 
--- | Ignore an empty tag and all of its attributes by predicate.
+-- | Ignore an empty tag and all of its attributes.
 --   This does not ignore the tag recursively
 --   (i.e. it assumes there are no child elements).
---   This functions returns 'Just ()' if the tag matched.
+--   This function returns @Just ()@ if the tag matched.
+--
+-- Since 1.5.0
+ignoreEmptyTag :: MonadThrow m
+          => NameMatcher a -- ^ Check if this is a correct tag name
+          -> ConduitM Event o m (Maybe ())
+ignoreEmptyTag nameMatcher = tagIgnoreAttrs nameMatcher (return ())
+
+
+{-# DEPRECATED ignoreTag "Please use 'ignoreEmptyTag'." #-}
 ignoreTag :: MonadThrow m
           => NameMatcher a -- ^ Check if this is a correct tag name
           -> ConduitM Event o m (Maybe ())
-ignoreTag namePred = tagIgnoreAttrs namePred (return ())
+ignoreTag = ignoreEmptyTag
 
--- | Ignore an empty tag, its attributes and its children subtree recursively.
+
+-- | Ignore a tag, its attributes and its children subtrees recursively.
 --   Both content and text events are ignored.
---   This functions returns 'Just' if the tag matched.
+--   This function returns @Just ()@ if the tag matched.
+--
+-- Since 1.5.0
+ignoreTreeContent :: MonadThrow m
+                  => NameMatcher a -- ^ Check if this is a correct tag name
+                  -> ConduitM Event o m (Maybe ())
+ignoreTreeContent namePred = tagIgnoreAttrs namePred (void $ many ignoreAnyTreeContent)
+
+{-# DEPRECATED ignoreTree "Please use 'ignoreTreeContent'." #-}
 ignoreTree :: MonadThrow m
-          => NameMatcher a -- ^ Check if this is a correct tag name
-          -> ConduitM Event o m (Maybe ())
-ignoreTree namePred = tagIgnoreAttrs namePred (void $ many ignoreAllTreesContent)
+           => NameMatcher a -- ^ Check if this is a correct tag name
+           -> ConduitM Event o m (Maybe ())
+ignoreTree = ignoreTreeContent
 
+-- | Like 'ignoreTreeContent', but matches any name and also ignores content events.
+ignoreAnyTreeContent :: MonadThrow m => ConduitM Event o m (Maybe ())
+ignoreAnyTreeContent = (void <$> contentMaybe) `orE` ignoreTreeContent anyName
 
--- | Like 'ignoreAllTrees', but also ignores all content events
+{-# DEPRECATED ignoreAllTreesContent "Please use 'ignoreAnyTreeContent'." #-}
 ignoreAllTreesContent :: MonadThrow m => ConduitM Event o m (Maybe ())
-ignoreAllTreesContent = (void <$> contentMaybe) `orE` ignoreTree anyName
+ignoreAllTreesContent = ignoreAnyTreeContent
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return @Just@), this function returns 'Nothing'.
