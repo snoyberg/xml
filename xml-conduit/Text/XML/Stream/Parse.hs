@@ -152,36 +152,33 @@ module Text.XML.Stream.Parse
     , PositionRange
     , EventPos
     ) where
+import           Blaze.ByteString.Builder     (fromWord32be, toByteString)
 import           Control.Applicative          ((<$>))
+import           Control.Applicative          (Alternative (empty, (<|>)),
+                                               Applicative (..), (<$>))
 import qualified Control.Applicative          as A
+import           Control.Arrow                ((***))
+import           Control.Exception            (Exception (..), SomeException)
+import           Control.Monad                (ap, guard, liftM, void)
 import           Control.Monad.Fix            (fix)
+import           Control.Monad.Trans.Class    (lift)
+import           Control.Monad.Trans.Maybe    (MaybeT (..))
 import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..),
                                                monadThrow)
 import           Data.Attoparsec.Text         (Parser, anyChar, char, manyTill,
                                                skipWhile, string, takeWhile,
                                                takeWhile1, try)
 import qualified Data.Attoparsec.Text         as AT
-import           Data.Conduit.Attoparsec      (PositionRange, conduitParser)
-import           Data.List                    (intercalate)
-import           Data.XML.Types               (Content (..), Event (..),
-                                               ExternalID (..),
-                                               Instruction (..), Name (..))
-
-import           Blaze.ByteString.Builder     (fromWord32be, toByteString)
-import           Control.Applicative          (Alternative (empty, (<|>)),
-                                               Applicative (..), (<$>))
-import           Control.Arrow                ((***))
-import           Control.Exception            (Exception (..), SomeException)
-import           Control.Monad                (ap, guard, liftM, void)
-import           Control.Monad.Trans.Class    (lift)
 import qualified Data.ByteString              as S
 import qualified Data.ByteString.Lazy         as L
 import           Data.Char                    (isSpace)
 import           Data.Conduit
+import           Data.Conduit.Attoparsec      (PositionRange, conduitParser)
 import           Data.Conduit.Binary          (sourceFile)
 import qualified Data.Conduit.List            as CL
 import qualified Data.Conduit.Text            as CT
 import           Data.Default                 (Default (..))
+import           Data.List                    (intercalate)
 import           Data.List                    (foldl')
 import qualified Data.Map                     as Map
 import           Data.Maybe                   (fromMaybe, isNothing)
@@ -194,6 +191,9 @@ import           Data.Text.Encoding.Error     (ignore, lenientDecode)
 import           Data.Text.Read               (Reader, decimal, hexadecimal)
 import           Data.Typeable                (Typeable)
 import           Data.Word                    (Word32)
+import           Data.XML.Types               (Content (..), Event (..),
+                                               ExternalID (..),
+                                               Instruction (..), Name (..))
 import           Prelude                      hiding (takeWhile)
 import           Text.XML.Stream.Token
 
