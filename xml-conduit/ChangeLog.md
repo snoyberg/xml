@@ -1,3 +1,13 @@
+## 1.5.0
+
+* `tag` function no longer throws an exception when attributes don't match [#93](https://github.com/snoyberg/xml/pull/93)
+* Add `many_` combinator to avoid building results in memory [#94](https://github.com/snoyberg/xml/pull/94)
+* Turn some functions from `Consumer Event m a` to `ConduitM Event o m a` to allow yielding values
+* Replace `takeAllTreesContent` with `takeAnyTreeContent`, that only consumes one tree
+* Introduce `NameMatcher` type to refactor tag parsers
+* Add a couple of `take*` functions to stream events rather than parse them
+* Rename `ignore*` functions to comply with naming convention
+
 ## 1.4.0.3
 
 * Compatibility with blaze-markup-0.8.0.0 [#95](https://github.com/snoyberg/xml/issues/95)
