@@ -721,6 +721,8 @@ tag nameMatcher attrParser f = do
             Right (attr, _) -> Left $ toException $ UnparsedAttributes attr
 
 -- | A simplified version of 'tag' where the 'NameMatcher' result isn't forwarded to the attributes parser.
+--
+-- Since 1.5.0
 tag' :: MonadThrow m
      => NameMatcher a -> AttrParser b -> (b -> ConduitM Event o m c)
      -> ConduitM Event o m (Maybe c)
@@ -853,6 +855,8 @@ instance Exception XmlException where
 
 
 -- | A @NameMatcher@ describes which names a tag parser is allowed to match.
+--
+-- Since 1.5.0
 newtype NameMatcher a = NameMatcher { runNameMatcher :: Name -> Maybe a }
 
 deriving instance Functor NameMatcher
@@ -861,23 +865,32 @@ instance Applicative NameMatcher where
   pure a = NameMatcher $ const $ pure a
   NameMatcher f <*> NameMatcher a = NameMatcher $ \name -> f name <*> a name
 
--- | 'NameMatcher's can be combined with '(<|>)'
+-- | 'NameMatcher's can be combined with @\<|\>@
 instance Alternative NameMatcher where
   empty = NameMatcher $ const Nothing
   NameMatcher f <|> NameMatcher g = NameMatcher (\a -> f a <|> g a)
 
 -- | Match a single 'Name' in a concise way.
--- Note that 'Name' is namespace sensitive. When using the 'IsString' instance of name,
--- use @ "{http:\/\/a\/b}c" :: Name@ to match the tag @c@ in the XML namespace @http://a/b@
+-- Note that 'Name' is namespace sensitive: when using the 'IsString' instance,
+-- use @"{http:\/\/a\/b}c"@ to match the tag @c@ in the XML namespace @http://a/b@
 instance (a ~ Name) => IsString (NameMatcher a) where
   fromString s = matching (== fromString s)
 
+-- | @matching f@ matches @name@ iff @f name@ is true. Returns the matched 'Name'.
+--
+-- Since 1.5.0
 matching :: (Name -> Bool) -> NameMatcher Name
 matching f = NameMatcher $ \name -> if f name then Just name else Nothing
 
+-- | Matches any 'Name'. Returns the matched 'Name'.
+--
+-- Since 1.5.0
 anyName :: NameMatcher Name
 anyName = matching (const True)
 
+-- | Matches any 'Name' from the given list. Returns the matched 'Name'.
+--
+-- Since 1.5.0
 anyOf :: [Name] -> NameMatcher Name
 anyOf values = matching (`elem` values)
 
@@ -955,6 +968,8 @@ many :: Monad m
 many i = manyIgnore i $ return Nothing
 
 -- | Like 'many' but discards the results without building an intermediate list.
+--
+-- Since 1.5.0
 many_ :: MonadThrow m
       => ConduitM Event o m (Maybe a)
       -> ConduitM Event o m ()
