@@ -97,21 +97,16 @@ module Text.XML.Stream.Parse
     , decodeXmlEntities
     , decodeHtmlEntities
       -- * Event parsing
-    {-# DEPRECATED tag "The signature of this function will change in next release." #-}
     , tag
-    {-# DEPRECATED tagPredicate "This function will be removed in next release." #-}
     , tagPredicate
-    {-# DEPRECATED tagName "This function will be removed in next release." #-}
     , tagName
     , tagNoAttr
     , tagIgnoreAttrs
-    {-# DEPRECATED tagPredicateIgnoreAttrs "This function will be removed in next release." #-}
     , tagPredicateIgnoreAttrs
     , content
     , contentMaybe
       -- * Ignoring tags/trees
     , ignoreTag
-    {-# DEPRECATED ignoreTagName "This function will be removed in next release." #-}
     , ignoreTagName
     , ignoreAnyTagName
     , ignoreAllTags
@@ -655,6 +650,7 @@ content = fromMaybe T.empty <$> contentMaybe
 -- consumed. If you want to allow extra attributes, see 'ignoreAttrs'.
 --
 -- This function automatically ignores comments, instructions and whitespace.
+{-# DEPRECATED tag "The signature of this function will change in next release." #-}
 tag :: MonadThrow m
     => (Name -> Maybe a) -- ^ Check if this is a correct tag name
                          --   and return a value that can be used to get an @AttrParser@.
@@ -718,6 +714,7 @@ tag checkName attrParser f = do
             Right (attr, _) -> Left $ toException $ UnparsedAttributes attr
 
 -- | A simplified version of 'tag' which matches against boolean predicates.
+{-# DEPRECATED tagPredicate "This function will be removed in next release." #-}
 tagPredicate :: MonadThrow m
              => (Name -> Bool) -- ^ Name predicate that returns @True@ if the name matches the parser
              -> AttrParser a -- ^ The attribute parser to be used for tags matching the predicate
@@ -735,6 +732,7 @@ tagPredicate p attrParser = tag (guard . p) (const attrParser)
 -- use
 -- > "{http://a/b}c" :: Name
 -- to match the tag @c@ in the XML namespace @http://a/b@
+{-# DEPRECATED tagName "This function will be removed in next release." #-}
 tagName :: MonadThrow m
      => Name -- ^ The tag name this parser matches to (includes namespaces)
      -> AttrParser a -- ^ The attribute parser to be used for tags matching the predicate
@@ -744,6 +742,7 @@ tagName :: MonadThrow m
 tagName name = tagPredicate (== name)
 
 -- | A further simplified tag parser, which requires that no attributes exist.
+{-# DEPRECATED tagNoAttr "The signature of this function will change in next release." #-}
 tagNoAttr :: MonadThrow m
           => Name -- ^ The name this parser matches to
           -> CI.ConduitM Event o m a -- ^ Handler function to handle the children of the matched tag
@@ -752,6 +751,7 @@ tagNoAttr name f = tagName name (return ()) $ const f
 
 
 -- | A further simplified tag parser, which ignores all attributes, if any exist
+{-# DEPRECATED tagIgnoreAttrs "The signature of this function will change in next release." #-}
 tagIgnoreAttrs :: MonadThrow m
                => Name -- ^ The name this parser matches to
                -> CI.ConduitM Event o m a -- ^ Handler function to handle the children of the matched tag
@@ -759,6 +759,7 @@ tagIgnoreAttrs :: MonadThrow m
 tagIgnoreAttrs name f = tagName name ignoreAttrs $ const f
 
 -- | A further simplified tag parser, which ignores all attributes, if any exist
+{-# DEPRECATED tagPredicateIgnoreAttrs "This function will be removed in next release." #-}
 tagPredicateIgnoreAttrs :: MonadThrow m
                         => (Name -> Bool) -- ^ The name predicate this parser matches to
                         -> CI.ConduitM Event o m a -- ^ Handler function to handle the children of the matched tag
@@ -769,18 +770,21 @@ tagPredicateIgnoreAttrs namePred f = tagPredicate namePred ignoreAttrs $ const f
 --   This does not ignore the tag recursively
 --   (i.e. it assumes there are no child elements).
 --   This functions returns 'Just' if the tag matched.
+{-# DEPRECATED ignoreTag "The signature of this function will change in next release." #-}
 ignoreTag :: MonadThrow m
           => (Name -> Bool) -- ^ The predicate name to match to
           -> ConduitM Event o m (Maybe ())
 ignoreTag namePred = tagPredicateIgnoreAttrs namePred (return ())
 
 -- | Like 'ignoreTag', but matches an exact name
+{-# DEPRECATED ignoreTagName "This function will be removed in next release." #-}
 ignoreTagName :: MonadThrow m
               => Name -- ^ The name to match to
               -> ConduitM Event o m (Maybe ())
 ignoreTagName name = ignoreTag (== name)
 
 -- | Like 'ignoreTagName', but matches any name from a list of names.
+{-# DEPRECATED ignoreAnyTagName "This function will be removed in next release." #-}
 ignoreAnyTagName :: MonadThrow m
                  => [Name] -- ^ The name to match to
                  -> ConduitM Event o m (Maybe ())
@@ -789,12 +793,14 @@ ignoreAnyTagName names = ignoreTag (`elem` names)
 -- | Like 'ignoreTag', but matches all tag name.
 --
 --   > ignoreAllTags = ignoreTag (const True)
+{-# DEPRECATED ignoreAllTags "This function will be removed in next release." #-}
 ignoreAllTags :: MonadThrow m => ConduitM Event o m (Maybe ())
 ignoreAllTags = ignoreTag $ const True
 
 -- | Ignore an empty tag, its attributes and its children subtree recursively.
 --   Both content and text events are ignored.
 --   This functions returns 'Just' if the tag matched.
+{-# DEPRECATED ignoreTree "The signature of this function will change in next release." #-}
 ignoreTree :: MonadThrow m
           => (Name -> Bool) -- ^ The predicate name to match to
           -> ConduitM Event o m (Maybe ())
@@ -802,12 +808,14 @@ ignoreTree namePred =
     tagPredicateIgnoreAttrs namePred (void $ many ignoreAllTreesContent)
 
 -- | Like 'ignoreTagName', but also ignores non-empty tabs
+{-# DEPRECATED ignoreTreeName "This function will be removed in next release." #-}
 ignoreTreeName :: MonadThrow m
                => Name
                -> ConduitM Event o m (Maybe ())
 ignoreTreeName name = ignoreTree (== name)
 
 -- | Like 'ignoreTagName', but matches any name from a list of names.
+{-# DEPRECATED ignoreAnyTreeName "This function will be removed in next release." #-}
 ignoreAnyTreeName :: MonadThrow m
                  => [Name] -- ^ The name to match to
                  -> ConduitM Event o m (Maybe ())
@@ -816,10 +824,12 @@ ignoreAnyTreeName names = ignoreTree (`elem` names)
 -- | Like 'ignoreAllTags', but ignores entire subtrees.
 --
 --   > ignoreAllTrees = ignoreTree (const True)
+{-# DEPRECATED ignoreAllTrees "This function will be removed in next release." #-}
 ignoreAllTrees :: MonadThrow m => ConduitM Event o m (Maybe ())
 ignoreAllTrees = ignoreTree $ const True
 
 -- | Like 'ignoreAllTrees', but also ignores all content events
+{-# DEPRECATED ignoreAllTreesContent "This function will be renamed into @ignoreAnyTreeContent@ in next release." #-}
 ignoreAllTreesContent :: MonadThrow m => ConduitM Event o m (Maybe ())
 ignoreAllTreesContent = (void <$> contentMaybe) `orE` ignoreAllTrees
 
@@ -1022,6 +1032,7 @@ manyYield' consumer = manyIgnoreYield consumer ignoreAllTreesContent
 -- Just [ EventBeginElement "b" [], EventBeginElement "c" [], EventEndElement "c", EventEndElement "b" ]
 --
 -- Since 1.4.0
+{-# DEPRECATED takeAllTreesContent "This function will be removed in next release." #-}
 takeAllTreesContent :: MonadThrow m => Conduit Event m Event
 takeAllTreesContent = do
   event <- await
