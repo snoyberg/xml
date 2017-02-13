@@ -97,16 +97,21 @@ module Text.XML.Stream.Parse
     , decodeXmlEntities
     , decodeHtmlEntities
       -- * Event parsing
+    {-# DEPRECATED tag "The signature of this function will change in next release." #-}
     , tag
+    {-# DEPRECATED tagPredicate "This function will be removed in next release." #-}
     , tagPredicate
+    {-# DEPRECATED tagName "This function will be removed in next release." #-}
     , tagName
     , tagNoAttr
     , tagIgnoreAttrs
+    {-# DEPRECATED tagPredicateIgnoreAttrs "This function will be removed in next release." #-}
     , tagPredicateIgnoreAttrs
     , content
     , contentMaybe
       -- * Ignoring tags/trees
     , ignoreTag
+    {-# DEPRECATED ignoreTagName "This function will be removed in next release." #-}
     , ignoreTagName
     , ignoreAnyTagName
     , ignoreAllTags
