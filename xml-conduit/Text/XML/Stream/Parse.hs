@@ -34,10 +34,12 @@
 -- > data Person = Person Int Text
 -- >     deriving Show
 -- >
--- > parsePerson = tagName "person" (requireAttr "age") $ \age -> do
+-- > parsePerson :: MonadThrow m => Consumer Event m (Maybe Person)
+-- > parsePerson = tag' "person" (requireAttr "age") $ \age -> do
 -- >     name <- content
 -- >     return $ Person (read $ unpack age) name
 -- >
+-- > parsePeople :: MonadThrow m => Sink Event m (Maybe [Person])
 -- > parsePeople = tagNoAttr "people" $ many parsePerson
 -- >
 -- > main = do
@@ -47,7 +49,7 @@
 --
 -- will produce:
 --
--- > [Person {age = 25, name = "Michael"},Person {age = 2, name = "Eliezer"}]
+-- > [Person 25 "Michael",Person 2 "Eliezer"]
 --
 -- This module also supports streaming results using 'yield'.
 -- This allows parser results to be processed using conduits
@@ -58,21 +60,23 @@
 -- See http://stackoverflow.com/q/21367423/2597135 for a related discussion.
 --
 -- > {-# LANGUAGE OverloadedStrings #-}
+-- > import Control.Monad (void)
+-- > import Control.Monad.Trans.Class (lift)
 -- > import Control.Monad.Trans.Resource
 -- > import Data.Conduit
--- > import Data.Text (Text, unpack)
--- > import Text.XML.Stream.Parse
--- > import Text.XML (Name)
--- > import Control.Monad.Trans.Class (lift)
--- > import Control.Monad (void)
 -- > import qualified Data.Conduit.List as CL
+-- > import Data.Text (Text, unpack)
+-- > import Data.XML.Types (Event)
+-- > import Text.XML.Stream.Parse
 -- >
 -- > data Person = Person Int Text deriving Show
 -- >
--- > parsePerson = tagName "person" (requireAttr "age") $ \age -> do
+-- > parsePerson :: MonadThrow m => Consumer Event m (Maybe Person)
+-- > parsePerson = tag' "person" (requireAttr "age") $ \age -> do
 -- >     name <- content
 -- >     return $ Person (read $ unpack age) name
 -- >
+-- > parsePeople :: MonadThrow m => Conduit Event m Person
 -- > parsePeople = void $ tagNoAttr "people" $ manyYield parsePerson
 -- >
 -- > main = runResourceT $
