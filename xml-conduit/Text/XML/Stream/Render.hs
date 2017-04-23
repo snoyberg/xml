@@ -163,6 +163,36 @@ renderEvent yield' RenderSettings { rsPretty = isPretty, rsNamespaces = namespac
                 yield' $ Chunk token
                 loop nslevels'
 
+renderBuilderFlush :: Monad m => RenderSettings -> Conduit (Flush Event) m (Flush Builder)
+-- pretty printing not implemented.
+-- renderBuilderFlush RenderSettings { rsPretty = True, rsNamespaces = n } = flushPassThrough prettify =$= renderBuilder' n True
+renderBuilderFlush RenderSettings { rsPretty = False, rsNamespaces = n } = renderBuilderFlush' n False
+
+renderBuilderFlush' :: Monad m => [(Text, Text)] -> Bool -> Conduit (Flush Event) m (Flush Builder)
+renderBuilderFlush' namespaces0 isPretty = do
+    loop []
+  where
+    loop nslevels = await >>= maybe (return ()) (go nslevels)
+
+    go nslevels fe =
+        case fe of
+            Chunk e@(EventBeginElement n1 as) -> do
+                mnext <- CL.peek
+                isClosed <-
+                    case mnext of
+                        Just (Chunk (EventEndElement n2)) | n1 == n2 -> do
+                            CL.drop 1
+                            return True
+                        _ -> return False
+                let (token, nslevels') = mkBeginToken isPretty isClosed namespaces0 nslevels n1 as
+                yield (Chunk token)
+                loop nslevels'
+            Chunk e -> do
+                let (token, nslevels') = eventToToken nslevels (const True) e
+                yield (Chunk token)
+                loop nslevels'
+            Flush -> yield Flush >> loop nslevels
+
 eventToToken :: Stack -> (Content -> Bool) -> Event -> (Builder, [NSLevel])
 eventToToken s _ EventBeginDocument =
     (tokenToBuilder $ TokenBeginDocument
