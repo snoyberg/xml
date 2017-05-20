@@ -51,6 +51,7 @@ main = hspec $ do
         it "strips duplicated attributes" stripDuplicateAttributes
         it "displays comments" testRenderComments
         it "conduit parser" testConduitParser
+        it "can omit the XML declaration" omitXMLDeclaration
     describe "XML Cursors" $ do
         it "has correct parent" cursorParent
         it "has correct ancestor" cursorAncestor
@@ -527,6 +528,14 @@ testConduitParser = runResourceT $ do
         ma <- P.tagNoAttr "item" (return 1)
         maybe (return ()) (\a -> C.yield a >> f) ma
 
+omitXMLDeclaration :: Assertion
+omitXMLDeclaration = Res.renderLBS settings input @?= spec
+  where
+    settings = def { Res.rsXMLDeclaration = False }
+    input = Res.Document (Prologue [] Nothing [])
+              (Res.Element "foo" mempty [Res.NodeContent "bar"])
+              []
+    spec = "<foo>bar</foo>"
 
 name :: [Cu.Cursor] -> [Text]
 name [] = []

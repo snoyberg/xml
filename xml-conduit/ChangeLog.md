@@ -1,3 +1,7 @@
+## 1.5.1
+
+* New render setting, `rsXMLDeclaration`; setting it to `False` omits the XML declaration.
+
 ## 1.5.0
 
 * `tag` function no longer throws an exception when attributes don't match [#93](https://github.com/snoyberg/xml/pull/93)

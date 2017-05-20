@@ -63,6 +63,7 @@ module Text.XML
     , R.rsNamespaces
     , R.rsAttrOrder
     , R.rsUseCDATA
+    , R.rsXMLDeclaration
     , R.orderAttrs
       -- * Conversion
     , toXMLDocument

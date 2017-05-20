@@ -18,6 +18,7 @@ module Text.XML.Stream.Render
     , rsNamespaces
     , rsAttrOrder
     , rsUseCDATA
+    , rsXMLDeclaration
     , orderAttrs
       -- * Event rendering
     , tag
@@ -83,6 +84,12 @@ data RenderSettings = RenderSettings
       -- Default: @False@
       --
       -- @since 1.3.3
+    , rsXMLDeclaration :: Bool
+      -- ^ Determines whether the XML declaration will be output.
+      --
+      -- Default: @True@
+      --
+      -- @since 1.5.1
     }
 
 instance Default RenderSettings where
@@ -91,6 +98,7 @@ instance Default RenderSettings where
         , rsNamespaces = []
         , rsAttrOrder = const Map.toList
         , rsUseCDATA = const False
+        , rsXMLDeclaration = True
         }
 
 -- | Convenience function to create an ordering function suitable for
@@ -139,7 +147,7 @@ renderBuilder' yield' settings =
     renderEvent' = renderEvent yield' settings
 
 renderEvent :: Monad m => (Flush Builder -> Producer m o) -> RenderSettings -> Conduit (Flush Event) m o
-renderEvent yield' RenderSettings { rsPretty = isPretty, rsNamespaces = namespaces0, rsUseCDATA = useCDATA } =
+renderEvent yield' RenderSettings { rsPretty = isPretty, rsNamespaces = namespaces0, rsUseCDATA = useCDATA, rsXMLDeclaration = useXMLDecl } =
     loop []
   where
     loop nslevels = await >>= maybe (return ()) (go nslevels)
@@ -159,34 +167,35 @@ renderEvent yield' RenderSettings { rsPretty = isPretty, rsNamespaces = namespac
                 yield' $ Chunk token
                 loop nslevels'
             _ -> do
-                let (token, nslevels') = eventToToken nslevels useCDATA e
+                let (token, nslevels') = eventToToken nslevels useCDATA useXMLDecl e
                 yield' $ Chunk token
                 loop nslevels'
 
-eventToToken :: Stack -> (Content -> Bool) -> Event -> (Builder, [NSLevel])
-eventToToken s _ EventBeginDocument =
-    (tokenToBuilder $ TokenBeginDocument
+eventToToken :: Stack -> (Content -> Bool) -> Bool -> Event -> (Builder, [NSLevel])
+eventToToken s _ True EventBeginDocument =
+    (tokenToBuilder $ TokenXMLDeclaration
             [ ("version", [ContentText "1.0"])
             , ("encoding", [ContentText "UTF-8"])
             ]
      , s)
-eventToToken s _ EventEndDocument = (mempty, s)
-eventToToken s _ (EventInstruction i) = (tokenToBuilder $ TokenInstruction i, s)
-eventToToken s _ (EventBeginDoctype n meid) = (tokenToBuilder $ TokenDoctype n meid [], s)
-eventToToken s _ EventEndDoctype = (mempty, s)
-eventToToken s _ (EventCDATA t) = (tokenToBuilder $ TokenCDATA t, s)
-eventToToken s _ (EventEndElement name) =
+eventToToken s _ False EventBeginDocument = (mempty, s)
+eventToToken s _ _ EventEndDocument = (mempty, s)
+eventToToken s _ _ (EventInstruction i) = (tokenToBuilder $ TokenInstruction i, s)
+eventToToken s _ _ (EventBeginDoctype n meid) = (tokenToBuilder $ TokenDoctype n meid [], s)
+eventToToken s _ _ EventEndDoctype = (mempty, s)
+eventToToken s _ _ (EventCDATA t) = (tokenToBuilder $ TokenCDATA t, s)
+eventToToken s _ _ (EventEndElement name) =
     (tokenToBuilder $ TokenEndElement $ nameToTName sl name, s')
   where
     (sl:s') = s
-eventToToken s useCDATA (EventContent c)
+eventToToken s useCDATA _ (EventContent c)
     | useCDATA c =
         case c of
           ContentText txt -> (tokenToBuilder $ TokenCDATA txt, s)
           ContentEntity txt -> (tokenToBuilder $ TokenCDATA txt, s)
     | otherwise  = (tokenToBuilder $ TokenContent c, s)
-eventToToken s _ (EventComment t) = (tokenToBuilder $ TokenComment t, s)
-eventToToken _ _ EventBeginElement{} = error "eventToToken on EventBeginElement" -- mkBeginToken False s name attrs
+eventToToken s _ _ (EventComment t) = (tokenToBuilder $ TokenComment t, s)
+eventToToken _ _ _ EventBeginElement{} = error "eventToToken on EventBeginElement" -- mkBeginToken False s name attrs
 
 type Stack = [NSLevel]
 
