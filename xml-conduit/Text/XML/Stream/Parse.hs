@@ -204,7 +204,7 @@ import           Text.XML.Stream.Token
 type Ents = [(Text, Text)]
 
 tokenToEvent :: ParseSettings -> Ents -> [NSLevel] -> Token -> (Ents, [NSLevel], [Event])
-tokenToEvent _ es n (TokenBeginDocument _) = (es, n, [])
+tokenToEvent _ es n (TokenXMLDeclaration _) = (es, n, [])
 tokenToEvent _ es n (TokenInstruction i) = (es, n, [EventInstruction i])
 tokenToEvent ps es n (TokenBeginElement name as isClosed _) =
     (es, n', if isClosed then [begin, end] else [begin])
@@ -318,7 +318,7 @@ checkXMLDecl bs0 Nothing =
         case parser $ decodeUtf8With lenientDecode nextChunk of
             AT.Fail{} -> fallback
             AT.Partial f -> await >>= maybe fallback (loop chunks f)
-            AT.Done _ (TokenBeginDocument attrs) -> findEncoding attrs
+            AT.Done _ (TokenXMLDeclaration attrs) -> findEncoding attrs
             AT.Done{} -> fallback
       where
         chunks = nextChunk : chunks0
@@ -454,7 +454,7 @@ parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False
                 char' '?'
                 char' '>'
                 newline <|> return ()
-                return $ TokenBeginDocument as
+                return $ TokenXMLDeclaration as
             else do
                 skipSpace
                 x <- T.pack <$> manyTill anyChar (try $ string "?>")

@@ -27,7 +27,7 @@ import Control.Arrow (first)
 oneSpace :: Builder
 oneSpace = copyByteString " "
 
-data Token = TokenBeginDocument [TAttribute]
+data Token = TokenXMLDeclaration [TAttribute]
            | TokenInstruction Instruction
            | TokenBeginElement TName [TAttribute] Bool Int -- ^ indent
            | TokenEndElement TName
@@ -37,7 +37,7 @@ data Token = TokenBeginDocument [TAttribute]
            | TokenCDATA Text
     deriving Show
 tokenToBuilder :: Token -> Builder
-tokenToBuilder (TokenBeginDocument attrs) =
+tokenToBuilder (TokenXMLDeclaration attrs) =
     fromByteString "<?xml"
     `mappend` foldAttrs oneSpace attrs (fromByteString "?>")
 tokenToBuilder (TokenInstruction (Instruction target data_)) = mconcat
