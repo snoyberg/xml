@@ -132,6 +132,7 @@ module Text.XML.Stream.Parse
     , anyName
       -- * Attribute parsing
     , AttrParser
+    , runAttrParser
     , attr
     , requireAttr
     , optionalAttr
