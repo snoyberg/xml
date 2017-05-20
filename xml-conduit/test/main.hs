@@ -533,7 +533,7 @@ omitXMLDeclaration = Res.renderLBS settings input @?= spec
   where
     settings = def { Res.rsXMLDeclaration = False }
     input = Res.Document (Prologue [] Nothing [])
-              (Res.Element "foo" mempty [Res.NodeContent "bar"])
+              (Res.Element "foo" Map.empty [Res.NodeContent "bar"])
               []
     spec = "<foo>bar</foo>"
 
