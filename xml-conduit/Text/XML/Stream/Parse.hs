@@ -181,7 +181,7 @@ import           Data.Conduit.Attoparsec      (PositionRange, conduitParser)
 import           Data.Conduit.Binary          (sourceFile)
 import qualified Data.Conduit.List            as CL
 import qualified Data.Conduit.Text            as CT
-import           Data.Default                 (Default (..))
+import           Data.Default.Class           (Default (..))
 import           Data.List                    (intercalate)
 import           Data.List                    (foldl')
 import qualified Data.Map                     as Map
