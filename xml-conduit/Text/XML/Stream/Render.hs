@@ -37,7 +37,7 @@ import           Data.Conduit
 import           Data.Conduit.Blaze           (builderToByteString)
 import qualified Data.Conduit.List            as CL
 import qualified Data.Conduit.Text            as CT
-import           Data.Default                 (Default (def))
+import           Data.Default.Class           (Default (def))
 import           Data.List                    (foldl')
 import           Data.Map                     (Map)
 import qualified Data.Map                     as Map
