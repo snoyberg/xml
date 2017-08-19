@@ -1,3 +1,7 @@
+## 1.3.0
+
+* Major version bump because `xml-conduit` is no longer transitively exporting various `Data.Default` instances.
+
 ## 1.2.1.1
 
 * Allow xml-conduit 1.4
