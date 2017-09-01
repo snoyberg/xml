@@ -179,7 +179,7 @@ testChoose = do
         testChooseElemOrTextIsWhiteSpace
     it "can choose between text and elements, when the text is whitespace"
         testChooseTextOrElemIsWhiteSpace
-    it "can choose betwen text and elements, when the whitespace is both literal and encoded"
+    it "can choose between text and elements, when the whitespace is both literal and encoded"
         testChooseElemOrTextIsChunkedText
     it "can choose between text and elements, when the text is chunked the other way"
         testChooseElemOrTextIsChunkedText2
