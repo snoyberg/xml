@@ -156,14 +156,12 @@ module Text.XML.Stream.Parse
     , PositionRange
     , EventPos
     ) where
-import           Blaze.ByteString.Builder     (fromWord32be, toByteString)
-import           Control.Applicative          ((<$>))
 import           Control.Applicative          (Alternative (empty, (<|>)),
                                                Applicative (..), (<$>))
 import qualified Control.Applicative          as A
 import           Control.Arrow                ((***))
 import           Control.Exception            (Exception (..), SomeException)
-import           Control.Monad                (ap, guard, liftM, void)
+import           Control.Monad                (ap, liftM, void)
 import           Control.Monad.Fix            (fix)
 import           Control.Monad.Trans.Class    (lift)
 import           Control.Monad.Trans.Maybe    (MaybeT (..))
@@ -189,12 +187,9 @@ import           Data.Maybe                   (fromMaybe, isNothing)
 import           Data.String                  (IsString (..))
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
-import           Data.Text.Encoding           (decodeUtf32BEWith,
-                                               decodeUtf8With)
-import           Data.Text.Encoding.Error     (ignore, lenientDecode)
-import           Data.Text.Read               (Reader, decimal, hexadecimal)
+import           Data.Text.Encoding           (decodeUtf8With)
+import           Data.Text.Encoding.Error     (lenientDecode)
 import           Data.Typeable                (Typeable)
-import           Data.Word                    (Word32)
 import           Data.XML.Types               (Content (..), Event (..),
                                                ExternalID (..),
                                                Instruction (..), Name (..))
@@ -567,24 +562,66 @@ parseIdent =
     valid '"'  = False
     valid '\'' = False
     valid '/'  = False
+    valid ';'  = False
+    valid '#'  = False
     valid c    = not $ isXMLSpace c
 
 parseContent :: DecodeEntities
              -> Bool -- break on double quote
              -> Bool -- break on single quote
              -> Parser Content
-parseContent de breakDouble breakSingle = parseEntity <|> parseTextContent where
-  parseEntity = do
+parseContent de breakDouble breakSingle = parseReference <|> parseTextContent where
+  parseReference = do
     char' '&'
-    t <- takeWhile1 (/= ';')
+    t <- parseEntityRef <|> parseHexCharRef <|> parseDecCharRef
     char' ';'
-    return $ de t
+    return t
+  parseEntityRef = do
+    TName ma b <- parseName
+    let name = maybe "" (`T.append` ":") ma `T.append` b
+    return $ case name of
+      "lt" -> ContentText "<"
+      "gt" -> ContentText ">"
+      "amp" -> ContentText "&"
+      "quot" -> ContentText "\""
+      "apos" -> ContentText "'"
+      _ -> de name
+  parseHexCharRef = do
+    void $ string "#x"
+    n <- AT.hexadecimal
+    case toValidXmlChar n of
+      Nothing -> fail "Invalid character from hexadecimal character reference."
+      Just c -> return $ ContentText $ T.singleton c
+  parseDecCharRef = do
+    void $ string "#"
+    n <- AT.decimal
+    case toValidXmlChar n of
+      Nothing -> fail "Invalid character from decimal character reference."
+      Just c -> return $ ContentText $ T.singleton c
   parseTextContent = ContentText <$> takeWhile1 valid
   valid '"'  = not breakDouble
   valid '\'' = not breakSingle
   valid '&'  = False -- amp
   valid '<'  = False -- lt
   valid _    = True
+
+-- | Is this codepoint a valid XML character? See
+-- <https://www.w3.org/TR/xml/#charsets>. This is proudly XML 1.0 only.
+toValidXmlChar :: Int -> Maybe Char
+toValidXmlChar n
+  | any checkRange ranges = Just (toEnum n)
+  | otherwise = Nothing
+  where
+    --Inclusive lower bound, inclusive upper bound.
+    ranges :: [(Int, Int)]
+    ranges =
+      [ (0x9, 0xA)
+      , (0xD, 0xD)
+      , (0x20, 0xD7FF)
+      , (0xE000, 0xFFFD)
+      , (0x10000, 0x10FFFF)
+      ]
+    checkRange (lb, ub) = lb <= n && n <= ub
 
 skipSpace :: Parser ()
 skipSpace = skipWhile isXMLSpace
@@ -1101,38 +1138,21 @@ takeAllTreesContent = takeAnyTreeContent
 
 type DecodeEntities = Text -> Content
 
--- | Default implementation of 'DecodeEntities': handles numeric entities and
--- the five standard character entities (lt, gt, amp, quot, apos).
+-- | Default implementation of 'DecodeEntities', which leaves the
+-- entity as-is. Numeric character references and the five standard
+-- entities (lt, gt, amp, quot, pos) are handled internally by the
+-- parser.
 decodeXmlEntities :: DecodeEntities
-decodeXmlEntities "lt" = ContentText "<"
-decodeXmlEntities "gt" = ContentText ">"
-decodeXmlEntities "amp" = ContentText "&"
-decodeXmlEntities "quot" = ContentText "\""
-decodeXmlEntities "apos" = ContentText "'"
-decodeXmlEntities t = let backup = ContentEntity t in
-  case T.uncons t of
-    Just ('#', t') ->
-      case T.uncons t' of
-        Just ('x', t'')
-          | T.length t'' > 6 -> backup
-          | otherwise        -> decodeChar hexadecimal backup t''
-        _
-          | T.length t'  > 7 -> backup
-          | otherwise        -> decodeChar decimal backup t'
-    _ -> backup
+decodeXmlEntities = ContentEntity
 
--- | HTML4-compliant entity decoder. Handles numerics, the five standard
--- character entities, and the additional 248 entities defined by HTML 4 and
--- XHTML 1.
+-- | HTML4-compliant entity decoder. Handles the additional 248
+-- entities defined by HTML 4 and XHTML 1.
 --
 -- Note that HTML 5 introduces a drastically larger number of entities, and
 -- this code does not recognize most of them.
 decodeHtmlEntities :: DecodeEntities
 decodeHtmlEntities t =
-    case decodeXmlEntities t of
-        x@ContentText{} -> x
-        backup@ContentEntity{} ->
-            maybe backup ContentText $ Map.lookup t htmlEntities
+  maybe (ContentEntity t) ContentText $ Map.lookup t htmlEntities
 
 htmlEntities :: Map.Map T.Text T.Text
 htmlEntities = Map.fromList
@@ -1386,12 +1406,3 @@ htmlEntities = Map.fromList
     , ("hearts", "\9829")
     , ("diams", "\9830")
     ]
-
-decodeChar :: Reader Word32 -> Content -> Text -> Content
-decodeChar readNum backup = either (const backup) toContent . readNum
-  where
-    toContent (num, extra) | T.null extra =
-      case decodeUtf32BEWith ignore . toByteString $ fromWord32be num of
-          c    | T.length c    == 1 -> ContentText c
-               | otherwise          -> backup
-    toContent _ = backup
