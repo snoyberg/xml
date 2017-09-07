@@ -52,6 +52,7 @@ main = hspec $ do
         it "displays comments" testRenderComments
         it "conduit parser" testConduitParser
         it "can omit the XML declaration" omitXMLDeclaration
+        context "correctly parses hexadecimal entities" hexEntityParsing
     describe "XML Cursors" $ do
         it "has correct parent" cursorParent
         it "has correct ancestor" cursorAncestor
@@ -536,6 +537,48 @@ omitXMLDeclaration = Res.renderLBS settings input @?= spec
               (Res.Element "foo" Map.empty [Res.NodeContent "bar"])
               []
     spec = "<foo>bar</foo>"
+
+hexEntityParsing :: Spec
+hexEntityParsing = do
+  it "rejects leading 0x" $
+    go "<foo>&#x0xff;</foo>" @?= Nothing
+  it "rejects leading 0X" $
+    go "<foo>&#x0Xff;</foo>" @?= Nothing
+  it "accepts lowercase hex digits" $
+    go "<foo>&#xff;</foo>" @?= Just spec
+  it "accepts uppercase hex digits" $
+    go "<foo>&#xFF;</foo>" @?= Just spec
+  --Note: this must be rejected, because, according to the XML spec, a
+  --legal EntityRef's entity matches Name, which can't start with a
+  --hash.
+  it "rejects trailing junk" $
+    go "<foo>&#xffhello;</foo>" @?= Nothing
+  --Some of these next tests are XML 1.0 specific (i.e., they would
+  --differ for XML 1.1), but approximately no-one uses XML 1.1.
+  it "rejects illegal character #x0" $
+    go "<foo>&#x0;</foo>" @?= Nothing
+  it "rejects illegal character #xFFFE" $
+    go "<foo>&#xFFFE;</foo>" @?= Nothing
+  it "rejects illegal character #xFFFF" $
+    go "<foo>&#xFFFF;</foo>" @?= Nothing
+  it "rejects illegal character #xD900" $
+    go "<foo>&#xD900;</foo>" @?= Nothing
+  it "rejects illegal character #xC" $
+    go "<foo>&#xC;</foo>" @?= Nothing
+  it "rejects illegal character #x1F" $
+    go "<foo>&#x1F;</foo>" @?= Nothing
+  it "accepts astral plane character" $
+    go "<foo>&#x1006ff;</foo>" @?= Just astralSpec
+  where
+    spec = Document (Prologue [] Nothing [])
+                    (Element "foo" [] [NodeContent (ContentText "\xff")])
+                    []
+
+    astralSpec = Document (Prologue [] Nothing [])
+                    (Element "foo" [] [NodeContent (ContentText "\x1006ff")])
+                    []
+
+    go = either (const Nothing) Just . D.parseLBS def
 
 name :: [Cu.Cursor] -> [Text]
 name [] = []
