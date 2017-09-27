@@ -1,3 +1,8 @@
+## 1.2.1.2
+
+* Remove an upper bound
+* Doc improvement
+
 ## 1.2.1.1
 
 * Allow xml-conduit 1.4
