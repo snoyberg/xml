@@ -27,9 +27,10 @@
 --
 -- > {-# LANGUAGE OverloadedStrings #-}
 -- > import Control.Monad.Trans.Resource
--- > import Data.Conduit (($$))
+-- > import Data.Conduit (Consumer, Sink, ($$))
 -- > import Data.Text (Text, unpack)
 -- > import Text.XML.Stream.Parse
+-- > import Data.XML.Types (Event)
 -- >
 -- > data Person = Person Int Text
 -- >     deriving Show
