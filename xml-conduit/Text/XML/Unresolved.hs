@@ -58,6 +58,8 @@ import           Data.Conduit
 import qualified Data.Conduit.Binary          as CB
 import           Data.Conduit.Lazy            (lazyConsume)
 import qualified Data.Conduit.List            as CL
+import           Data.Maybe                   (isJust, mapMaybe)
+import           Data.Monoid                  (mconcat)
 import           Data.Text                    (Text)
 import qualified Data.Text                    as T
 import qualified Data.Text.Lazy               as TL
@@ -268,10 +270,16 @@ elementToEvents' = goE
     goN' (NodeComment t)     = (EventComment t :)
 
 compressNodes :: [Node] -> [Node]
-compressNodes [] = []
-compressNodes [x] = [x]
-compressNodes (NodeContent (ContentText x) : NodeContent (ContentText y) : z) =
-    compressNodes $ NodeContent (ContentText $ x `T.append` y) : z
+compressNodes []     = []
+compressNodes [x]    = [x]
+compressNodes (x@(NodeContent (ContentText _)) : y@(NodeContent (ContentText _)) : z) =
+    let (textNodes, remainder) = span (isJust . unContent) (x:y:z)
+        texts = mapMaybe unContent textNodes
+    in
+        compressNodes $ NodeContent (ContentText $ mconcat texts) : remainder
+    where
+        unContent (NodeContent (ContentText text)) = Just text
+        unContent _                                = Nothing
 compressNodes (x:xs) = x : compressNodes xs
 
 parseText :: ParseSettings -> TL.Text -> Either SomeException Document
