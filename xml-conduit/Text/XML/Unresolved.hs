@@ -49,8 +49,7 @@ import           Control.Exception            (Exception, SomeException, throw)
 import           Control.Monad                (when)
 import           Control.Monad.ST             (runST)
 import           Control.Monad.Trans.Class    (lift)
-import           Control.Monad.Trans.Resource (MonadThrow, monadThrow,
-                                               runExceptionT, runResourceT)
+import           Control.Monad.Trans.Resource (MonadThrow, throwM, runResourceT)
 import           Data.ByteString              (ByteString)
 import qualified Data.ByteString.Lazy         as L
 import           Data.Char                    (isSpace)
@@ -70,7 +69,7 @@ import qualified Text.XML.Stream.Parse        as P
 import qualified Text.XML.Stream.Render       as R
 
 readFile :: P.ParseSettings -> FilePath -> IO Document
-readFile ps fp = runResourceT $ CB.sourceFile fp $$ sinkDoc ps
+readFile ps fp = runConduitRes $ CB.sourceFile fp .| sinkDoc ps
 
 sinkDoc :: MonadThrow m
         => P.ParseSettings
@@ -79,7 +78,7 @@ sinkDoc ps = P.parseBytesPos ps =$= fromEvents
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
 writeFile rs fp doc =
-    runResourceT $ renderBytes rs doc $$ CB.sinkFile fp
+    runConduitRes $ renderBytes rs doc .| CB.sinkFile fp
 
 renderLBS :: R.RenderSettings -> Document -> L.ByteString
 renderLBS rs doc =
@@ -91,9 +90,7 @@ renderLBS rs doc =
                  $ renderBytes rs doc
 
 parseLBS :: P.ParseSettings -> L.ByteString -> Either SomeException Document
-parseLBS ps lbs =
-    runST $ runExceptionT
-          $ CL.sourceList (L.toChunks lbs) $$ sinkDoc ps
+parseLBS ps lbs = runConduit $ CL.sourceList (L.toChunks lbs) .| sinkDoc ps
 
 parseLBS_ :: P.ParseSettings -> L.ByteString -> Document
 parseLBS_ ps lbs = either throw id $ parseLBS ps lbs
@@ -154,9 +151,9 @@ fromEvents = do
     y <- CL.head
     case y of
         Nothing -> return d
-        Just (_, EventEndDocument) -> lift $ monadThrow MissingRootElement
+        Just (_, EventEndDocument) -> lift $ throwM MissingRootElement
         Just z ->
-            lift $ monadThrow $ ContentAfterRoot z
+            lift $ throwM $ ContentAfterRoot z
   where
     skip e = do
         x <- CL.peek
@@ -169,8 +166,8 @@ fromEvents = do
                 my <- CL.head
                 case my of
                     Nothing -> error "Text.XML.Unresolved:impossible"
-                    Just (_, EventEndDocument) -> lift $ monadThrow MissingRootElement
-                    Just y -> lift $ monadThrow $ ContentAfterRoot y
+                    Just (_, EventEndDocument) -> lift $ throwM MissingRootElement
+                    Just y -> lift $ throwM $ ContentAfterRoot y
     goP = Prologue <$> goM <*> goD <*> goM
     goM = manyTries goM'
     goM' = do
@@ -198,8 +195,8 @@ fromEvents = do
             --
             -- Just (EventDeclaration _) -> dropTillDoctype
             Just (_, EventEndDoctype) -> return ()
-            Just epos -> lift $ monadThrow $ InvalidInlineDoctype epos
-            Nothing -> lift $ monadThrow UnterminatedInlineDoctype
+            Just epos -> lift $ throwM $ InvalidInlineDoctype epos
+            Nothing -> lift $ throwM UnterminatedInlineDoctype
 
 -- | Try to parse a document element (as defined in XML) from a stream of events.
 --
@@ -218,7 +215,7 @@ elementFromEvents = goE
         y <- CL.head
         if fmap snd y == Just (EventEndElement n)
             then return $ Element n as $ compressNodes ns
-            else lift $ monadThrow $ MissingEndElement n y
+            else lift $ throwM $ MissingEndElement n y
     goN = do
         x <- CL.peek
         case x of
@@ -275,10 +272,10 @@ compressNodes (NodeContent (ContentText x) : NodeContent (ContentText y) : z) =
 compressNodes (x:xs) = x : compressNodes xs
 
 parseText :: ParseSettings -> TL.Text -> Either SomeException Document
-parseText ps tl = runST
-                $ runExceptionT
-                $ CL.sourceList (TL.toChunks tl)
-           $$ sinkTextDoc ps
+parseText ps tl =
+    runConduit
+  $ CL.sourceList (TL.toChunks tl)
+ .| sinkTextDoc ps
 
 parseText_ :: ParseSettings -> TL.Text -> Document
 parseText_ ps = either throw id . parseText ps

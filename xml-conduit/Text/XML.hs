@@ -79,8 +79,7 @@ import           Control.DeepSeq              (NFData (rnf))
 import           Control.Exception            (Exception, SomeException, handle,
                                                throw, throwIO)
 import           Control.Monad.ST             (runST)
-import           Control.Monad.Trans.Resource (MonadThrow, monadThrow,
-                                               runExceptionT, runResourceT)
+import           Control.Monad.Trans.Resource (MonadThrow, throwM, runResourceT)
 import           Data.ByteString              (ByteString)
 import qualified Data.ByteString.Lazy         as L
 import           Data.Data                    (Data)
@@ -243,10 +242,10 @@ instance Show XMLException where
 instance Exception XMLException
 
 parseLBS :: ParseSettings -> L.ByteString -> Either SomeException Document
-parseLBS ps lbs = runST
-                $ runExceptionT
-                $ CL.sourceList (L.toChunks lbs)
-           $$ sinkDoc ps
+parseLBS ps lbs
+  = runConduit
+  $ CL.sourceList (L.toChunks lbs)
+ .| sinkDoc ps
 
 parseLBS_ :: ParseSettings -> L.ByteString -> Document
 parseLBS_ ps = either throw id . parseLBS ps
@@ -257,10 +256,10 @@ sinkDoc :: MonadThrow m
 sinkDoc ps = P.parseBytesPos ps =$= fromEvents
 
 parseText :: ParseSettings -> TL.Text -> Either SomeException Document
-parseText ps tl = runST
-                $ runExceptionT
-                $ CL.sourceList (TL.toChunks tl)
-           $$ sinkTextDoc ps
+parseText ps tl
+  = runConduit
+  $ CL.sourceList (TL.toChunks tl)
+ .| sinkTextDoc ps
 
 parseText_ :: ParseSettings -> TL.Text -> Document
 parseText_ ps = either throw id . parseText ps
@@ -273,7 +272,7 @@ sinkTextDoc ps = P.parseTextPos ps =$= fromEvents
 fromEvents :: MonadThrow m => Consumer P.EventPos m Document
 fromEvents = do
     d <- D.fromEvents
-    either (lift . monadThrow . UnresolvedEntityException) return $ fromXMLDocument d
+    either (lift . throwM . UnresolvedEntityException) return $ fromXMLDocument d
 
 data UnresolvedEntityException = UnresolvedEntityException (Set Text)
     deriving (Show, Typeable)

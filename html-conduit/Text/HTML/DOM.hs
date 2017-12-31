@@ -28,8 +28,6 @@ import qualified Text.XML as X
 import Text.XML.Stream.Parse (decodeHtmlEntities)
 import Data.Conduit.Binary (sourceFile)
 import qualified Data.ByteString.Lazy as L
-import Control.Monad.Trans.Resource (runExceptionT_)
-import Data.Functor.Identity (runIdentity)
 import Data.Maybe (mapMaybe)
 
 -- | Converts a stream of bytes to a stream of properly balanced @Event@s.
@@ -131,11 +129,17 @@ parseLBS :: L.ByteString -> X.Document
 parseLBS = parseBSChunks . L.toChunks
 
 parseBSChunks :: [S.ByteString] -> X.Document
-parseBSChunks tss = runIdentity $ runExceptionT_ $ CL.sourceList tss $$ sinkDoc
+parseBSChunks tss =
+  case runConduit $ CL.sourceList tss .| sinkDoc of
+    Left e -> error $ "Unexpected exception in parseBSChunks: " ++ show e
+    Right x -> x
 
 parseLT :: TL.Text -> X.Document
 parseLT = parseSTChunks . TL.toChunks
 
 parseSTChunks :: [T.Text] -> X.Document
-parseSTChunks tss = runIdentity $ runExceptionT_ $ CL.sourceList tss $$ sinkDocText 
+parseSTChunks tss =
+  case runConduit $ CL.sourceList tss .| sinkDocText of
+    Left e -> error $ "Unexpected exception in parseSTChunks: " ++ show e
+    Right x -> x
 

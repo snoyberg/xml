@@ -163,10 +163,11 @@ import           Control.Arrow                ((***))
 import           Control.Exception            (Exception (..), SomeException)
 import           Control.Monad                (ap, liftM, void)
 import           Control.Monad.Fix            (fix)
+import           Control.Monad.IO.Class       (liftIO)
 import           Control.Monad.Trans.Class    (lift)
 import           Control.Monad.Trans.Maybe    (MaybeT (..))
 import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..),
-                                               monadThrow)
+                                               throwM)
 import           Data.Attoparsec.Text         (Parser, anyChar, char, manyTill,
                                                skipWhile, string, takeWhile,
                                                takeWhile1, try)
@@ -656,7 +657,7 @@ contentMaybe = do
     case pc' x of
         Ignore      -> CL.drop 1 >> contentMaybe
         IsContent t -> CL.drop 1 >> fmap Just (takeContents (t:))
-        IsError e   -> lift $ monadThrow $ InvalidEntity e x
+        IsError e   -> lift $ throwM $ InvalidEntity e x
         NotContent  -> return Nothing
   where
     pc' Nothing  = NotContent
@@ -677,7 +678,7 @@ contentMaybe = do
         case pc' x of
             Ignore      -> CL.drop 1 >> takeContents front
             IsContent t -> CL.drop 1 >> takeContents (front . (:) t)
-            IsError e   -> lift $ monadThrow $ InvalidEntity e x
+            IsError e   -> lift $ throwM $ InvalidEntity e x
             NotContent  -> return $ T.concat $ front []
 
 -- | Grabs the next piece of content. If none if available, returns 'T.empty'.
@@ -731,7 +732,7 @@ tag nameMatcher attrParser f = do
           case a of
             Just (EventEndElement name')
               | name == name' -> return (Just z')
-            _ -> lift $ monadThrow $ InvalidEndElement name a
+            _ -> lift $ throwM $ InvalidEndElement name a
       Nothing -> return Nothing
     _ -> return Nothing
 
@@ -863,7 +864,7 @@ parseFile :: MonadResource m
           => ParseSettings
           -> FilePath
           -> Producer m Event
-parseFile ps fp = sourceFile fp =$= parseBytes ps
+parseFile ps fp = sourceFile fp =$= transPipe liftIO (parseBytes ps)
 
 -- | Parse an event stream from a lazy 'L.ByteString'.
 parseLBS :: MonadThrow m
@@ -1098,7 +1099,7 @@ takeTree nameMatcher attrParser = do
           endEvent <- await
           case endEvent of
             Just e'@(EventEndElement name') | name == name' -> yield e' >> return (Just ())
-            _ -> lift $ monadThrow $ InvalidEndElement name endEvent
+            _ -> lift $ throwM $ InvalidEndElement name endEvent
         _ -> leftover e >> return Nothing
       _ -> leftover e >> return Nothing
 

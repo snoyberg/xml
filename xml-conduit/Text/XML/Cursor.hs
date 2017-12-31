@@ -60,7 +60,7 @@ module Text.XML.Cursor
 
 import           Control.Exception            (Exception)
 import           Control.Monad
-import           Control.Monad.Trans.Resource (MonadThrow, monadThrow)
+import           Control.Monad.Trans.Resource (MonadThrow, throwM)
 import           Data.Function                (on)
 import qualified Data.Map                     as Map
 import           Data.Maybe                   (maybeToList)
@@ -214,9 +214,9 @@ attributeIs n v c =
         _                            -> []
 
 force :: (Exception e, MonadThrow f) => e -> [a] -> f a
-force e []    = monadThrow e
+force e []    = throwM e
 force _ (x:_) = return x
 
 forceM :: (Exception e, MonadThrow f) => e -> [f a] -> f a
-forceM e []    = monadThrow e
+forceM e []    = throwM e
 forceM _ (x:_) = x
