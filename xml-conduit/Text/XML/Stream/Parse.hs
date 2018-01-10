@@ -175,11 +175,9 @@ import qualified Data.Attoparsec.Text         as AT
 import qualified Data.ByteString              as S
 import qualified Data.ByteString.Lazy         as L
 import           Data.Char                    (isSpace)
-import           Data.Conduit
-import           Data.Conduit.Attoparsec      (PositionRange, conduitParser)
-import           Data.Conduit.Binary          (sourceFile)
-import qualified Data.Conduit.List            as CL
+import           Conduit
 import qualified Data.Conduit.Text            as CT
+import           Data.Conduit.Attoparsec      (PositionRange, conduitParser)
 import           Data.Default.Class           (Default (..))
 import           Data.List                    (intercalate)
 import           Data.List                    (foldl')
@@ -653,10 +651,10 @@ data ContentType = Ignore | IsContent Text | IsError String | NotContent
 -- or end tag.
 contentMaybe :: MonadThrow m => Consumer Event m (Maybe Text)
 contentMaybe = do
-    x <- CL.peek
+    x <- peekC
     case pc' x of
-        Ignore      -> CL.drop 1 >> contentMaybe
-        IsContent t -> CL.drop 1 >> fmap Just (takeContents (t:))
+        Ignore      -> dropC 1 >> contentMaybe
+        IsContent t -> dropC 1 >> fmap Just (takeContents (t:))
         IsError e   -> lift $ throwM $ InvalidEntity e x
         NotContent  -> return Nothing
   where
@@ -674,10 +672,10 @@ contentMaybe = do
     pc EventInstruction{} = Ignore
     pc EventComment{} = Ignore
     takeContents front = do
-        x <- CL.peek
+        x <- peekC
         case pc' x of
-            Ignore      -> CL.drop 1 >> takeContents front
-            IsContent t -> CL.drop 1 >> takeContents (front . (:) t)
+            Ignore      -> dropC 1 >> takeContents front
+            IsContent t -> dropC 1 >> takeContents (front . (:) t)
             IsError e   -> lift $ throwM $ InvalidEntity e x
             NotContent  -> return $ T.concat $ front []
 
@@ -871,7 +869,7 @@ parseLBS :: MonadThrow m
          => ParseSettings
          -> L.ByteString
          -> Producer m Event
-parseLBS ps lbs = CL.sourceList (L.toChunks lbs) =$= parseBytes ps
+parseLBS ps lbs = sourceLazy lbs .| parseBytes ps
 
 data XmlException = XmlException
     { xmlErrorMessage :: String

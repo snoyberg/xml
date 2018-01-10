@@ -17,8 +17,6 @@ import qualified Data.ByteString as S
 import qualified Text.HTML.TagStream.Text as TS
 import qualified Text.HTML.TagStream as TS
 import qualified Data.XML.Types as XT
-import Data.Conduit
-import Data.Conduit.Text (decodeUtf8Lenient)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Conduit.List as CL
@@ -26,7 +24,7 @@ import Control.Arrow ((***))
 import qualified Data.Set as Set
 import qualified Text.XML as X
 import Text.XML.Stream.Parse (decodeHtmlEntities)
-import Data.Conduit.Binary (sourceFile)
+import Conduit
 import qualified Data.ByteString.Lazy as L
 import Data.Maybe (mapMaybe)
 
@@ -34,15 +32,15 @@ import Data.Maybe (mapMaybe)
 --
 -- Note that there may be multiple (or not) root elements. @sinkDoc@ addresses
 -- that case.
-eventConduit :: Monad m => Conduit S.ByteString m XT.Event
-eventConduit = decodeUtf8Lenient =$= eventConduit' 
+eventConduit :: Monad m => ConduitT S.ByteString XT.Event m ()
+eventConduit = decodeUtf8LenientC .| eventConduit'
 
-eventConduitText :: Monad m => Conduit T.Text m XT.Event
+eventConduitText :: Monad m => ConduitT T.Text XT.Event m ()
 eventConduitText = eventConduit'
 
-eventConduit' :: Monad m => Conduit T.Text m XT.Event
-eventConduit' = 
-    TS.tokenStream =$= go []
+eventConduit' :: Monad m => ConduitT T.Text XT.Event m ()
+eventConduit' =
+    TS.tokenStream .| go []
   where
     go stack = do
         mx <- await
@@ -99,15 +97,18 @@ eventConduit' =
         , "wbr"
         ]
 
-sinkDoc :: MonadThrow m => Sink S.ByteString m X.Document
-sinkDoc = sinkDoc' eventConduit 
+sinkDoc :: MonadThrow m => ConduitT S.ByteString o m X.Document
+sinkDoc = sinkDoc' eventConduit
 
-sinkDocText :: MonadThrow m => Sink T.Text m X.Document
+sinkDocText :: MonadThrow m => ConduitT T.Text o m X.Document
 sinkDocText = sinkDoc' eventConduitText
 
-sinkDoc' :: (Monad m, MonadThrow m) => Conduit a m XT.Event -> Sink a m X.Document
-sinkDoc' f = 
-    fmap stripDummy $ mapOutput ((,) Nothing) f =$ addDummyWrapper =$ X.fromEvents
+sinkDoc'
+  :: MonadThrow m
+  => ConduitT a XT.Event m ()
+  -> ConduitT a o m X.Document
+sinkDoc' f =
+    fmap stripDummy $ mapOutput ((,) Nothing) f .| addDummyWrapper .| X.fromEvents
   where
     addDummyWrapper = do
         yield (Nothing, XT.EventBeginElement "html" [])
@@ -123,7 +124,7 @@ sinkDoc' f =
     toElement _ = Nothing
 
 readFile :: FilePath -> IO X.Document
-readFile fp = runResourceT $ sourceFile fp $$ sinkDoc
+readFile fp = withSourceFile fp $ \src -> runConduit $ src .| sinkDoc
 
 parseLBS :: L.ByteString -> X.Document
 parseLBS = parseBSChunks . L.toChunks

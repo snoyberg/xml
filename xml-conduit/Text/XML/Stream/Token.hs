@@ -11,21 +11,20 @@ module Text.XML.Stream.Token
 import Data.XML.Types (Instruction (..), Content (..), ExternalID (..))
 import qualified Data.Text as T
 import Data.Text (Text)
+import Data.Text.Encoding (encodeUtf8Builder, encodeUtf8BuilderEscaped)
 import Data.String (IsString (fromString))
-import Blaze.ByteString.Builder
-    (Builder, fromByteString, writeByteString, copyByteString)
-import Blaze.ByteString.Builder.Internal.Write (fromWriteList)
-import Blaze.ByteString.Builder.Char.Utf8 (writeChar, fromText)
-import Data.Monoid (mconcat, mempty, mappend)
-import Data.ByteString.Char8 ()
+import Data.ByteString.Builder (Builder)
+import qualified Data.ByteString.Builder.Prim as E
+import Data.ByteString.Builder.Prim ((>*<), (>$<), condB)
+import Data.Monoid (mconcat, mempty, (<>))
 import Data.Map (Map)
-import qualified Blaze.ByteString.Builder.Char8 as BC8
 import qualified Data.Set as Set
 import Data.List (foldl')
 import Control.Arrow (first)
+import Data.Word (Word8)
 
 oneSpace :: Builder
-oneSpace = copyByteString " "
+oneSpace = " "
 
 data Token = TokenXMLDeclaration [TAttribute]
            | TokenInstruction Instruction
@@ -38,113 +37,113 @@ data Token = TokenXMLDeclaration [TAttribute]
     deriving Show
 tokenToBuilder :: Token -> Builder
 tokenToBuilder (TokenXMLDeclaration attrs) =
-    fromByteString "<?xml"
-    `mappend` foldAttrs oneSpace attrs (fromByteString "?>")
-tokenToBuilder (TokenInstruction (Instruction target data_)) = mconcat
-    [ fromByteString "<?"
-    , fromText target
-    , fromByteString " "
-    , fromText data_
-    , fromByteString "?>"
-    ]
+    "<?xml" <>
+    foldAttrs oneSpace attrs <>
+    "?>"
+tokenToBuilder (TokenInstruction (Instruction target data_)) =
+    "<?" <>
+    encodeUtf8Builder target <>
+    " " <>
+    encodeUtf8Builder data_ <>
+    "?>"
 tokenToBuilder (TokenBeginElement name attrs' isEmpty indent) =
-      copyByteString "<"
-    `mappend` tnameToText name
-    `mappend` foldAttrs
+    "<" <>
+    tnameToText name <>
+    foldAttrs
         (if indent == 0 || lessThan3 attrs
             then oneSpace
-            else BC8.fromString ('\n' : replicate indent ' '))
-        attrs
-        (if isEmpty then fromByteString "/>" else fromByteString ">")
+            else mconcat $ ("\n" : replicate indent " "))
+        attrs <>
+    (if isEmpty then "/>" else ">")
   where
     attrs = nubAttrs $ map (first splitTName) attrs'
     lessThan3 [] = True
     lessThan3 [_] = True
     lessThan3 [_, _] = True
     lessThan3 _ = False
-tokenToBuilder (TokenEndElement name) = mconcat
-    [ fromByteString "</"
-    , tnameToText name
-    , fromByteString ">"
-    ]
+tokenToBuilder (TokenEndElement name) = "</" <> tnameToText name <> ">"
 tokenToBuilder (TokenContent c) = contentToText c
-tokenToBuilder (TokenCDATA t) = 
-    copyByteString "<![CDATA["
-    `mappend` escCDATA t
-    `mappend` copyByteString "]]>"
-tokenToBuilder (TokenComment t) = mconcat [fromByteString "<!--", fromText t, fromByteString "-->"]
-tokenToBuilder (TokenDoctype name eid _) = mconcat
-    [ fromByteString "<!DOCTYPE "
-    , fromText name
-    , go eid
-    , fromByteString ">"
-    ]
+tokenToBuilder (TokenCDATA t) = "<![CDATA[" <> escCDATA t <> "]]>"
+tokenToBuilder (TokenComment t) = "<!--" <> encodeUtf8Builder t <> "-->"
+tokenToBuilder (TokenDoctype name eid _) =
+    "<!DOCTYPE " <>
+    encodeUtf8Builder name <>
+    go eid <>
+    ">"
   where
     go Nothing = mempty
-    go (Just (SystemID uri)) = mconcat
-        [ fromByteString " SYSTEM \""
-        , fromText uri
-        , fromByteString "\""
-        ]
-    go (Just (PublicID pid uri)) = mconcat
-        [ fromByteString " PUBLIC \""
-        , fromText pid
-        , fromByteString "\" \""
-        , fromText uri
-        , fromByteString "\""
-        ]
+    go (Just (SystemID uri)) = " SYSTEM \"" <> encodeUtf8Builder uri <> "\""
+    go (Just (PublicID pid uri)) =
+        " PUBLIC \"" <>
+        encodeUtf8Builder pid <>
+        "\" \"" <>
+        encodeUtf8Builder uri <>
+        "\""
 
 data TName = TName (Maybe Text) Text
     deriving (Show, Eq, Ord)
 
 tnameToText :: TName -> Builder
-tnameToText (TName Nothing name) = fromText name
-tnameToText (TName (Just prefix) name) = mconcat [fromText prefix, fromByteString ":", fromText name]
+tnameToText (TName Nothing name) = encodeUtf8Builder name
+tnameToText (TName (Just prefix) name) =
+  encodeUtf8Builder prefix <> ":" <> encodeUtf8Builder name
 
 contentToText :: Content -> Builder
-contentToText (ContentText t) =
-    fromWriteList go $ T.unpack t
+contentToText (ContentText t) = encodeUtf8BuilderEscaped charUtf8XmlEscaped t
+contentToText (ContentEntity e) = "&" <> encodeUtf8Builder e <> ";"
+
+{-# INLINE charUtf8XmlEscaped #-}
+charUtf8XmlEscaped :: E.BoundedPrim Word8
+charUtf8XmlEscaped =
+    condB (>  _gt) (E.liftFixedToBounded E.word8) $
+    condB (== _lt) (fixed4 (_am,(_l,(_t,_sc)))) $       -- &lt;
+    condB (== _gt) (fixed4 (_am,(_g,(_t,_sc)))) $       -- &gt;
+    condB (== _am) (fixed5 (_am,(_a,(_m,(_p,_sc))))) $  -- &amp;
+    condB (== _dq) (fixed5 (_am,(_ha,(_3,(_4,_sc))))) $ -- &#34;
+    condB (== _sq) (fixed5 (_am,(_ha,(_3,(_9,_sc))))) $ -- &#39;
+    (E.liftFixedToBounded E.word8)         -- fallback for Chars smaller than '>'
   where
-    go '<' = writeByteString "&lt;"
-    go '>' = writeByteString "&gt;"
-    go '&' = writeByteString "&amp;"
-    -- Not escaping quotes, since this is only called outside of attributes
-    go c   = writeChar c
-contentToText (ContentEntity e) = mconcat
-    [ fromByteString "&"
-    , fromText e
-    , fromByteString ";"
-    ]
+    _gt = 62 -- >
+    _lt = 60 -- <
+    _am = 38 -- &
+    _dq = 34 -- "
+    _sq = 39 -- '
+    _l  = 108 -- l
+    _t  = 116 -- t
+    _g  = 103 -- g
+    _a  = 97  -- a
+    _m  = 109 -- m
+    _p  = 112 -- p
+    _3  = 51  -- 3
+    _4  = 52  -- 4
+    _ha = 35  -- #, hash
+    _9  = 57  -- 9
+    _sc = 59  -- ;
+    {-# INLINE fixed4 #-}
+    fixed4 x = E.liftFixedToBounded $ const x >$<
+      E.word8 >*< E.word8 >*< E.word8 >*< E.word8
+
+    {-# INLINE fixed5 #-}
+    fixed5 x = E.liftFixedToBounded $ const x >$<
+      E.word8 >*< E.word8 >*< E.word8 >*< E.word8 >*< E.word8
 
 type TAttribute = (TName, [Content])
 
 foldAttrs :: Builder -- ^ before
           -> [TAttribute]
           -> Builder
-          -> Builder
-foldAttrs before attrs rest' =
-    foldr go rest' attrs
+foldAttrs before =
+    foldMap go
   where
-    go (key, val) rest =
-      before
-      `mappend` tnameToText key
-      `mappend` copyByteString "=\""
-      `mappend` foldr go' (fromByteString "\"" `mappend` rest) val
-    go' (ContentText t) rest =
-        fromWriteList h (T.unpack t) `mappend` rest
-      where
-        h '<' = writeByteString "&lt;"
-        h '>' = writeByteString "&gt;"
-        h '&' = writeByteString "&amp;"
-        h '"' = writeByteString "&quot;"
-        -- Not escaping single quotes, since our attributes are always double
-        -- quoted
-        h c   = writeChar c
-    go' (ContentEntity t) rest =
-        fromByteString "&"
-        `mappend` fromText t
-        `mappend` fromByteString ";"
-        `mappend` rest
+    go (key, val) =
+      before <>
+      tnameToText key <>
+      "=\"" <>
+      foldMap go' val <>
+      "\""
+    go' (ContentText t) =
+      encodeUtf8BuilderEscaped charUtf8XmlEscaped t
+    go' (ContentEntity t) = "&" <> encodeUtf8Builder t <> ";"
 
 instance IsString TName where
     fromString = TName Nothing . T.pack
@@ -171,6 +170,6 @@ splitTName x@(TName Nothing t)
     | otherwise = TName (Just a) $ T.drop 1 b
   where
     (a, b) = T.break (== ':') t
-    
+
 escCDATA :: Text -> Builder
-escCDATA s = fromText (T.replace "]]>" "]]]]><![CDATA[>" s)
+escCDATA s = encodeUtf8Builder (T.replace "]]>" "]]]]><![CDATA[>" s)

@@ -43,7 +43,6 @@ module Text.XML.Unresolved
     , R.rsNamespaces
     ) where
 
-import           Blaze.ByteString.Builder     (Builder)
 import           Control.Applicative          ((<$>), (<*>))
 import           Control.Exception            (Exception, SomeException, throw)
 import           Control.Monad                (when)
@@ -51,6 +50,7 @@ import           Control.Monad.ST             (runST)
 import           Control.Monad.Trans.Class    (lift)
 import           Control.Monad.Trans.Resource (MonadThrow, throwM, runResourceT)
 import           Data.ByteString              (ByteString)
+import           Data.ByteString.Builder      (Builder)
 import qualified Data.ByteString.Lazy         as L
 import           Data.Char                    (isSpace)
 import           Data.Conduit
