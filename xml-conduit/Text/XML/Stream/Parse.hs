@@ -102,6 +102,7 @@ module Text.XML.Stream.Parse
     , def
     , DecodeEntities
     , psDecodeEntities
+    , psDecodeIllegalCharacters
     , psRetainNamespaces
       -- *** Entity decoding
     , decodeXmlEntities
@@ -308,7 +309,7 @@ checkXMLDecl :: MonadThrow m
              -> Conduit S.ByteString m T.Text
 checkXMLDecl bs (Just codec) = leftover bs >> CT.decode codec
 checkXMLDecl bs0 Nothing =
-    loop [] (AT.parse (parseToken decodeXmlEntities)) bs0
+    loop [] (AT.parse (parseToken def)) bs0
   where
     loop chunks0 parser nextChunk =
         case parser $ decodeUtf8With lenientDecode nextChunk of
@@ -411,9 +412,13 @@ toEventC ps =
           where
             (es', levels', events) = tokenToEvent ps es levels token
 
+
+type DecodeEntities = Text -> Content
+type DecodeIllegalCharacters = Int -> Maybe Char
+
 data ParseSettings = ParseSettings
-    { psDecodeEntities   :: DecodeEntities
-    , psRetainNamespaces :: Bool
+    { psDecodeEntities          :: DecodeEntities
+    , psRetainNamespaces        :: Bool
     -- ^ Whether the original xmlns attributes should be retained in the parsed
     -- values. For more information on motivation, see:
     --
@@ -422,19 +427,29 @@ data ParseSettings = ParseSettings
     -- Default: False
     --
     -- Since 1.2.1
+    , psDecodeIllegalCharacters :: DecodeIllegalCharacters
+    -- ^ How to decode illegal character references (@&#[0-9]+;@ or @&#x[0-9a-fA-F]+;@).
+    --
+    -- Character references within the legal ranges defined by <https://www.w3.org/TR/REC-xml/#NT-Char the standard> are automatically parsed.
+    -- Others are passed to this function.
+    --
+    -- Default: @const Nothing@
+    --
+    -- Since 1.7.1
     }
 
 instance Default ParseSettings where
     def = ParseSettings
         { psDecodeEntities = decodeXmlEntities
         , psRetainNamespaces = False
+        , psDecodeIllegalCharacters = const Nothing
         }
 
 conduitToken :: MonadThrow m => ParseSettings -> Conduit T.Text m (PositionRange, Token)
-conduitToken = conduitParser . parseToken . psDecodeEntities
+conduitToken = conduitParser . parseToken
 
-parseToken :: DecodeEntities -> Parser Token
-parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False False
+parseToken :: ParseSettings -> Parser Token
+parseToken settings = (char '<' >> parseLt) <|> TokenContent <$> parseContent settings False False
   where
     parseLt =
         (char '?' >> parseInstr) <|>
@@ -445,7 +460,7 @@ parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False
         name <- parseIdent
         if name == "xml"
             then do
-                as <- A.many $ parseAttribute de
+                as <- A.many $ parseAttribute settings
                 skipSpace
                 char' '?'
                 char' '>'
@@ -524,14 +539,14 @@ parseToken de = (char '<' >> parseLt) <|> TokenContent <$> parseContent de False
     parseBegin = do
         skipSpace
         n <- parseName
-        as <- A.many $ parseAttribute de
+        as <- A.many $ parseAttribute settings
         skipSpace
         isClose <- (char '/' >> skipSpace >> return True) <|> return False
         char' '>'
         return $ TokenBeginElement n as isClose 0
 
-parseAttribute :: DecodeEntities -> Parser TAttribute
-parseAttribute de = do
+parseAttribute :: ParseSettings -> Parser TAttribute
+parseAttribute settings = do
     skipSpace
     key <- parseName
     skipSpace
@@ -540,8 +555,8 @@ parseAttribute de = do
     val <- squoted <|> dquoted
     return (key, val)
   where
-    squoted = char '\'' *> manyTill (parseContent de False True) (char '\'')
-    dquoted = char  '"' *> manyTill (parseContent de True False) (char  '"')
+    squoted = char '\'' *> manyTill (parseContent settings False True) (char '\'')
+    dquoted = char  '"' *> manyTill (parseContent settings True False) (char  '"')
 
 parseName :: Parser TName
 parseName =
@@ -567,11 +582,11 @@ parseIdent =
     valid '#'  = False
     valid c    = not $ isXMLSpace c
 
-parseContent :: DecodeEntities
+parseContent :: ParseSettings
              -> Bool -- break on double quote
              -> Bool -- break on single quote
              -> Parser Content
-parseContent de breakDouble breakSingle = parseReference <|> parseTextContent where
+parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters) breakDouble breakSingle = parseReference <|> parseTextContent where
   parseReference = do
     char' '&'
     t <- parseEntityRef <|> parseHexCharRef <|> parseDecCharRef
@@ -581,24 +596,24 @@ parseContent de breakDouble breakSingle = parseReference <|> parseTextContent wh
     TName ma b <- parseName
     let name = maybe "" (`T.append` ":") ma `T.append` b
     return $ case name of
-      "lt" -> ContentText "<"
-      "gt" -> ContentText ">"
-      "amp" -> ContentText "&"
+      "lt"   -> ContentText "<"
+      "gt"   -> ContentText ">"
+      "amp"  -> ContentText "&"
       "quot" -> ContentText "\""
       "apos" -> ContentText "'"
-      _ -> de name
+      _      -> decodeEntities name
   parseHexCharRef = do
     void $ string "#x"
     n <- AT.hexadecimal
-    case toValidXmlChar n of
+    case toValidXmlChar n <|> decodeIllegalCharacters n of
       Nothing -> fail "Invalid character from hexadecimal character reference."
       Just c -> return $ ContentText $ T.singleton c
   parseDecCharRef = do
     void $ string "#"
     n <- AT.decimal
-    case toValidXmlChar n of
+    case toValidXmlChar n <|> decodeIllegalCharacters n of
       Nothing -> fail "Invalid character from decimal character reference."
-      Just c -> return $ ContentText $ T.singleton c
+      Just c  -> return $ ContentText $ T.singleton c
   parseTextContent = ContentText <$> takeWhile1 valid
   valid '"'  = not breakDouble
   valid '\'' = not breakSingle
@@ -1137,7 +1152,6 @@ takeAnyTreeContent = takeTreeContent anyName ignoreAttrs
 takeAllTreesContent :: MonadThrow m => ConduitM Event Event m (Maybe ())
 takeAllTreesContent = takeAnyTreeContent
 
-type DecodeEntities = Text -> Content
 
 -- | Default implementation of 'DecodeEntities', which leaves the
 -- entity as-is. Numeric character references and the five standard
