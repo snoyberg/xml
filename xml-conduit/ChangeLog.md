@@ -1,6 +1,7 @@
 ## 1.7.1
 
 * Add `psDecodeIllegalCharacters` field in `ParseSettings` to specify how illegal characters references should be decoded
+* Fix compatibility with GHC 8.4.1 [#121](https://github.com/snoyberg/xml/issues/121)
 
 ## 1.7.0
 
