@@ -101,6 +101,7 @@ module Text.XML.Stream.Parse
     , ParseSettings
     , def
     , DecodeEntities
+    , DecodeIllegalCharacters
     , psDecodeEntities
     , psDecodeIllegalCharacters
     , psRetainNamespaces
