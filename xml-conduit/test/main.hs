@@ -15,18 +15,15 @@ import           Text.XML.Stream.Parse        (def)
 import qualified Text.XML.Stream.Parse        as P
 import qualified Text.XML.Unresolved          as D
 
-import           Control.Applicative          ((<$>))
 import           Control.Monad
-import           Control.Monad.Trans.Class    (lift)
 import qualified Data.Set                     as Set
 import           Data.Text                    (Text)
 import qualified Data.Text                    as T
 import           Text.XML.Cursor              (($.//), ($/), ($//), ($|),
                                                (&.//), (&/), (&//))
 
-import           Control.Monad.Trans.Resource (runResourceT)
 import qualified Control.Monad.Trans.Resource as C
-import           Data.Conduit                 ((=$=))
+import           Data.Conduit                 ((.|), runConduit, runConduitRes, ConduitT)
 import qualified Data.Conduit                 as C
 import qualified Data.Conduit.List            as CL
 import qualified Data.Map                     as Map
@@ -139,7 +136,7 @@ documentParsePrettyRender =
         ]
 
 combinators :: Assertion
-combinators = runResourceT $ P.parseLBS def input C.$$ do
+combinators = runConduitRes $ P.parseLBS def input .| do
     P.force "need hello" $ P.tag' "hello" (P.requireAttr "world") $ \world -> do
         liftIO $ world @?= "true"
         P.force "need child1" $ P.tagNoAttr "{mynamespace}child1" $ return ()
@@ -186,7 +183,7 @@ testChoose = do
         testChooseElemOrTextIsChunkedText2
 
 testChooseElemOrTextIsText :: Assertion
-testChooseElemOrTextIsText = runResourceT $ P.parseLBS def input C.$$ do
+testChooseElemOrTextIsText = runConduitRes $ P.parseLBS def input .| do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.tagNoAttr "failure" $ return "boom"
@@ -203,7 +200,7 @@ testChooseElemOrTextIsText = runResourceT $ P.parseLBS def input C.$$ do
         ]
 
 testChooseElemOrTextIsEncoded :: Assertion
-testChooseElemOrTextIsEncoded = runResourceT $ P.parseLBS def input C.$$ do
+testChooseElemOrTextIsEncoded = runConduitRes $ P.parseLBS def input .| do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.tagNoAttr "failure" $ return "boom"
@@ -220,7 +217,7 @@ testChooseElemOrTextIsEncoded = runResourceT $ P.parseLBS def input C.$$ do
         ]
 
 testChooseElemOrTextIsEncodedNBSP :: Assertion
-testChooseElemOrTextIsEncodedNBSP = runResourceT $ P.parseLBS def input C.$$ do
+testChooseElemOrTextIsEncodedNBSP = runConduitRes $ P.parseLBS def input .| do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.tagNoAttr "failure" $ return "boom"
@@ -238,7 +235,7 @@ testChooseElemOrTextIsEncodedNBSP = runResourceT $ P.parseLBS def input C.$$ do
 
 
 testChooseElemOrTextIsWhiteSpace :: Assertion
-testChooseElemOrTextIsWhiteSpace = runResourceT $ P.parseLBS def input C.$$ do
+testChooseElemOrTextIsWhiteSpace = runConduitRes $ P.parseLBS def input .| do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.tagNoAttr "failure" $ return "boom"
@@ -253,7 +250,7 @@ testChooseElemOrTextIsWhiteSpace = runResourceT $ P.parseLBS def input C.$$ do
         ]
 
 testChooseTextOrElemIsWhiteSpace :: Assertion
-testChooseTextOrElemIsWhiteSpace = runResourceT $ P.parseLBS def input C.$$ do
+testChooseTextOrElemIsWhiteSpace = runConduitRes $ P.parseLBS def input .| do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.contentMaybe
@@ -268,7 +265,7 @@ testChooseTextOrElemIsWhiteSpace = runResourceT $ P.parseLBS def input C.$$ do
         ]
 
 testChooseElemOrTextIsChunkedText :: Assertion
-testChooseElemOrTextIsChunkedText = runResourceT $ P.parseLBS def input C.$$ do
+testChooseElemOrTextIsChunkedText = runConduitRes $ P.parseLBS def input .| do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.tagNoAttr "failure" $ return "boom"
@@ -283,7 +280,7 @@ testChooseElemOrTextIsChunkedText = runResourceT $ P.parseLBS def input C.$$ do
         ]
 
 testChooseElemOrTextIsChunkedText2 :: Assertion
-testChooseElemOrTextIsChunkedText2 = runResourceT $ P.parseLBS def input C.$$ do
+testChooseElemOrTextIsChunkedText2 = runConduitRes $ P.parseLBS def input .| do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.tagNoAttr "failure" $ return "boom"
@@ -298,7 +295,7 @@ testChooseElemOrTextIsChunkedText2 = runResourceT $ P.parseLBS def input C.$$ do
         ]
 
 testChooseElemOrTextIsElem :: Assertion
-testChooseElemOrTextIsElem = runResourceT $ P.parseLBS def input C.$$ do
+testChooseElemOrTextIsElem = runConduitRes $ P.parseLBS def input .| do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.tagNoAttr "success" $ return "success"
@@ -315,7 +312,7 @@ testChooseElemOrTextIsElem = runResourceT $ P.parseLBS def input C.$$ do
         ]
 
 testChooseTextOrElemIsText :: Assertion
-testChooseTextOrElemIsText = runResourceT $ P.parseLBS def input C.$$ do
+testChooseTextOrElemIsText = runConduitRes $ P.parseLBS def input .| do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.contentMaybe
@@ -332,7 +329,7 @@ testChooseTextOrElemIsText = runResourceT $ P.parseLBS def input C.$$ do
         ]
 
 testChooseTextOrElemIsElem :: Assertion
-testChooseTextOrElemIsElem = runResourceT $ P.parseLBS def input C.$$ do
+testChooseTextOrElemIsElem = runConduitRes $ P.parseLBS def input .| do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.contentMaybe
@@ -349,7 +346,7 @@ testChooseTextOrElemIsElem = runResourceT $ P.parseLBS def input C.$$ do
         ]
 
 testChooseEitherElem :: Assertion
-testChooseEitherElem = runResourceT $ P.parseLBS def input C.$$ do
+testChooseEitherElem = runConduitRes $ P.parseLBS def input .| do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.choose
             [ P.tagNoAttr "failure" $ return 1
@@ -368,9 +365,9 @@ testChooseEitherElem = runResourceT $ P.parseLBS def input C.$$ do
 testManyYield :: Assertion
 testManyYield = do
     -- Basically the same as testMany, but consume the streamed result
-    result <- runResourceT $
-        P.parseLBS def input C.$$ helloParser
-        =$= CL.consume
+    result <- runConduitRes $
+        P.parseLBS def input .| helloParser
+        .| CL.consume
     length result @?= 5
   where
     helloParser = void $ P.tagNoAttr "hello" $ P.manyYield successParser
@@ -389,12 +386,12 @@ testManyYield = do
 
 testTakeContent :: Assertion
 testTakeContent = do
-    result <- runResourceT $ P.parseLBS def input C.$$ rootParser
+    result <- runConduitRes $ P.parseLBS def input .| rootParser
     result @?= Just
       [ EventContent (ContentText "Hello world !")
       ]
   where
-    rootParser = P.tagNoAttr "root" $ void (P.takeContent >> P.takeContent) =$= CL.consume
+    rootParser = P.tagNoAttr "root" $ void (P.takeContent >> P.takeContent) .| CL.consume
     input = L.concat
         [ "<?xml version='1.0'?>"
         , "<!DOCTYPE foo []>\n"
@@ -405,7 +402,7 @@ testTakeContent = do
 
 testTakeTree :: Assertion
 testTakeTree = do
-    result <- runResourceT $ P.parseLBS def input C.$$ rootParser
+    result <- runConduitRes $ P.parseLBS def input .| rootParser
     result @?=
       [ EventBeginDocument
       , EventBeginDoctype "foo" Nothing
@@ -417,7 +414,7 @@ testTakeTree = do
       , EventEndElement "a"
       ]
   where
-    rootParser = void (P.takeTree "a" P.ignoreAttrs) =$= CL.consume
+    rootParser = void (P.takeTree "a" P.ignoreAttrs) .| CL.consume
     input = L.concat
         [ "<?xml version='1.0'?>"
         , "<!DOCTYPE foo []>\n"
@@ -430,7 +427,7 @@ testTakeTree = do
 
 testTakeAnyTreeContent :: Assertion
 testTakeAnyTreeContent = do
-    result <- runResourceT $ P.parseLBS def input C.$$ rootParser
+    result <- runConduitRes $ P.parseLBS def input .| rootParser
     result @?= Just
       [ EventBeginElement "b" []
       , EventContent (ContentText "Hello ")
@@ -441,7 +438,7 @@ testTakeAnyTreeContent = do
       , EventEndElement "b"
       ]
   where
-    rootParser = P.tagNoAttr "root" $ (P.takeAnyTreeContent >> void P.ignoreAnyTreeContent) =$= CL.consume
+    rootParser = P.tagNoAttr "root" $ (P.takeAnyTreeContent >> void P.ignoreAnyTreeContent) .| CL.consume
     input = L.concat
         [ "<?xml version='1.0'?>"
         , "<!DOCTYPE foo []>\n"
@@ -452,7 +449,7 @@ testTakeAnyTreeContent = do
 
 
 testMany :: Assertion
-testMany = runResourceT $ P.parseLBS def input C.$$ do
+testMany = runConduitRes $ P.parseLBS def input .| do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.many $ P.tagNoAttr "success" $ return ()
         liftIO $ length x @?= 5
@@ -470,7 +467,7 @@ testMany = runResourceT $ P.parseLBS def input C.$$ do
         ]
 
 testMany' :: Assertion
-testMany' = runResourceT $ P.parseLBS def input C.$$ do
+testMany' = runConduitRes $ P.parseLBS def input .| do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.many' $ P.tagNoAttr "success" $ return ()
         liftIO $ length x @?= 5
@@ -490,7 +487,7 @@ testMany' = runResourceT $ P.parseLBS def input C.$$ do
         ]
 
 testOrE :: IO ()
-testOrE = runResourceT $ P.parseLBS def input C.$$ do
+testOrE = runConduitRes $ runConduit $ P.parseLBS def input .| do
     P.force "need hello" $ P.tagNoAttr "hello" $ do
         x <- P.tagNoAttr "failure" (return 1) `P.orE`
              P.tagNoAttr "success" (return 2)
@@ -509,10 +506,11 @@ testOrE = runResourceT $ P.parseLBS def input C.$$ do
         ]
 
 testConduitParser :: Assertion
-testConduitParser = runResourceT $ do
-    x <- P.parseLBS def input
-        C.$$ (P.force "need hello" $ P.tagNoAttr "hello" f)
-        =$= CL.consume
+testConduitParser = do
+    x <-   runConduitRes
+         $ P.parseLBS def input
+        .| (P.force "need hello" $ P.tagNoAttr "hello" f)
+        .| CL.consume
     liftIO $ x @?= [1, 1, 1]
   where
     input = L.concat
@@ -524,7 +522,7 @@ testConduitParser = runResourceT $ do
         , "<item/>"
         , "</hello>"
         ]
-    f :: C.MonadThrow m => C.Conduit Event m Int
+    f :: C.MonadThrow m => ConduitT Event Int m ()
     f = do
         ma <- P.tagNoAttr "item" (return 1)
         maybe (return ()) (\a -> C.yield a >> f) ma
@@ -856,8 +854,8 @@ caseAttrReorder = do
             , "<bar a=\"a\" b=\"b\" c=\"c\"/>"
             , "</foo>"
             ]
-        rs = def { Res.rsAttrOrder = \name m ->
-                        case name of
+        rs = def { Res.rsAttrOrder = \name' m ->
+                        case name' of
                             "foo" -> reverse $ Map.toAscList m
                             _     -> Map.toAscList m
                  }

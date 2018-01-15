@@ -43,17 +43,15 @@ module Text.XML.Unresolved
     , R.rsNamespaces
     ) where
 
+import           Conduit
 import           Control.Applicative          ((<$>), (<*>))
 import           Control.Exception            (Exception, SomeException, throw)
 import           Control.Monad                (when)
-import           Control.Monad.ST             (runST)
 import           Control.Monad.Trans.Class    (lift)
-import           Control.Monad.Trans.Resource (MonadThrow, throwM, runResourceT)
 import           Data.ByteString              (ByteString)
 import           Data.ByteString.Builder      (Builder)
 import qualified Data.ByteString.Lazy         as L
 import           Data.Char                    (isSpace)
-import           Data.Conduit
 import qualified Data.Conduit.Binary          as CB
 import           Data.Conduit.Lazy            (lazyConsume)
 import qualified Data.Conduit.List            as CL
@@ -73,8 +71,8 @@ readFile ps fp = runConduitRes $ CB.sourceFile fp .| sinkDoc ps
 
 sinkDoc :: MonadThrow m
         => P.ParseSettings
-        -> Consumer ByteString m Document
-sinkDoc ps = P.parseBytesPos ps =$= fromEvents
+        -> ConduitT ByteString o m Document
+sinkDoc ps = P.parseBytesPos ps .| fromEvents
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
 writeFile rs fp doc =
@@ -120,14 +118,14 @@ prettyShowE = show -- FIXME
 prettyShowName :: Name -> String
 prettyShowName = show -- FIXME
 
-renderBuilder :: Monad m => R.RenderSettings -> Document -> Producer m Builder
-renderBuilder rs doc = CL.sourceList (toEvents doc) =$= R.renderBuilder rs
+renderBuilder :: Monad m => R.RenderSettings -> Document -> ConduitT i Builder m ()
+renderBuilder rs doc = CL.sourceList (toEvents doc) .| R.renderBuilder rs
 
---renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> Producer m ByteString
-renderBytes rs doc = CL.sourceList (toEvents doc) =$= R.renderBytes rs
+renderBytes :: PrimMonad m => R.RenderSettings -> Document -> ConduitT i ByteString m ()
+renderBytes rs doc = CL.sourceList (toEvents doc) .| R.renderBytes rs
 
---renderText :: (MonadThrow m, MonadUnsafeIO m) => R.RenderSettings -> Document -> Producer m Text
-renderText rs doc = CL.sourceList (toEvents doc) =$= R.renderText rs
+renderText :: (MonadThrow m, PrimMonad m) => R.RenderSettings -> Document -> ConduitT i Text m ()
+renderText rs doc = CL.sourceList (toEvents doc) .| R.renderText rs
 
 manyTries :: Monad m => m (Maybe a) -> m [a]
 manyTries f =
@@ -143,7 +141,7 @@ dropReturn :: Monad m => a -> ConduitM i o m a
 dropReturn x = CL.drop 1 >> return x
 
 -- | Parse a document from a stream of events.
-fromEvents :: MonadThrow m => Consumer P.EventPos m Document
+fromEvents :: MonadThrow m => ConduitT P.EventPos o m Document
 fromEvents = do
     skip EventBeginDocument
     d <- Document <$> goP <*> require elementFromEvents <*> goM
@@ -201,7 +199,7 @@ fromEvents = do
 -- | Try to parse a document element (as defined in XML) from a stream of events.
 --
 -- @since 1.3.5
-elementFromEvents :: MonadThrow m => Consumer P.EventPos m (Maybe Element)
+elementFromEvents :: MonadThrow m => ConduitT P.EventPos o m (Maybe Element)
 elementFromEvents = goE
   where
     goE = do
@@ -282,5 +280,5 @@ parseText_ ps = either throw id . parseText ps
 
 sinkTextDoc :: MonadThrow m
             => ParseSettings
-            -> Consumer Text m Document
-sinkTextDoc ps = P.parseTextPos ps =$= fromEvents
+            -> ConduitT Text o m Document
+sinkTextDoc ps = P.parseTextPos ps .| fromEvents

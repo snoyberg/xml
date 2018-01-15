@@ -23,7 +23,6 @@ import qualified Data.Conduit.List as CL
 import Control.Arrow ((***))
 import qualified Data.Set as Set
 import qualified Text.XML as X
-import Text.XML.Stream.Parse (decodeHtmlEntities)
 import Conduit
 import qualified Data.ByteString.Lazy as L
 import Data.Maybe (mapMaybe)

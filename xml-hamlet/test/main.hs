@@ -124,7 +124,7 @@ $else
           justTrue = Just True
       in [xml|
 $case nothing
-    $of Just val
+    $of Just _val
     $of Nothing
         <one>
 $case justTrue
@@ -138,7 +138,7 @@ $case (Just $ not False)
         $if val
             <three>
 $case Nothing
-    $of Just val
+    $of Just _val
     $of _
         <four>
 |] @?=

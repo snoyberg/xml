@@ -34,7 +34,7 @@
 -- > data Person = Person Int Text
 -- >     deriving Show
 -- >
--- > parsePerson :: MonadThrow m => Consumer Event m (Maybe Person)
+-- > parsePerson :: MonadThrow m => ConduitT Event o m (Maybe Person)
 -- > parsePerson = tag' "person" (requireAttr "age") $ \age -> do
 -- >     name <- content
 -- >     return $ Person (read $ unpack age) name
@@ -71,7 +71,7 @@
 -- >
 -- > data Person = Person Int Text deriving Show
 -- >
--- > parsePerson :: MonadThrow m => Consumer Event m (Maybe Person)
+-- > parsePerson :: MonadThrow m => ConduitT Event o m (Maybe Person)
 -- > parsePerson = tag' "person" (requireAttr "age") $ \age -> do
 -- >     name <- content
 -- >     return $ Person (read $ unpack age) name
@@ -80,7 +80,7 @@
 -- > parsePeople = void $ tagNoAttr "people" $ manyYield parsePerson
 -- >
 -- > main = runResourceT $
--- >     parseFile def "people.xml" $$ parsePeople =$ CL.mapM_ (lift . print)
+-- >     parseFile def "people.xml" $$ parsePeople .| CL.mapM_ (lift . print)
 --
 -- Previous versions of this module contained a number of more sophisticated
 -- functions written by Aristid Breitkreuz and Dmitry Olshansky. To keep this
@@ -267,7 +267,7 @@ tnameToName _ (NSLevel _ m) (TName (Just pref) name) =
 -- first checks for BOMs, removing them as necessary, and then check for the
 -- equivalent of <?xml for each of UTF-8, UTF-16LE/BE, and UTF-32LE/BE. It
 -- defaults to assuming UTF-8.
-detectUtf :: MonadThrow m => Conduit S.ByteString m T.Text
+detectUtf :: MonadThrow m => ConduitT S.ByteString T.Text m ()
 detectUtf =
     conduit id
   where
@@ -303,7 +303,7 @@ detectUtf =
 checkXMLDecl :: MonadThrow m
              => S.ByteString
              -> Maybe CT.Codec
-             -> Conduit S.ByteString m T.Text
+             -> ConduitT S.ByteString T.Text m ()
 checkXMLDecl bs (Just codec) = leftover bs >> CT.decode codec
 checkXMLDecl bs0 Nothing =
     loop [] (AT.parse (parseToken decodeXmlEntities)) bs0
@@ -339,15 +339,15 @@ type EventPos = (Maybe PositionRange, Event)
 -- to do the actual parsing.
 parseBytes :: MonadThrow m
            => ParseSettings
-           -> Conduit S.ByteString m Event
+           -> ConduitT S.ByteString Event m ()
 parseBytes = mapOutput snd . parseBytesPos
 
 parseBytesPos :: MonadThrow m
               => ParseSettings
-              -> Conduit S.ByteString m EventPos
-parseBytesPos ps = detectUtf =$= parseTextPos ps
+              -> ConduitT S.ByteString EventPos m ()
+parseBytesPos ps = detectUtf .| parseTextPos ps
 
-dropBOM :: Monad m => Conduit T.Text m T.Text
+dropBOM :: Monad m => ConduitT T.Text T.Text m ()
 dropBOM =
     await >>= maybe (return ()) push
   where
@@ -370,13 +370,13 @@ dropBOM =
 -- Since 1.2.4
 parseText' :: MonadThrow m
            => ParseSettings
-           -> Conduit T.Text m Event
+           -> ConduitT T.Text Event m ()
 parseText' = mapOutput snd . parseTextPos
 
 {-# DEPRECATED parseText "Please use 'parseText'' or 'parseTextPos'." #-}
 parseText :: MonadThrow m
           => ParseSettings
-          -> Conduit T.Text m EventPos
+          -> ConduitT T.Text EventPos m ()
 parseText = parseTextPos
 
 -- | Same as 'parseText'', but includes the position of each event.
@@ -384,12 +384,12 @@ parseText = parseTextPos
 -- Since 1.2.4
 parseTextPos :: MonadThrow m
           => ParseSettings
-          -> Conduit T.Text m EventPos
+          -> ConduitT T.Text EventPos m ()
 parseTextPos de =
     dropBOM
-        =$= tokenize
-        =$= toEventC de
-        =$= addBeginEnd
+        .| tokenize
+        .| toEventC de
+        .| addBeginEnd
   where
     tokenize = conduitToken de
     addBeginEnd = yield (Nothing, EventBeginDocument) >> addEnd
@@ -397,7 +397,7 @@ parseTextPos de =
         (yield (Nothing, EventEndDocument))
         (\e -> yield e >> addEnd)
 
-toEventC :: Monad m => ParseSettings -> Conduit (PositionRange, Token) m EventPos
+toEventC :: Monad m => ParseSettings -> ConduitT (PositionRange, Token) EventPos m ()
 toEventC ps =
     go [] []
   where
@@ -428,7 +428,7 @@ instance Default ParseSettings where
         , psRetainNamespaces = False
         }
 
-conduitToken :: MonadThrow m => ParseSettings -> Conduit T.Text m (PositionRange, Token)
+conduitToken :: MonadThrow m => ParseSettings -> ConduitT T.Text (PositionRange, Token) m ()
 conduitToken = conduitParser . parseToken . psDecodeEntities
 
 parseToken :: DecodeEntities -> Parser Token
@@ -649,7 +649,7 @@ data ContentType = Ignore | IsContent Text | IsError String | NotContent
 -- | Grabs the next piece of content if available. This function skips over any
 -- comments and instructions and concatenates all content until the next start
 -- or end tag.
-contentMaybe :: MonadThrow m => Consumer Event m (Maybe Text)
+contentMaybe :: MonadThrow m => ConduitT Event o m (Maybe Text)
 contentMaybe = do
     x <- peekC
     case pc' x of
@@ -681,7 +681,7 @@ contentMaybe = do
 
 -- | Grabs the next piece of content. If none if available, returns 'T.empty'.
 -- This is simply a wrapper around 'contentMaybe'.
-content :: MonadThrow m => Consumer Event m Text
+content :: MonadThrow m => ConduitT Event o m Text
 content = fromMaybe T.empty <$> contentMaybe
 
 
@@ -715,9 +715,9 @@ tag :: MonadThrow m
     -> (a -> AttrParser b) -- ^ Given the value returned by the name checker, this function will
                            --   be used to get an @AttrParser@ appropriate for the specific tag.
                            --   If the @AttrParser@ fails, the function will also return @Nothing@
-    -> (b -> ConduitM Event o m c) -- ^ Handler function to handle the attributes and children
+    -> (b -> ConduitT Event o m c) -- ^ Handler function to handle the attributes and children
                                    --   of a tag, given the value return from the @AttrParser@
-    -> ConduitM Event o m (Maybe c)
+    -> ConduitT Event o m (Maybe c)
 tag nameMatcher attrParser f = do
   (x, leftovers) <- dropWS []
   res <- case x of
@@ -758,29 +758,29 @@ tag nameMatcher attrParser f = do
         case runAttrParser p as of
             Left e          -> Left e
             Right ([], x)   -> Right x
-            Right (attr, _) -> Left $ toException $ UnparsedAttributes attr
+            Right (attr', _) -> Left $ toException $ UnparsedAttributes attr'
 
 -- | A simplified version of 'tag' where the 'NameMatcher' result isn't forwarded to the attributes parser.
 --
 -- Since 1.5.0
 tag' :: MonadThrow m
-     => NameMatcher a -> AttrParser b -> (b -> ConduitM Event o m c)
-     -> ConduitM Event o m (Maybe c)
+     => NameMatcher a -> AttrParser b -> (b -> ConduitT Event o m c)
+     -> ConduitT Event o m (Maybe c)
 tag' a b = tag a (const b)
 
 -- | A further simplified tag parser, which requires that no attributes exist.
 tagNoAttr :: MonadThrow m
           => NameMatcher a -- ^ Check if this is a correct tag name
-          -> ConduitM Event o m b -- ^ Handler function to handle the children of the matched tag
-          -> ConduitM Event o m (Maybe b)
+          -> ConduitT Event o m b -- ^ Handler function to handle the children of the matched tag
+          -> ConduitT Event o m (Maybe b)
 tagNoAttr name f = tag' name (return ()) $ const f
 
 
 -- | A further simplified tag parser, which ignores all attributes, if any exist
 tagIgnoreAttrs :: MonadThrow m
                => NameMatcher a -- ^ Check if this is a correct tag name
-               -> ConduitM Event o m b -- ^ Handler function to handle the children of the matched tag
-               -> ConduitM Event o m (Maybe b)
+               -> ConduitT Event o m b -- ^ Handler function to handle the children of the matched tag
+               -> ConduitT Event o m (Maybe b)
 tagIgnoreAttrs name f = tag' name ignoreAttrs $ const f
 
 
@@ -792,14 +792,14 @@ tagIgnoreAttrs name f = tag' name ignoreAttrs $ const f
 -- Since 1.5.0
 ignoreEmptyTag :: MonadThrow m
           => NameMatcher a -- ^ Check if this is a correct tag name
-          -> ConduitM Event o m (Maybe ())
+          -> ConduitT Event o m (Maybe ())
 ignoreEmptyTag nameMatcher = tagIgnoreAttrs nameMatcher (return ())
 
 
 {-# DEPRECATED ignoreTag "Please use 'ignoreEmptyTag'." #-}
 ignoreTag :: MonadThrow m
           => NameMatcher a -- ^ Check if this is a correct tag name
-          -> ConduitM Event o m (Maybe ())
+          -> ConduitT Event o m (Maybe ())
 ignoreTag = ignoreEmptyTag
 
 
@@ -810,21 +810,21 @@ ignoreTag = ignoreEmptyTag
 -- Since 1.5.0
 ignoreTreeContent :: MonadThrow m
                   => NameMatcher a -- ^ Check if this is a correct tag name
-                  -> ConduitM Event o m (Maybe ())
+                  -> ConduitT Event o m (Maybe ())
 ignoreTreeContent namePred = tagIgnoreAttrs namePred (void $ many ignoreAnyTreeContent)
 
 {-# DEPRECATED ignoreTree "Please use 'ignoreTreeContent'." #-}
 ignoreTree :: MonadThrow m
            => NameMatcher a -- ^ Check if this is a correct tag name
-           -> ConduitM Event o m (Maybe ())
+           -> ConduitT Event o m (Maybe ())
 ignoreTree = ignoreTreeContent
 
 -- | Like 'ignoreTreeContent', but matches any name and also ignores content events.
-ignoreAnyTreeContent :: MonadThrow m => ConduitM Event o m (Maybe ())
+ignoreAnyTreeContent :: MonadThrow m => ConduitT Event o m (Maybe ())
 ignoreAnyTreeContent = (void <$> contentMaybe) `orE` ignoreTreeContent anyName
 
 {-# DEPRECATED ignoreAllTreesContent "Please use 'ignoreAnyTreeContent'." #-}
-ignoreAllTreesContent :: MonadThrow m => ConduitM Event o m (Maybe ())
+ignoreAllTreesContent :: MonadThrow m => ConduitT Event o m (Maybe ())
 ignoreAllTreesContent = ignoreAnyTreeContent
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
@@ -832,16 +832,16 @@ ignoreAllTreesContent = ignoreAnyTreeContent
 --
 -- > orE a b = choose [a, b]
 orE :: Monad m
-    => Consumer Event m (Maybe a) -- ^ The first (preferred) parser
-    -> Consumer Event m (Maybe a) -- ^ The second parser, only executed if the first parser fails
-    -> Consumer Event m (Maybe a)
+    => ConduitT Event o m (Maybe a) -- ^ The first (preferred) parser
+    -> ConduitT Event o m (Maybe a) -- ^ The second parser, only executed if the first parser fails
+    -> ConduitT Event o m (Maybe a)
 orE a b = a >>= \x -> maybe b (const $ return x) x
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
 choose :: Monad m
-       => [ConduitM Event o m (Maybe a)] -- ^ List of parsers that will be tried in order.
-       -> ConduitM Event o m (Maybe a)   -- ^ Result of the first parser to succeed, or @Nothing@
+       => [ConduitT Event o m (Maybe a)] -- ^ List of parsers that will be tried in order.
+       -> ConduitT Event o m (Maybe a)   -- ^ Result of the first parser to succeed, or @Nothing@
                                          --   if no parser succeeded
 choose []     = return Nothing
 choose (i:is) = i >>= maybe (choose is) (return . Just)
@@ -861,14 +861,14 @@ force msg i = i >>= maybe (throwM $ XmlException msg Nothing) return
 parseFile :: MonadResource m
           => ParseSettings
           -> FilePath
-          -> Producer m Event
-parseFile ps fp = sourceFile fp =$= transPipe liftIO (parseBytes ps)
+          -> ConduitT i Event m ()
+parseFile ps fp = sourceFile fp .| transPipe liftIO (parseBytes ps)
 
 -- | Parse an event stream from a lazy 'L.ByteString'.
 parseLBS :: MonadThrow m
          => ParseSettings
          -> L.ByteString
-         -> Producer m Event
+         -> ConduitT i Event m ()
 parseLBS ps lbs = sourceLazy lbs .| parseBytes ps
 
 data XmlException = XmlException
@@ -1003,24 +1003,24 @@ ignoreAttrs = AttrParser $ const $ Right ([], ())
 
 -- | Keep parsing elements as long as the parser returns 'Just'.
 many :: Monad m
-     => ConduitM Event o m (Maybe a)
-     -> ConduitM Event o m [a]
+     => ConduitT Event o m (Maybe a)
+     -> ConduitT Event o m [a]
 many i = manyIgnore i $ return Nothing
 
 -- | Like 'many' but discards the results without building an intermediate list.
 --
 -- Since 1.5.0
 many_ :: MonadThrow m
-      => ConduitM Event o m (Maybe a)
-      -> ConduitM Event o m ()
+      => ConduitT Event o m (Maybe a)
+      -> ConduitT Event o m ()
 many_ consumer = manyIgnoreYield (return Nothing) (void <$> consumer)
 
 -- | Keep parsing elements as long as the parser returns 'Just'
 --   or the ignore parser returns 'Just'.
 manyIgnore :: Monad m
-           => ConduitM Event o m (Maybe a)
-           -> ConduitM Event o m (Maybe b)
-           -> ConduitM Event o m [a]
+           => ConduitT Event o m (Maybe a)
+           -> ConduitT Event o m (Maybe b)
+           -> ConduitT Event o m [a]
 manyIgnore i ignored = go id where
   go front = i >>= maybe (onFail front) (\y -> go $ front . (:) y)
   -- onFail is called if the main parser fails
@@ -1029,25 +1029,25 @@ manyIgnore i ignored = go id where
 -- | Like @many@, but any tags and content the consumer doesn't match on
 --   are silently ignored.
 many' :: MonadThrow m
-      => ConduitM Event o m (Maybe a)
-      -> ConduitM Event o m [a]
+      => ConduitT Event o m (Maybe a)
+      -> ConduitT Event o m [a]
 many' consumer = manyIgnore consumer ignoreAllTreesContent
 
 
 -- | Like 'many', but uses 'yield' so the result list can be streamed
 --   to downstream conduits without waiting for 'manyYield' to finish
 manyYield :: Monad m
-          => ConduitM a b m (Maybe b)
-          -> Conduit a m b
+          => ConduitT a b m (Maybe b)
+          -> ConduitT a b m ()
 manyYield consumer = fix $ \loop ->
   consumer >>= maybe (return ()) (\x -> yield x >> loop)
 
 -- | Like 'manyIgnore', but uses 'yield' so the result list can be streamed
 --   to downstream conduits without waiting for 'manyIgnoreYield' to finish
 manyIgnoreYield :: MonadThrow m
-                => ConduitM Event b m (Maybe b) -- ^ Consuming parser that generates the result stream
-                -> ConduitM Event b m (Maybe ()) -- ^ Ignore parser that consumes elements to be ignored
-                -> Conduit Event m b
+                => ConduitT Event b m (Maybe b) -- ^ Consuming parser that generates the result stream
+                -> ConduitT Event b m (Maybe ()) -- ^ Ignore parser that consumes elements to be ignored
+                -> ConduitT Event b m ()
 manyIgnoreYield consumer ignoreParser = fix $ \loop ->
   consumer >>= maybe (onFail loop) (\x -> yield x >> loop)
   where onFail loop = ignoreParser >>= maybe (return ()) (const loop)
@@ -1055,8 +1055,8 @@ manyIgnoreYield consumer ignoreParser = fix $ \loop ->
 -- | Like 'many'', but uses 'yield' so the result list can be streamed
 --   to downstream conduits without waiting for 'manyYield'' to finish
 manyYield' :: MonadThrow m
-           => ConduitM Event b m (Maybe b)
-           -> Conduit Event m b
+           => ConduitT Event b m (Maybe b)
+           -> ConduitT Event b m ()
 manyYield' consumer = manyIgnoreYield consumer ignoreAllTreesContent
 
 
@@ -1065,7 +1065,7 @@ manyYield' consumer = manyIgnoreYield consumer ignoreAllTreesContent
 -- Returns @Just ()@ if a content 'Event' was consumed, @Nothing@ otherwise.
 --
 -- Since 1.5.0
-takeContent :: MonadThrow m => ConduitM Event Event m (Maybe ())
+takeContent :: MonadThrow m => ConduitT Event Event m (Maybe ())
 takeContent = do
   event <- await
   case event of
@@ -1085,7 +1085,7 @@ takeContent = do
 -- Returns @Just ()@ if an element was consumed, 'Nothing' otherwise.
 --
 -- Since 1.5.0
-takeTree :: MonadThrow m => NameMatcher a -> AttrParser b -> ConduitM Event Event m (Maybe ())
+takeTree :: MonadThrow m => NameMatcher a -> AttrParser b -> ConduitT Event Event m (Maybe ())
 takeTree nameMatcher attrParser = do
   event <- await
   case event of
@@ -1112,27 +1112,27 @@ takeTree nameMatcher attrParser = do
 takeTreeContent :: MonadThrow m
                 => NameMatcher a
                 -> AttrParser b
-                -> ConduitM Event Event m (Maybe ())
+                -> ConduitT Event Event m (Maybe ())
 takeTreeContent nameMatcher attrParser = runMaybeT $ MaybeT (takeTree nameMatcher attrParser) <|> MaybeT takeContent
 
 -- | Like 'takeTreeContent', without checking for tag name or attributes.
 --
--- >>> runResourceT $ parseLBS def "text<a></a>" $$ takeAnyTreeContent =$= consume
+-- >>> runResourceT $ parseLBS def "text<a></a>" $$ takeAnyTreeContent .| consume
 -- Just [ EventContent (ContentText "text") ]
 --
--- >>> runResourceT $ parseLBS def "</a><b></b>" $$ takeAnyTreeContent =$= consume
+-- >>> runResourceT $ parseLBS def "</a><b></b>" $$ takeAnyTreeContent .| consume
 -- Just [ ]
 --
--- >>> runResourceT $ parseLBS def "<b><c></c></b></a>text" $$ takeAnyTreeContent =$= consume
+-- >>> runResourceT $ parseLBS def "<b><c></c></b></a>text" $$ takeAnyTreeContent .| consume
 -- Just [ EventBeginElement "b" [], EventBeginElement "c" [], EventEndElement "c", EventEndElement "b" ]
 --
 -- Since 1.5.0
 takeAnyTreeContent :: MonadThrow m
-                => ConduitM Event Event m (Maybe ())
+                => ConduitT Event Event m (Maybe ())
 takeAnyTreeContent = takeTreeContent anyName ignoreAttrs
 
 {-# DEPRECATED takeAllTreesContent "Please use 'takeAnyTreeContent'." #-}
-takeAllTreesContent :: MonadThrow m => ConduitM Event Event m (Maybe ())
+takeAllTreesContent :: MonadThrow m => ConduitT Event Event m (Maybe ())
 takeAllTreesContent = takeAnyTreeContent
 
 type DecodeEntities = Text -> Content
