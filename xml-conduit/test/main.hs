@@ -543,9 +543,9 @@ hexEntityParsing = do
   it "rejects leading 0X" $
     go "<foo>&#x0Xff;</foo>" @?= Nothing
   it "accepts lowercase hex digits" $
-    go "<foo>&#xff;</foo>" @?= Just spec
+    go "<foo>&#xff;</foo>" @?= Just (spec "\xff")
   it "accepts uppercase hex digits" $
-    go "<foo>&#xFF;</foo>" @?= Just spec
+    go "<foo>&#xFF;</foo>" @?= Just (spec "\xff")
   --Note: this must be rejected, because, according to the XML spec, a
   --legal EntityRef's entity matches Name, which can't start with a
   --hash.
@@ -566,17 +566,19 @@ hexEntityParsing = do
   it "rejects illegal character #x1F" $
     go "<foo>&#x1F;</foo>" @?= Nothing
   it "accepts astral plane character" $
-    go "<foo>&#x1006ff;</foo>" @?= Just astralSpec
+    go "<foo>&#x1006ff;</foo>" @?= Just (spec "\x1006ff")
+  it "accepts custom character references" $
+    go' customSettings "<foo>&#xC;</foo>" @?= Just (spec "\xff")
   where
-    spec = Document (Prologue [] Nothing [])
-                    (Element "foo" [] [NodeContent (ContentText "\xff")])
-                    []
-
-    astralSpec = Document (Prologue [] Nothing [])
-                    (Element "foo" [] [NodeContent (ContentText "\x1006ff")])
+    spec content = Document (Prologue [] Nothing [])
+                    (Element "foo" [] [NodeContent (ContentText content)])
                     []
 
     go = either (const Nothing) Just . D.parseLBS def
+    go' settings = either (const Nothing) Just . D.parseLBS settings
+    customSettings = def { P.psDecodeIllegalCharacters = customDecoder }
+    customDecoder 12 = Just '\xff'
+    customDecoder _  = Nothing
 
 name :: [Cu.Cursor] -> [Text]
 name [] = []

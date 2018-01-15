@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP  #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes        #-}
@@ -406,7 +407,12 @@ data Attributes = Attributes [(Name, [Content])]
 
 instance Monoid Attributes where
   mempty = Attributes mempty
+#if !MIN_VERSION_base(4,11,0)
   (Attributes a) `mappend` (Attributes b) = Attributes (a `mappend` b)
+#else
+instance Semigroup Attributes where
+  (Attributes a) <> (Attributes b) = Attributes (a <> b)
+#endif
 
 -- | Generate a single attribute.
 attr :: Name        -- ^ Attribute's name

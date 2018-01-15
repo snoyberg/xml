@@ -2,6 +2,11 @@
 
 * Upgrade to conduit 1.3.0
 
+## 1.7.1
+
+* Add `psDecodeIllegalCharacters` field in `ParseSettings` to specify how illegal characters references should be decoded
+* Fix compatibility with GHC 8.4.1 [#121](https://github.com/snoyberg/xml/issues/121)
+
 ## 1.7.0
 
 * `psDecodeEntities` is no longer passed numeric character references (e.g., `&#x20;`, `&#65;`) and the predefined XML entities (`&amp;`, `&lt;`, etc). They are now handled by the parser. Both of these construct classes only have one spec-compliant interpretation and this behaviour must always be present, so it makes no sense to force user code to re-implement the parsing logic.
