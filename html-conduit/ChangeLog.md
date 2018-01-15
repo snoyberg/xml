@@ -1,3 +1,7 @@
+## 1.3.0
+
+* Upgrade to conduit 1.3
+
 ## 1.2.1.2
 
 * Remove an upper bound

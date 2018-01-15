@@ -1,6 +1,6 @@
-## 1.7.0.1
+## 1.8.0
 
-* Use `throwM` instead of `monadThrow`
+* Upgrade to conduit 1.3.0
 
 ## 1.7.0
 
