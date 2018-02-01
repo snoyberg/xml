@@ -30,14 +30,11 @@ module Text.XML.Stream.Render
     , optionalAttr
     ) where
 
-import           Blaze.ByteString.Builder
 import           Control.Applicative          ((<$>))
 import           Control.Monad.Trans.Resource (MonadThrow)
 import           Data.ByteString              (ByteString)
-import           Data.Conduit
-import           Data.Conduit.Blaze           (builderToByteString)
-import qualified Data.Conduit.List            as CL
-import qualified Data.Conduit.Text            as CT
+import           Data.ByteString.Builder      (Builder)
+import           Conduit
 import           Data.Default.Class           (Default (def))
 import           Data.List                    (foldl')
 import           Data.Map                     (Map)
@@ -56,17 +53,14 @@ import           Text.XML.Stream.Token
 -- optimally sized 'ByteString's with minimal buffer copying.
 --
 -- The output is UTF8 encoded.
---renderBytes :: Monad m => RenderSettings -> Conduit Event m ByteString
-renderBytes rs = renderBuilder rs =$= builderToByteString
+renderBytes :: PrimMonad m => RenderSettings -> ConduitT Event ByteString m ()
+renderBytes rs = renderBuilder rs .| builderToByteString
 
 -- | Render a stream of 'Event's into a stream of 'Text's. This function
 -- wraps around 'renderBuilder', 'builderToByteString' and 'renderBytes', so it
 -- produces optimally sized 'Text's with minimal buffer copying.
-{-
-renderText :: (MonadThrow m)
-           => RenderSettings -> Conduit Event m Text
--}
-renderText rs = renderBytes rs =$= CT.decode CT.utf8
+renderText :: (PrimMonad m, MonadThrow m) => RenderSettings -> ConduitT Event Text m ()
+renderText rs = renderBytes rs .| decodeUtf8C
 
 data RenderSettings = RenderSettings
     { rsPretty     :: Bool
@@ -118,7 +112,7 @@ orderAttrs orderSpec = order
   where
     order elt attrMap =
       let initialAttrs = fromMaybe [] $ lookup elt orderSpec
-          mkPair attr = (,) attr <$> Map.lookup attr attrMap
+          mkPair attr' = (,) attr' <$> Map.lookup attr' attrMap
           otherAttrMap =
             Map.filterWithKey (const . not . (`elem` initialAttrs)) attrMap
       in mapMaybe mkPair initialAttrs ++ Map.toAscList otherAttrMap
@@ -126,8 +120,8 @@ orderAttrs orderSpec = order
 -- | Render a stream of 'Event's into a stream of 'Builder's. Builders are from
 -- the blaze-builder package, and allow the create of optimally sized
 -- 'ByteString's with minimal buffer copying.
-renderBuilder :: Monad m => RenderSettings -> Conduit Event m Builder
-renderBuilder settings = CL.map Chunk =$= renderBuilder' yield' settings
+renderBuilder :: Monad m => RenderSettings -> ConduitT Event Builder m ()
+renderBuilder settings = mapC Chunk .| renderBuilder' yield' settings
   where
     yield' Flush = return ()
     yield' (Chunk bs) = yield bs
@@ -136,18 +130,26 @@ renderBuilder settings = CL.map Chunk =$= renderBuilder' yield' settings
 -- events at needed point are rendered.
 --
 -- @since 1.3.5
-renderBuilderFlush :: Monad m => RenderSettings -> Conduit (Flush Event) m (Flush Builder)
+renderBuilderFlush :: Monad m => RenderSettings -> ConduitT (Flush Event) (Flush Builder) m ()
 renderBuilderFlush = renderBuilder' yield
 
-renderBuilder' :: Monad m => (Flush Builder -> Producer m o) -> RenderSettings -> Conduit (Flush Event) m o
+renderBuilder'
+  :: Monad m
+  => (Flush Builder -> ConduitT (Flush Event) o m ())
+  -> RenderSettings
+  -> ConduitT (Flush Event) o m ()
 renderBuilder' yield' settings =
     if rsPretty settings
-    then prettify =$= renderEvent'
+    then prettify .| renderEvent'
     else renderEvent'
   where
     renderEvent' = renderEvent yield' settings
 
-renderEvent :: Monad m => (Flush Builder -> Producer m o) -> RenderSettings -> Conduit (Flush Event) m o
+renderEvent
+  :: Monad m
+  => (Flush Builder -> ConduitT (Flush Event) o m ())
+  -> RenderSettings
+  -> ConduitT (Flush Event) o m ()
 renderEvent yield' RenderSettings { rsPretty = isPretty, rsNamespaces = namespaces0, rsUseCDATA = useCDATA, rsXMLDeclaration = useXMLDecl } =
     loop []
   where
@@ -157,11 +159,11 @@ renderEvent yield' RenderSettings { rsPretty = isPretty, rsNamespaces = namespac
     go nslevels (Chunk e) =
         case e of
             EventBeginElement n1 as -> do
-                mnext <- CL.peek
+                mnext <- peekC
                 isClosed <-
                     case mnext of
                         Just (Chunk (EventEndElement n2)) | n1 == n2 -> do
-                            CL.drop 1
+                            dropC 1
                             return True
                         _ -> return False
                 let (token, nslevels') = mkBeginToken isPretty isClosed namespaces0 nslevels n1 as
@@ -291,10 +293,10 @@ getPrefix ppref nsmap ns =
 
 -- | Convert a stream of 'Event's into a prettified one, adding extra
 -- whitespace. Note that this can change the meaning of your XML.
-prettify :: Monad m => Conduit (Flush Event) m (Flush Event)
+prettify :: Monad m => ConduitT (Flush Event) (Flush Event) m ()
 prettify = prettify' 0
 
-prettify' :: Monad m => Int -> Conduit (Flush Event) m (Flush Event)
+prettify' :: Monad m => Int -> ConduitT (Flush Event) (Flush Event) m ()
 prettify' level =
     await >>= maybe (return ()) goC
   where
@@ -310,10 +312,10 @@ prettify' level =
     go e@EventBeginElement{} = do
         yield' before
         yield' e
-        mnext <- CL.peek
+        mnext <- peekC
         case mnext of
             Just (Chunk next@EventEndElement{}) -> do
-                CL.drop 1
+                dropC 1
                 yield' next
                 yield' after
                 prettify' level
@@ -357,13 +359,13 @@ prettify' level =
     go e@EventEndDoctype{} = yield' e >> yield' after >> prettify' level
 
     takeContents front = do
-        me <- CL.peek
+        me <- peekC
         case me of
             Just (Chunk (EventContent c)) -> do
-                CL.drop 1
+                dropC 1
                 takeContents $ front . (c:)
             Just (Chunk (EventCDATA t)) -> do
-                CL.drop 1
+                dropC 1
                 takeContents $ front . (ContentText t:)
             _ -> return $ front []
 
@@ -389,15 +391,15 @@ nubAttrs orig =
 
 
 -- | Generate a complete XML 'Element'.
-tag :: (Monad m) => Name -> Attributes -> Source m Event  -- ^ 'Element''s subnodes.
-                                       -> Source m Event
-tag name (Attributes a) content = do
+tag :: (Monad m) => Name -> Attributes -> ConduitT i Event m ()  -- ^ 'Element''s subnodes.
+                                       -> ConduitT i Event m ()
+tag name (Attributes a) content' = do
   yield $ EventBeginElement name a
-  content
+  content'
   yield $ EventEndElement name
 
 -- | Generate a textual 'EventContent'.
-content :: (Monad m) => Text -> Source m Event
+content :: (Monad m) => Text -> ConduitT i Event m ()
 content = yield . EventContent . ContentText
 
 -- | A list of attributes.

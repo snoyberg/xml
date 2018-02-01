@@ -1,3 +1,7 @@
+## 1.8.0
+
+* Upgrade to conduit 1.3.0
+
 ## 1.7.1
 
 * Add `psDecodeIllegalCharacters` field in `ParseSettings` to specify how illegal characters references should be decoded

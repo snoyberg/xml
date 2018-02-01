@@ -2,4 +2,11 @@ packages:
 - xml-conduit/
 - xml-hamlet/
 - html-conduit/
-resolver: lts-6.17
+resolver: lts-10.3
+extra-deps:
+- conduit-1.3.0
+- conduit-extra-1.3.0
+- resourcet-1.2.0
+- mono-traversable-1.0.8.1
+- unliftio-core-0.1.1.0
+- typed-process-0.2.1.0

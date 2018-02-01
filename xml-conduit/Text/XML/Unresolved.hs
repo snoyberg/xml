@@ -43,18 +43,15 @@ module Text.XML.Unresolved
     , R.rsNamespaces
     ) where
 
-import           Blaze.ByteString.Builder     (Builder)
+import           Conduit
 import           Control.Applicative          ((<$>), (<*>))
 import           Control.Exception            (Exception, SomeException, throw)
 import           Control.Monad                (when)
-import           Control.Monad.ST             (runST)
 import           Control.Monad.Trans.Class    (lift)
-import           Control.Monad.Trans.Resource (MonadThrow, monadThrow,
-                                               runExceptionT, runResourceT)
 import           Data.ByteString              (ByteString)
+import           Data.ByteString.Builder      (Builder)
 import qualified Data.ByteString.Lazy         as L
 import           Data.Char                    (isSpace)
-import           Data.Conduit
 import qualified Data.Conduit.Binary          as CB
 import           Data.Conduit.Lazy            (lazyConsume)
 import qualified Data.Conduit.List            as CL
@@ -72,16 +69,16 @@ import qualified Text.XML.Stream.Parse        as P
 import qualified Text.XML.Stream.Render       as R
 
 readFile :: P.ParseSettings -> FilePath -> IO Document
-readFile ps fp = runResourceT $ CB.sourceFile fp $$ sinkDoc ps
+readFile ps fp = runConduitRes $ CB.sourceFile fp .| sinkDoc ps
 
 sinkDoc :: MonadThrow m
         => P.ParseSettings
-        -> Consumer ByteString m Document
-sinkDoc ps = P.parseBytesPos ps =$= fromEvents
+        -> ConduitT ByteString o m Document
+sinkDoc ps = P.parseBytesPos ps .| fromEvents
 
 writeFile :: R.RenderSettings -> FilePath -> Document -> IO ()
 writeFile rs fp doc =
-    runResourceT $ renderBytes rs doc $$ CB.sinkFile fp
+    runConduitRes $ renderBytes rs doc .| CB.sinkFile fp
 
 renderLBS :: R.RenderSettings -> Document -> L.ByteString
 renderLBS rs doc =
@@ -93,9 +90,7 @@ renderLBS rs doc =
                  $ renderBytes rs doc
 
 parseLBS :: P.ParseSettings -> L.ByteString -> Either SomeException Document
-parseLBS ps lbs =
-    runST $ runExceptionT
-          $ CL.sourceList (L.toChunks lbs) $$ sinkDoc ps
+parseLBS ps lbs = runConduit $ CL.sourceList (L.toChunks lbs) .| sinkDoc ps
 
 parseLBS_ :: P.ParseSettings -> L.ByteString -> Document
 parseLBS_ ps lbs = either throw id $ parseLBS ps lbs
@@ -125,14 +120,14 @@ prettyShowE = show -- FIXME
 prettyShowName :: Name -> String
 prettyShowName = show -- FIXME
 
-renderBuilder :: Monad m => R.RenderSettings -> Document -> Producer m Builder
-renderBuilder rs doc = CL.sourceList (toEvents doc) =$= R.renderBuilder rs
+renderBuilder :: Monad m => R.RenderSettings -> Document -> ConduitT i Builder m ()
+renderBuilder rs doc = CL.sourceList (toEvents doc) .| R.renderBuilder rs
 
---renderBytes :: MonadUnsafeIO m => R.RenderSettings -> Document -> Producer m ByteString
-renderBytes rs doc = CL.sourceList (toEvents doc) =$= R.renderBytes rs
+renderBytes :: PrimMonad m => R.RenderSettings -> Document -> ConduitT i ByteString m ()
+renderBytes rs doc = CL.sourceList (toEvents doc) .| R.renderBytes rs
 
---renderText :: (MonadThrow m, MonadUnsafeIO m) => R.RenderSettings -> Document -> Producer m Text
-renderText rs doc = CL.sourceList (toEvents doc) =$= R.renderText rs
+renderText :: (MonadThrow m, PrimMonad m) => R.RenderSettings -> Document -> ConduitT i Text m ()
+renderText rs doc = CL.sourceList (toEvents doc) .| R.renderText rs
 
 manyTries :: Monad m => m (Maybe a) -> m [a]
 manyTries f =
@@ -148,7 +143,7 @@ dropReturn :: Monad m => a -> ConduitM i o m a
 dropReturn x = CL.drop 1 >> return x
 
 -- | Parse a document from a stream of events.
-fromEvents :: MonadThrow m => Consumer P.EventPos m Document
+fromEvents :: MonadThrow m => ConduitT P.EventPos o m Document
 fromEvents = do
     skip EventBeginDocument
     d <- Document <$> goP <*> require elementFromEvents <*> goM
@@ -156,9 +151,9 @@ fromEvents = do
     y <- CL.head
     case y of
         Nothing -> return d
-        Just (_, EventEndDocument) -> lift $ monadThrow MissingRootElement
+        Just (_, EventEndDocument) -> lift $ throwM MissingRootElement
         Just z ->
-            lift $ monadThrow $ ContentAfterRoot z
+            lift $ throwM $ ContentAfterRoot z
   where
     skip e = do
         x <- CL.peek
@@ -171,8 +166,8 @@ fromEvents = do
                 my <- CL.head
                 case my of
                     Nothing -> error "Text.XML.Unresolved:impossible"
-                    Just (_, EventEndDocument) -> lift $ monadThrow MissingRootElement
-                    Just y -> lift $ monadThrow $ ContentAfterRoot y
+                    Just (_, EventEndDocument) -> lift $ throwM MissingRootElement
+                    Just y -> lift $ throwM $ ContentAfterRoot y
     goP = Prologue <$> goM <*> goD <*> goM
     goM = manyTries goM'
     goM' = do
@@ -200,13 +195,13 @@ fromEvents = do
             --
             -- Just (EventDeclaration _) -> dropTillDoctype
             Just (_, EventEndDoctype) -> return ()
-            Just epos -> lift $ monadThrow $ InvalidInlineDoctype epos
-            Nothing -> lift $ monadThrow UnterminatedInlineDoctype
+            Just epos -> lift $ throwM $ InvalidInlineDoctype epos
+            Nothing -> lift $ throwM UnterminatedInlineDoctype
 
 -- | Try to parse a document element (as defined in XML) from a stream of events.
 --
 -- @since 1.3.5
-elementFromEvents :: MonadThrow m => Consumer P.EventPos m (Maybe Element)
+elementFromEvents :: MonadThrow m => ConduitT P.EventPos o m (Maybe Element)
 elementFromEvents = goE
   where
     goE = do
@@ -220,7 +215,7 @@ elementFromEvents = goE
         y <- CL.head
         if fmap snd y == Just (EventEndElement n)
             then return $ Element n as $ compressNodes ns
-            else lift $ monadThrow $ MissingEndElement n y
+            else lift $ throwM $ MissingEndElement n y
     goN = do
         x <- CL.peek
         case x of
@@ -283,15 +278,15 @@ compressNodes (x@(NodeContent (ContentText _)) : y@(NodeContent (ContentText _))
 compressNodes (x:xs) = x : compressNodes xs
 
 parseText :: ParseSettings -> TL.Text -> Either SomeException Document
-parseText ps tl = runST
-                $ runExceptionT
-                $ CL.sourceList (TL.toChunks tl)
-           $$ sinkTextDoc ps
+parseText ps tl =
+    runConduit
+  $ CL.sourceList (TL.toChunks tl)
+ .| sinkTextDoc ps
 
 parseText_ :: ParseSettings -> TL.Text -> Document
 parseText_ ps = either throw id . parseText ps
 
 sinkTextDoc :: MonadThrow m
             => ParseSettings
-            -> Consumer Text m Document
-sinkTextDoc ps = P.parseTextPos ps =$= fromEvents
+            -> ConduitT Text o m Document
+sinkTextDoc ps = P.parseTextPos ps .| fromEvents
