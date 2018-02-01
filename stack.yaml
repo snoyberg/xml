@@ -9,3 +9,4 @@ extra-deps:
 - resourcet-1.2.0
 - mono-traversable-1.0.8.1
 - unliftio-core-0.1.1.0
+- typed-process-0.2.1.0
