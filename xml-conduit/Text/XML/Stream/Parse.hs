@@ -98,13 +98,10 @@ module Text.XML.Stream.Parse
     , parseFile
     , parseLBS
       -- ** Parser settings
-    , ParseSettings
+    , ParseSettings(..)
     , def
     , DecodeEntities
     , DecodeIllegalCharacters
-    , psDecodeEntities
-    , psDecodeIllegalCharacters
-    , psRetainNamespaces
       -- *** Entity decoding
     , decodeXmlEntities
     , decodeHtmlEntities
