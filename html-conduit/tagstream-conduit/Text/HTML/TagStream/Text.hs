@@ -176,7 +176,7 @@ tillScriptEnd :: Token -> Parser [Token]
 tillScriptEnd t = reverse <$> loop [t]
               <|> (:[]) . Incomplete . T.append script <$> takeText
   where
-    script = L.toStrict . B.toLazyText $ showToken id t
+    script = L.toStrict . B.toLazyText $ showToken t
     loop acc = (:acc) <$> scriptEnd
            <|> (text >>= loop . (:acc))
     scriptEnd = string "</script>" *> return (TagClose "script")
@@ -226,25 +226,22 @@ maybeP p = Just <$> p <|> return Nothing
 -- }}}
 
 -- {{{ encode tokens
-cc :: [Text] -> B.Builder -- FIXME use Builder correctly
-cc = mconcat . map B.fromText
-
-showToken :: (Text -> Text) -> Token -> B.Builder
-showToken hl (TagOpen name as close) =
-    cc $ [hl "<", name]
-      ++ map showAttr (Map.toList as)
-      ++ [hl (if close then "/>" else ">")]
+showToken :: Token -> B.Builder
+showToken (TagOpen name as close) =
+    "<" <> B.fromText name <>
+    Map.foldMapWithKey showAttr as <>
+    (if close then "/>" else ">")
   where
-    showAttr :: (Text, Text) -> Text
-    showAttr (key, value) = T.concat $ [" ", key, hl "=\""] ++ map escape (T.unpack value) ++ [hl "\""]
+    showAttr :: Text -> Text -> B.Builder
+    showAttr key value = " " <> B.fromText key <> "=\"" <> foldMap escape (T.unpack value) <> "\""
     escape '"' = "\\\""
     escape '\\' = "\\\\"
-    escape c = T.singleton c
-showToken hl (TagClose name) = cc [hl "</", name, hl ">"]
-showToken _ (Text s) = B.fromText s
-showToken hl (Comment s) = cc [hl "<!--", s, hl "-->"]
-showToken hl (Special name s) = cc [hl "<!", name, " ", s, hl ">"]
-showToken _ (Incomplete s) = B.fromText s
+    escape c = B.singleton c
+showToken (TagClose name) = "</" <> B.fromText name <> ">"
+showToken (Text s) = B.fromText s
+showToken (Comment s) = "<!--" <> B.fromText s <> "-->"
+showToken (Special name s) = "<!" <> B.fromText name <> " " <> B.fromText s <> ">"
+showToken (Incomplete s) = B.fromText s
 -- }}}
 
 -- {{{ Stream
