@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings, TupleSections, ViewPatterns #-}
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RecordWildCards #-}
 module Text.HTML.TagStream.Text
@@ -8,37 +7,23 @@ module Text.HTML.TagStream.Text
   ) where
 
 import           Control.Applicative
-import           Control.Monad (unless, when, liftM)
-import           Control.Monad.Trans.Class (lift)
+import           Control.Monad (unless)
 import           Control.Monad.Trans.Resource (MonadThrow)
 import           Data.Char
 import qualified Data.Conduit.List as CL
-import           Prelude hiding (mapM)
 
-import qualified Data.Attoparsec.ByteString.Char8 as S
 import           Data.Attoparsec.Text
-import           Data.ByteString (ByteString)
 import           Data.Conduit
-import           Data.Functor.Identity (runIdentity)
 import           Data.Maybe (fromMaybe, isJust)
-import           Data.Monoid (mconcat, (<>))
+import           Data.Monoid ((<>))
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as L
 import qualified Data.Text.Lazy.Builder as B
-import           Data.Traversable (mapM)
 import qualified Text.XML.Stream.Parse as XML
-#if MIN_VERSION_conduit(1, 0, 0)
-#else
-import           Data.Conduit.Internal (pipeL)
-#endif
-import qualified Data.Conduit.List as C
-import qualified Data.Conduit.Attoparsec as C
-import qualified Data.Conduit.Text as C
-import           Data.String (IsString)
 import           Data.Map (Map)
 import qualified Data.Map.Strict as Map
-import           Control.Arrow (first, second)
+import           Control.Arrow (first)
 
 data Token
   = TagOpen Text (Map Text Text) Bool
@@ -159,11 +144,12 @@ incomplete = Incomplete . T.cons '<' <$> takeText
 text :: Parser Token
 text = Text <$> atLeast 1 (takeTill (=='<'))
 
+decodeEntity :: MonadThrow m => Text -> m Text
 decodeEntity entity =
-          CL.sourceList ["&",entity,";"]
-          $= XML.parseText XML.def { XML.psDecodeEntities = XML.decodeHtmlEntities }
-          $= CL.map snd
-          $$ XML.content
+             runConduit
+           $ CL.sourceList ["&",entity,";"]
+          .| XML.parseText' XML.def { XML.psDecodeEntities = XML.decodeHtmlEntities }
+          .| XML.content
 
 token :: Parser Token
 token = char '<' *> (tag <|> incomplete)
@@ -192,11 +178,6 @@ html = tokens <|> pure []
               | not close && name=="script"
                 -> (++) <$> tillScriptEnd t <*> html
             _ -> (t:) <$> html
-
-decode :: Text -> Either String [Token]
-decode = fmap decodeEntitiesText' . parseOnly html
-  where
-    decodeEntitiesText' tokens = runIdentity $ mapM_ yield tokens $$ decodeEntities =$ CL.consume
 
 {--
  - Utils {{{
@@ -246,19 +227,11 @@ showToken (Incomplete s) = B.fromText s
 
 -- {{{ Stream
 tokenStream :: Monad m
-#if MIN_VERSION_conduit(1, 0, 0)
-            => Conduit Text m Token
-#else
-            => GInfConduit Text m Token
-#endif
+            => ConduitT Text Token m ()
 tokenStream =
-    loop T.empty =$= decodeEntities
+    loop T.empty .| decodeEntities -- FIXME use a builder
   where
-#if MIN_VERSION_conduit(1, 0, 0)
     loop accum = await >>= maybe (close accum ()) (push accum)
-#else
-    loop accum = awaitE >>= either (close accum) (push accum)
-#endif
 
     push accum input =
         case parseOnly html (accum `T.append` input) of
@@ -277,14 +250,14 @@ splitAccum tokens = (mempty, tokens)
 -- Entities
 
 -- | A conduit to decode entities from a stream of tokens into a new stream of tokens.
-decodeEntities :: Monad m => Conduit Token m Token
+decodeEntities :: Monad m => ConduitT Token Token m ()
 decodeEntities =
     start
   where
-    start = await >>= maybe (return ()) (\token -> start' token >> start)
-    start' (Text t) = (yield t >> yieldWhileText) =$= decodeEntities' =$= CL.mapMaybe go
-    start' (TagOpen name attrs bool) = yield (TagOpen name (Map.map decodeString attrs) bool)
-    start' token = yield token
+    start = await >>= maybe (return ()) (\token' -> start' token' >> start)
+    start' (Text t) = (yield t >> yieldWhileText) .| decodeEntities' .| CL.mapMaybe go
+    start' (TagOpen name attrs' bool) = yield (TagOpen name (Map.map decodeString attrs') bool)
+    start' token' = yield token'
 
     go t
         | t == ""   = Nothing
@@ -298,7 +271,7 @@ decodeString input =
       | value' /= mempty -> value' <> decodeString remainder
       | otherwise -> input
 
-decodeEntities' :: Monad m => Conduit Text m Text
+decodeEntities' :: Monad m => ConduitT Text Text m ()
 decodeEntities' =
     loop id
   where
@@ -312,13 +285,13 @@ decodeEntities' =
             else yield remainder
 
 -- | Yield contiguous text tokens as strings.
-yieldWhileText :: Monad m => Conduit Token m Text
+yieldWhileText :: Monad m => ConduitT Token Text m ()
 yieldWhileText =
     loop
   where
     loop = await >>= maybe (return ()) go
     go (Text t) = yield t >> loop
-    go token = leftover token
+    go token' = leftover token'
 
 -- | Decode the entities in a string type with a decoder.
 makeEntityDecoder :: Text -> (Text, Text)
