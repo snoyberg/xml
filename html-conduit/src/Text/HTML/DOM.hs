@@ -15,7 +15,6 @@ import Control.Monad.Trans.Resource
 import Prelude hiding (readFile)
 import qualified Data.ByteString as S
 import qualified Text.HTML.TagStream.Text as TS
-import qualified Text.HTML.TagStream as TS
 import qualified Data.XML.Types as XT
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL

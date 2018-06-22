@@ -30,9 +30,7 @@ Library
                      , conduit-extra
                      , case-insensitive
 
-  other-modules:       Text.HTML.TagStream
-                       Text.HTML.TagStream.ByteString
-                       Text.HTML.TagStream.Entities
+  other-modules:       Text.HTML.TagStream.Entities
                        Text.HTML.TagStream.Text
                        Text.HTML.TagStream.Types
                        Text.HTML.TagStream.Utils
