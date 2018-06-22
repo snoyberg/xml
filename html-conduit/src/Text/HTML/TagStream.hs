@@ -214,7 +214,7 @@ maybeP p = Just <$> p <|> return Nothing
 tokenStream :: Monad m
             => ConduitT Text Token m ()
 tokenStream =
-    CA.conduitParserEither tokens .| CL.concatMap go
+    CL.filter (not . T.null) .| CA.conduitParserEither tokens .| CL.concatMap go
   where
     go (Left e) = error $ "html-conduit: parse error that should never happen occurred! " ++ show e
     go (Right (_, tokens')) = tokens'

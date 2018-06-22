@@ -1,10 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 import Test.HUnit hiding (Test)
 import Test.Hspec
+import Test.Hspec.QuickCheck
 import Data.ByteString.Lazy.Char8 ()
 import qualified Text.HTML.DOM as H
 import qualified Text.XML as X
 import qualified Data.Map as Map
+import qualified Data.Text as T
+import Control.Exception (evaluate)
+import Control.DeepSeq (($!!))
+import Control.Monad (void)
 
 main :: IO ()
 main = hspec $ do
@@ -145,3 +150,5 @@ main = hspec $ do
             doc = X.Document (X.Prologue [] Nothing []) root []
             root = X.Element "script" Map.empty [X.NodeContent "hello &amp; world"]
          in H.parseLBS html @?= doc
+
+    prop "parses all random input" $ \strs -> void $ evaluate $!! H.parseSTChunks $ map T.pack strs

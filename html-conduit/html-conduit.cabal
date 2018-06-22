@@ -41,6 +41,8 @@ test-suite test
                           , html-conduit
                           , bytestring
                           , containers
+                          , text
+                          , deepseq
 
 source-repository head
   type: git
