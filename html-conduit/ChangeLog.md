@@ -1,3 +1,8 @@
+## 1.3.1
+
+* Inline tagstream-conduit for entity decoding in attribute value bug
+  fix.
+
 ## 1.3.0
 
 * Upgrade to conduit 1.3
