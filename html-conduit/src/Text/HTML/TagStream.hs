@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings, TupleSections, ViewPatterns #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RecordWildCards #-}
-module Text.HTML.TagStream.Text
+module Text.HTML.TagStream
   ( Token (..)
   , tokenStream
   ) where
