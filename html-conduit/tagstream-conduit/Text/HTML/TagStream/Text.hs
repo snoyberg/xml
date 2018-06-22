@@ -159,13 +159,15 @@ token = char '<' *> (tag <|> incomplete)
  - treat script tag specially, can't fail.
  -}
 tillScriptEnd :: Token -> Parser [Token]
-tillScriptEnd t = reverse <$> loop [t]
-              <|> (:[]) . Incomplete . T.append script <$> takeText
+tillScriptEnd open =
+    loop mempty
   where
-    script = L.toStrict . B.toLazyText $ showToken t
-    loop acc = (:acc) <$> scriptEnd
-           <|> (text >>= loop . (:acc))
-    scriptEnd = string "</script>" *> return (TagClose "script")
+    loop acc = do
+      chunk <- takeTill (== '<')
+      let acc' = acc <> B.fromText chunk
+          finish = pure [open, Text $ L.toStrict $ B.toLazyText acc', TagClose "script"]
+          hasContent = (string "/script>" *> finish) <|> loop acc'
+      (char '<' *> hasContent) <|> finish
 
 html :: Parser [Token]
 html = tokens <|> pure []
@@ -174,9 +176,7 @@ html = tokens <|> pure []
     tokens = do
         t <- token
         case t of
-            (TagOpen name _ close)
-              | not close && name=="script"
-                -> (++) <$> tillScriptEnd t <*> html
+            TagOpen "script" _ False -> (++) <$> tillScriptEnd t <*> html
             _ -> (t:) <$> html
 
 {--
@@ -204,25 +204,6 @@ boolP p = p *> pure True <|> pure False
 
 maybeP :: Parser a -> Parser (Maybe a)
 maybeP p = Just <$> p <|> return Nothing
--- }}}
-
--- {{{ encode tokens
-showToken :: Token -> B.Builder
-showToken (TagOpen name as close) =
-    "<" <> B.fromText name <>
-    Map.foldMapWithKey showAttr as <>
-    (if close then "/>" else ">")
-  where
-    showAttr :: Text -> Text -> B.Builder
-    showAttr key value = " " <> B.fromText key <> "=\"" <> foldMap escape (T.unpack value) <> "\""
-    escape '"' = "\\\""
-    escape '\\' = "\\\\"
-    escape c = B.singleton c
-showToken (TagClose name) = "</" <> B.fromText name <> ">"
-showToken (Text s) = B.fromText s
-showToken (Comment s) = "<!--" <> B.fromText s <> "-->"
-showToken (Special name s) = "<!" <> B.fromText name <> " " <> B.fromText s <> ">"
-showToken (Incomplete s) = B.fromText s
 -- }}}
 
 -- {{{ Stream

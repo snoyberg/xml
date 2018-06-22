@@ -106,3 +106,30 @@ main = hspec $ do
             doc = X.Document (X.Prologue [] Nothing []) root []
             root = X.Element "br" (Map.singleton "title" "Mac & Cheese") []
          in H.parseLBS html @?= doc
+
+    describe "script tags" $ do
+      it "ignores funny characters" $
+        let html = "<script>hello > world</script>"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element "script" Map.empty [X.NodeContent "hello > world"]
+         in H.parseLBS html @?= doc
+
+      {-
+
+       Would be nice... doesn't work with tagstream-conduit original
+       code. Not even sure if the HTML5 parser spec discusses this
+       case.
+
+      it "ignores </script> inside string" $
+        let html = "<script>hello \"</script>\" world</script>"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element "script" Map.empty [X.NodeContent "hello \"</script>\" world"]
+         in H.parseLBS html @?= doc
+
+      -}
+
+      it "unterminated" $
+        let html = "<script>hello > world"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element "script" Map.empty [X.NodeContent "hello > world"]
+         in H.parseLBS html @?= doc
