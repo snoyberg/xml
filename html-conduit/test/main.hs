@@ -107,6 +107,12 @@ main = hspec $ do
             root = X.Element "br" (Map.singleton "title" "Mac & Cheese") []
          in H.parseLBS html @?= doc
 
+    it "doesn't double escape entities in attributes" $
+        let html = "<br title=\"Mac &amp;amp; Cheese\">"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element "br" (Map.singleton "title" "Mac &amp; Cheese") []
+         in H.parseLBS html @?= doc
+
     describe "script tags" $ do
       it "ignores funny characters" $
         let html = "<script>hello > world</script>"
@@ -132,4 +138,10 @@ main = hspec $ do
         let html = "<script>hello > world"
             doc = X.Document (X.Prologue [] Nothing []) root []
             root = X.Element "script" Map.empty [X.NodeContent "hello > world"]
+         in H.parseLBS html @?= doc
+
+      it "entities" $
+        let html = "<script>hello &amp; world"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element "script" Map.empty [X.NodeContent "hello &amp; world"]
          in H.parseLBS html @?= doc

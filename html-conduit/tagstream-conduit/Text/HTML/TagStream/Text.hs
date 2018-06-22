@@ -14,6 +14,7 @@ import qualified Data.Conduit.List as CL
 
 import           Data.Attoparsec.Text
 import           Data.Conduit
+import qualified Data.Conduit.Attoparsec as CA
 import           Data.Maybe (fromMaybe, isJust)
 import           Data.Monoid ((<>))
 import           Data.Text (Text)
@@ -130,7 +131,7 @@ tag = do
         TagTypeNormal -> do
             name <- takeTill (in3 ('<','>','/') ||. isSpace)
             (as, close) <- attrs
-            return $ TagOpen name as close
+            return $ TagOpen name (Map.map decodeString as) close
 
 {--
  - record incomplete tag for streamline processing.
@@ -169,15 +170,18 @@ tillScriptEnd open =
           hasContent = (string "/script>" *> finish) <|> loop acc'
       (char '<' *> hasContent) <|> finish
 
-html :: Parser [Token]
-html = tokens <|> pure []
-  where
-    tokens :: Parser [Token]
-    tokens = do
-        t <- token
-        case t of
-            TagOpen "script" _ False -> (++) <$> tillScriptEnd t <*> html
-            _ -> (t:) <$> html
+tokens :: Parser [Token]
+tokens = do
+  t <- token
+  case t of
+    TagOpen "script" _ False -> tillScriptEnd t
+    Text text0 -> do
+      let parseText = do
+            Text text <- token
+            pure text
+      texts <- many parseText
+      pure [Text $ decodeString $ T.concat $ text0 : texts]
+    _ -> pure [t]
 
 {--
  - Utils {{{
@@ -210,18 +214,10 @@ maybeP p = Just <$> p <|> return Nothing
 tokenStream :: Monad m
             => ConduitT Text Token m ()
 tokenStream =
-    loop T.empty .| decodeEntities -- FIXME use a builder
+    CA.conduitParserEither tokens .| CL.concatMap go
   where
-    loop accum = await >>= maybe (close accum ()) (push accum)
-
-    push accum input =
-        case parseOnly html (accum `T.append` input) of
-            Right (splitAccum -> (accum', tokens)) -> mapM_ yield tokens >> loop accum'
-            Left err -> fail err
-
-    close s r = do
-        unless (T.null s) $ yield $ Text s
-        return r
+    go (Left e) = error $ "html-conduit: parse error that should never happen occurred! " ++ show e
+    go (Right (_, tokens')) = tokens'
 
 splitAccum :: [Token] -> (Text, [Token])
 splitAccum [] = (mempty, [])
