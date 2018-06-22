@@ -159,17 +159,7 @@ incomplete = Incomplete . T.cons '<' <$> takeText
 text :: Parser Token
 text = Text <$> atLeast 1 (takeTill (=='<'))
 
--- | Decode the HTML entities e.g. @&amp;@ in some text into @&@.
-decodeEntitiesText :: Monad m => Conduit Token m Token
-decodeEntitiesText =
-  decodeEntities
-    Dec { decToS     = L.toStrict . B.toLazyText
-        , decBreak   = T.break
-        , decBuilder = B.fromText
-        , decDrop    = T.drop
-        , decEntity  = decodeEntity
-        , decUncons  = T.uncons }
-  where decodeEntity entity =
+decodeEntity entity =
           CL.sourceList ["&",entity,";"]
           $= XML.parseText XML.def { XML.psDecodeEntities = XML.decodeHtmlEntities }
           $= CL.map snd
@@ -206,7 +196,7 @@ html = tokens <|> pure []
 decode :: Text -> Either String [Token]
 decode = fmap decodeEntitiesText' . parseOnly html
   where
-    decodeEntitiesText' tokens = runIdentity $ mapM_ yield tokens $$ decodeEntitiesText =$ CL.consume
+    decodeEntitiesText' tokens = runIdentity $ mapM_ yield tokens $$ decodeEntities =$ CL.consume
 
 {--
  - Utils {{{
@@ -265,7 +255,7 @@ tokenStream :: Monad m
             => GInfConduit Text m Token
 #endif
 tokenStream =
-    loop T.empty =$= decodeEntitiesText
+    loop T.empty =$= decodeEntities
   where
 #if MIN_VERSION_conduit(1, 0, 0)
     loop accum = await >>= maybe (close accum ()) (push accum)
@@ -290,16 +280,13 @@ splitAccum tokens = (mempty, tokens)
 -- Entities
 
 -- | A conduit to decode entities from a stream of tokens into a new stream of tokens.
-decodeEntities :: (Monad m
-                  ,Monoid builder)
-               => Dec builder Text
-               -> Conduit Token m Token
-decodeEntities dec =
+decodeEntities :: Monad m => Conduit Token m Token
+decodeEntities =
     start
   where
     start = await >>= maybe (return ()) (\token -> start' token >> start)
-    start' (Text t) = (yield t >> yieldWhileText) =$= decodeEntities' dec =$= CL.mapMaybe go
-    start' (TagOpen name attrs bool) = yield (TagOpen name (Map.map (decodeString dec) attrs) bool)
+    start' (Text t) = (yield t >> yieldWhileText) =$= decodeEntities' =$= CL.mapMaybe go
+    start' (TagOpen name attrs bool) = yield (TagOpen name (Map.map decodeString attrs) bool)
     start' token = yield token
 
     go t
@@ -307,29 +294,21 @@ decodeEntities dec =
         | otherwise = Just (Text t)
 
 -- | Decode entities in a complete string.
-decodeString
-  :: (Eq a, IsString a, Monoid builder, Monoid a)
-  => Dec builder a -> a -> a
-decodeString dec input =
-  case makeEntityDecoder dec input of
+decodeString :: Text -> Text
+decodeString input =
+  case makeEntityDecoder input of
     (value', remainder)
-      | value' /= mempty -> value' <> decodeString dec remainder
+      | value' /= mempty -> value' <> decodeString remainder
       | otherwise -> input
 
-decodeEntities' :: (Monad m
-                   ,Monoid string
-                   ,IsString string
-                   ,Monoid builder
-                   ,Eq string)
-                => Dec builder string
-                -> Conduit string m string
-decodeEntities' dec =
+decodeEntities' :: Monad m => Conduit Text m Text
+decodeEntities' =
     loop id
   where
     loop accum = do
         mchunk <- await
         let chunk = accum $ fromMaybe mempty mchunk
-            (newStr, remainder) = makeEntityDecoder dec chunk
+            (newStr, remainder) = makeEntityDecoder chunk
         yield newStr
         if isJust mchunk
             then loop (mappend remainder)
@@ -344,42 +323,31 @@ yieldWhileText =
     go (Text t) = yield t >> loop
     go token = leftover token
 
--- | A decoder.
-data Dec builder string = Dec
-  { decToS     :: builder -> string
-  , decBreak   :: (Char -> Bool) -> string -> (string,string)
-  , decBuilder :: string -> builder
-  , decDrop    :: Int -> string -> string
-  , decEntity  :: string -> Maybe string
-  , decUncons  :: string -> Maybe (Char,string)
-  }
-
 -- | Decode the entities in a string type with a decoder.
-makeEntityDecoder :: (IsString string,Monoid builder,Eq string,Monoid string)
-                  => Dec builder string -> string -> (string, string)
-makeEntityDecoder Dec{..} = first decToS . go
+makeEntityDecoder :: Text -> (Text, Text)
+makeEntityDecoder = first (L.toStrict . B.toLazyText) . go
   where
     go s =
-      case decBreak (=='&') s of
-        (_,"") -> (decBuilder s, "")
-        (before,restPlusAmp@(decDrop 1 -> rest)) ->
-          case decBreak (not . (\c -> isNameChar c || c == '#')) rest of
-            (_,"") -> (decBuilder before, restPlusAmp)
+      case T.break (=='&') s of
+        (_,"") -> (B.fromText s, "")
+        (before,restPlusAmp@(T.drop 1 -> rest)) ->
+          case T.break (not . (\c -> isNameChar c || c == '#')) rest of
+            (_,"") -> (B.fromText before, restPlusAmp)
             (entity,after) -> (before1 <> before2, after')
               where
-                before1 = decBuilder before
+                before1 = B.fromText before
                 (before2, after') =
                   case mdecoded of
-                    Nothing -> first ((decBuilder "&" <> decBuilder entity) <>) (go after)
-                    Just (decBuilder -> decoded) ->
-                      case decUncons after of
+                    Nothing -> first (("&" <> B.fromText entity) <>) (go after)
+                    Just (B.fromText -> decoded) ->
+                      case T.uncons after of
                         Just (';',validAfter) -> first (decoded <>) (go validAfter)
                         Just (_invalid,_rest) -> first (decoded <>) (go after)
                         Nothing -> (mempty, s)
                 mdecoded =
                   if entity == mempty
                      then Nothing
-                     else decEntity entity
+                     else decodeEntity entity
 
 -- | Is the character a valid Name starter?
 isNameStart :: Char -> Bool
