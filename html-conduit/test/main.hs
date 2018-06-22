@@ -100,3 +100,9 @@ main = hspec $ do
                 [ X.NodeContent "Hello &gt; World"
                 ]
          in H.parseLBS html @?= doc
+
+    it "handles entities in attributes" $
+        let html = "<br title=\"Mac &amp; Cheese\">"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element "br" (Map.singleton "title" "Mac & Cheese") []
+         in H.parseLBS html @?= doc
