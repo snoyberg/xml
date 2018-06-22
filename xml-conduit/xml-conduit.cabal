@@ -27,7 +27,6 @@ library
                    , attoparsec                >= 0.10
                    , transformers              >= 0.2      && < 0.6
                    , data-default-class
-                   , monad-control             >= 0.3      && < 1.1
                    , blaze-markup              >= 0.5
                    , blaze-html                >= 0.5
                    , deepseq                   >= 1.1.0.0
