@@ -28,12 +28,8 @@ Library
                      -- tagstream-conduit deps
                      , attoparsec
                      , conduit-extra
-                     , case-insensitive
 
-  other-modules:       Text.HTML.TagStream.Entities
-                       Text.HTML.TagStream.Text
-                       Text.HTML.TagStream.Types
-                       Text.HTML.TagStream.Utils
+  other-modules:       Text.HTML.TagStream.Text
 
 test-suite test
     type: exitcode-stdio-1.0
