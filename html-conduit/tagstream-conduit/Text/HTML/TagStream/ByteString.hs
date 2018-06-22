@@ -3,15 +3,15 @@
 {-# LANGUAGE TypeFamilies #-}
 module Text.HTML.TagStream.ByteString where
 
-import qualified Blaze.ByteString.Builder as B
+import qualified Data.ByteString.Builder as B
 import           Control.Applicative
 import           Control.Monad (unless)
 import           Data.Attoparsec.ByteString.Char8
 import           Data.ByteString (ByteString)
+import qualified Data.ByteString.Lazy as BL (toStrict)
 import qualified Data.ByteString.Char8 as S
 import           Data.Conduit
 import qualified Data.Conduit.List as CL
-import           Data.Default
 import           Data.Functor.Identity (runIdentity)
 import           Data.Monoid
 import           Data.Text.Encoding
@@ -133,16 +133,16 @@ text = Text <$> atLeast 1 (takeTill (=='<'))
 decodeEntitiesBS :: Monad m => Conduit Token m Token
 decodeEntitiesBS =
   decodeEntities
-    Dec { decToS     = B.toByteString
+    Dec { decToS     = BL.toStrict . B.toLazyByteString
         , decBreak   = S.break
-        , decBuilder = B.fromByteString
+        , decBuilder = B.byteString
         , decDrop    = S.drop
         , decEntity  = decodeEntity
         , decUncons  = S.uncons }
   where decodeEntity entity =
           fmap encodeUtf8
           $ CL.sourceList ["&",entity,";"]
-          $= XML.parseBytes def { XML.psDecodeEntities = XML.decodeHtmlEntities }
+          $= XML.parseBytes XML.def { XML.psDecodeEntities = XML.decodeHtmlEntities }
           $$ XML.content
 
 token :: Parser Token
@@ -156,7 +156,7 @@ tillScriptEnd :: Token -> Parser [Token]
 tillScriptEnd t = reverse <$> loop [t]
               <|> (:[]) . Incomplete . S.append script <$> takeByteString
   where
-    script = B.toByteString $ showToken id t
+    script = BL.toStrict $ B.toLazyByteString $ showToken id t
     loop acc = (:acc) <$> scriptEnd
            <|> (text >>= loop . (:acc))
     scriptEnd = string "</script>" *> return (TagClose "script")
@@ -208,7 +208,7 @@ maybeP p = Just <$> p <|> return Nothing
 
 -- {{{ encode tokens
 cc :: [ByteString] -> B.Builder
-cc = mconcat . map B.fromByteString
+cc = mconcat . map B.byteString
 
 showToken :: (ByteString -> ByteString) -> Token -> B.Builder
 showToken hl (TagOpen name as close) =
@@ -222,10 +222,10 @@ showToken hl (TagOpen name as close) =
     escape '\\' = "\\\\"
     escape c = S.singleton c
 showToken hl (TagClose name) = cc [hl "</", name, hl ">"]
-showToken _ (Text s) = B.fromByteString s
+showToken _ (Text s) = B.byteString s
 showToken hl (Comment s) = cc [hl "<!--", s, hl "-->"]
 showToken hl (Special name s) = cc [hl "<!", name, " ", s, hl ">"]
-showToken _ (Incomplete s) = B.fromByteString s
+showToken _ (Incomplete s) = B.byteString s
 -- }}}
 
 -- {{{ Stream

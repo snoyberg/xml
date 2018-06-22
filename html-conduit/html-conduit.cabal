@@ -26,8 +26,6 @@ Library
                      , xml-types                        >= 0.3            && < 0.4
 
                      -- tagstream-conduit deps
-                     , data-default
-                     , blaze-builder
                      , attoparsec
                      , conduit-extra
                      , case-insensitive

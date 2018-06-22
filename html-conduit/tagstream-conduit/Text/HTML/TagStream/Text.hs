@@ -9,7 +9,6 @@ import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Resource (MonadThrow)
 import           Data.Char
 import qualified Data.Conduit.List as CL
-import           Data.Default
 import           Prelude hiding (mapM)
 
 import qualified Data.Attoparsec.ByteString.Char8 as S
@@ -159,7 +158,7 @@ decodeEntitiesText =
         , decUncons  = T.uncons }
   where decodeEntity entity =
           CL.sourceList ["&",entity,";"]
-          $= XML.parseText def { XML.psDecodeEntities = XML.decodeHtmlEntities }
+          $= XML.parseText XML.def { XML.psDecodeEntities = XML.decodeHtmlEntities }
           $= CL.map snd
           $$ XML.content
 
