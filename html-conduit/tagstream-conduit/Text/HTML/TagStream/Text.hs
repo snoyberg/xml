@@ -2,8 +2,8 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE TypeFamilies #-}
 module Text.HTML.TagStream.Text
-  ( module Text.HTML.TagStream.Text
-  , module Text.HTML.TagStream.Types
+  ( Token' (..)
+  , tokenStream
   ) where
 
 import           Control.Applicative
