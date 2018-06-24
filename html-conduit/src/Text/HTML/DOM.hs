@@ -14,7 +14,6 @@ module Text.HTML.DOM
 import Control.Monad.Trans.Resource
 import Prelude hiding (readFile)
 import qualified Data.ByteString as S
-import qualified Text.HTML.TagStream.Text as TS
 import qualified Text.HTML.TagStream as TS
 import qualified Data.XML.Types as XT
 import qualified Data.Text as T
@@ -26,6 +25,7 @@ import qualified Text.XML as X
 import Conduit
 import qualified Data.ByteString.Lazy as L
 import Data.Maybe (mapMaybe)
+import qualified Data.Map.Strict as Map
 
 -- | Converts a stream of bytes to a stream of properly balanced @Event@s.
 --
@@ -51,7 +51,7 @@ eventConduit' =
 
             Just (TS.TagOpen local attrs isClosed) -> do
                 let name = toName local
-                    attrs' = map (toName *** return . XT.ContentText) attrs
+                    attrs' = map (toName *** return . XT.ContentText) $ Map.toList attrs
                 yield $ XT.EventBeginElement name attrs'
                 if isClosed || isVoid local
                     then yield (XT.EventEndElement name) >> go stack

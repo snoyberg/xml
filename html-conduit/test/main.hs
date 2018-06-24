@@ -1,10 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 import Test.HUnit hiding (Test)
 import Test.Hspec
+import Test.Hspec.QuickCheck
 import Data.ByteString.Lazy.Char8 ()
 import qualified Text.HTML.DOM as H
 import qualified Text.XML as X
 import qualified Data.Map as Map
+import qualified Data.Text as T
+import Control.Exception (evaluate)
+import Control.DeepSeq (($!!))
+import Control.Monad (void)
 
 main :: IO ()
 main = hspec $ do
@@ -100,3 +105,50 @@ main = hspec $ do
                 [ X.NodeContent "Hello &gt; World"
                 ]
          in H.parseLBS html @?= doc
+
+    it "handles entities in attributes" $
+        let html = "<br title=\"Mac &amp; Cheese\">"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element "br" (Map.singleton "title" "Mac & Cheese") []
+         in H.parseLBS html @?= doc
+
+    it "doesn't double escape entities in attributes" $
+        let html = "<br title=\"Mac &amp;amp; Cheese\">"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element "br" (Map.singleton "title" "Mac &amp; Cheese") []
+         in H.parseLBS html @?= doc
+
+    describe "script tags" $ do
+      it "ignores funny characters" $
+        let html = "<script>hello > world</script>"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element "script" Map.empty [X.NodeContent "hello > world"]
+         in H.parseLBS html @?= doc
+
+      {-
+
+       Would be nice... doesn't work with tagstream-conduit original
+       code. Not even sure if the HTML5 parser spec discusses this
+       case.
+
+      it "ignores </script> inside string" $
+        let html = "<script>hello \"</script>\" world</script>"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element "script" Map.empty [X.NodeContent "hello \"</script>\" world"]
+         in H.parseLBS html @?= doc
+
+      -}
+
+      it "unterminated" $
+        let html = "<script>hello > world"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element "script" Map.empty [X.NodeContent "hello > world"]
+         in H.parseLBS html @?= doc
+
+      it "entities" $
+        let html = "<script>hello &amp; world"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element "script" Map.empty [X.NodeContent "hello &amp; world"]
+         in H.parseLBS html @?= doc
+
+    prop "parses all random input" $ \strs -> void $ evaluate $!! H.parseSTChunks $ map T.pack strs
