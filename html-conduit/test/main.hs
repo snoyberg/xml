@@ -152,3 +152,25 @@ main = hspec $ do
          in H.parseLBS html @?= doc
 
     prop "parses all random input" $ \strs -> void $ evaluate $!! H.parseSTChunks $ map T.pack strs
+
+    describe "#128 entities cut off" $ do
+      it "reported issue" $ do
+        let html = "<a href=\"https://example.com?a=b&#038;c=d\">link</a>"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element
+              "a"
+              (Map.singleton "href" "https://example.com?a=b&c=d")
+              [X.NodeContent "link"]
+         in H.parseLBS html @?= doc
+
+      it "from test suite" $ do
+        let html = "<a class=\"u-url\" href=\"https://secure.gravatar.com/avatar/947b5f3f323da0ef785b6f02d9c265d6?s=96&#038;d=blank&#038;r=g\">link</a>"
+            doc = X.Document (X.Prologue [] Nothing []) root []
+            root = X.Element
+              "a"
+              (Map.fromList
+                  [ ("href", "https://secure.gravatar.com/avatar/947b5f3f323da0ef785b6f02d9c265d6?s=96&d=blank&r=g")
+                  , ("class", "u-url")
+                  ])
+              [X.NodeContent "link"]
+         in H.parseLBS html @?= doc
