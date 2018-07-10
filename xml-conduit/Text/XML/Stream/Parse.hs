@@ -19,38 +19,38 @@
 --
 -- > <?xml version="1.0" encoding="utf-8"?>
 -- > <people>
--- >     <person age="25">Michael</person>
--- >     <person age="2">Eliezer</person>
+-- >     <person age="25" goodAtHaskell="yes">Michael</person>
+-- >     <person age="2" goodAtHaskell="might become">Eliezer</person>
 -- > </people>
 --
 -- Then this code:
 --
 -- > {-# LANGUAGE OverloadedStrings #-}
 -- > import Control.Monad.Trans.Resource
--- > import Data.Conduit (Consumer, Sink, ($$))
+-- > import Data.Conduit (Consumer, (.|), ConduitT, runConduit)
 -- > import Data.Text (Text, unpack)
 -- > import Text.XML.Stream.Parse
 -- > import Data.XML.Types (Event)
 -- >
--- > data Person = Person Int Text
+-- > data Person = Person Int Text Text
 -- >     deriving Show
--- >
+-- > 
 -- > parsePerson :: MonadThrow m => ConduitT Event o m (Maybe Person)
--- > parsePerson = tag' "person" (requireAttr "age") $ \age -> do
+-- > parsePerson = tag' "person" ((,) <$> requireAttr "age" <*> requireAttr "goodAtHaskell") $ \(age, goodAtHaskell) -> do
 -- >     name <- content
--- >     return $ Person (read $ unpack age) name
--- >
--- > parsePeople :: MonadThrow m => Sink Event m (Maybe [Person])
+-- >     return $ Person (read $ unpack age) name goodAtHaskell
+-- > 
+-- > parsePeople :: MonadThrow m => ConduitT Event o m (Maybe [Person])
 -- > parsePeople = tagNoAttr "people" $ many parsePerson
--- >
+-- > 
 -- > main = do
--- >     people <- runResourceT $
--- >             parseFile def "people.xml" $$ force "people required" parsePeople
+-- >     people <- runResourceT $ runConduit $
+-- >             parseFile def "people.xml" .| force "people required" parsePeople
 -- >     print people
 --
 -- will produce:
 --
--- > [Person 25 "Michael",Person 2 "Eliezer"]
+-- > [Person 25 "Michael" "yes",Person 2 "Eliezer" "might become"]
 --
 -- This module also supports streaming results using 'yield'.
 -- This allows parser results to be processed using conduits
@@ -69,19 +69,19 @@
 -- > import Data.Text (Text, unpack)
 -- > import Data.XML.Types (Event)
 -- > import Text.XML.Stream.Parse
--- >
+-- > 
 -- > data Person = Person Int Text deriving Show
--- >
+-- > 
 -- > parsePerson :: MonadThrow m => ConduitT Event o m (Maybe Person)
--- > parsePerson = tag' "person" (requireAttr "age") $ \age -> do
+-- > parsePerson = tag' "person" (requireAttr "age" <* ignoreAttrs) $ \age -> do
 -- >     name <- content
 -- >     return $ Person (read $ unpack age) name
--- >
--- > parsePeople :: MonadThrow m => Conduit Event m Person
+-- > 
+-- > parsePeople :: MonadThrow m => ConduitT Event Person m ()
 -- > parsePeople = void $ tagNoAttr "people" $ manyYield parsePerson
--- >
--- > main = runResourceT $
--- >     parseFile def "people.xml" $$ parsePeople .| CL.mapM_ (lift . print)
+-- > 
+-- > main = runResourceT $ runConduit $
+-- >     parseFile def "people.xml" .| parsePeople .| CL.mapM_ (lift . print)
 --
 -- Previous versions of this module contained a number of more sophisticated
 -- functions written by Aristid Breitkreuz and Dmitry Olshansky. To keep this
