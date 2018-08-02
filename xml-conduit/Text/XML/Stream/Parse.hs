@@ -15,42 +15,32 @@
 -- documents into a stream of events, and a set of parser combinators for
 -- dealing with a stream of events.
 --
--- As a simple example, if you have the following XML file:
+-- As a simple example:
 --
--- > <?xml version="1.0" encoding="utf-8"?>
--- > <people>
--- >     <person age="25">Michael</person>
--- >     <person age="2">Eliezer</person>
--- > </people>
+-- >>> :set -XOverloadedStrings
+-- >>> import Data.Conduit (runConduit, (.|))
+-- >>> import Data.Text (Text, unpack)
+-- >>> import Data.XML.Types (Event)
+-- >>> data Person = Person Int Text deriving Show
+-- >>> :{
+-- let parsePerson :: MonadThrow m => ConduitT Event o m (Maybe Person)
+--     parsePerson = tag' "person" (requireAttr "age") $ \age -> do
+--       name <- content
+--       return $ Person (read $ unpack age) name
+--     parsePeople :: MonadThrow m => ConduitT Event o m (Maybe [Person])
+--     parsePeople = tagNoAttr "people" $ many parsePerson
+--     inputXml = mconcat
+--       [ "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
+--       , "<people>"
+--       , "  <person age=\"25\">Michael</person>"
+--       , "  <person age=\"2\">Eliezer</person>"
+--       , "</people>"
+--       ]
+-- :}
 --
--- Then this code:
+-- >>> runConduit $ parseLBS def inputXml .| force "people required" parsePeople
+-- [Person 25 "Michael",Person 2 "Eliezer"]
 --
--- > {-# LANGUAGE OverloadedStrings #-}
--- > import Control.Monad.Trans.Resource
--- > import Data.Conduit (Consumer, Sink, ($$))
--- > import Data.Text (Text, unpack)
--- > import Text.XML.Stream.Parse
--- > import Data.XML.Types (Event)
--- >
--- > data Person = Person Int Text
--- >     deriving Show
--- >
--- > parsePerson :: MonadThrow m => ConduitT Event o m (Maybe Person)
--- > parsePerson = tag' "person" (requireAttr "age") $ \age -> do
--- >     name <- content
--- >     return $ Person (read $ unpack age) name
--- >
--- > parsePeople :: MonadThrow m => Sink Event m (Maybe [Person])
--- > parsePeople = tagNoAttr "people" $ many parsePerson
--- >
--- > main = do
--- >     people <- runResourceT $
--- >             parseFile def "people.xml" $$ force "people required" parsePeople
--- >     print people
---
--- will produce:
---
--- > [Person 25 "Michael",Person 2 "Eliezer"]
 --
 -- This module also supports streaming results using 'yield'.
 -- This allows parser results to be processed using conduits
@@ -60,28 +50,15 @@
 -- to process by using streaming results.
 -- See http://stackoverflow.com/q/21367423/2597135 for a related discussion.
 --
--- > {-# LANGUAGE OverloadedStrings #-}
--- > import Control.Monad (void)
--- > import Control.Monad.Trans.Class (lift)
--- > import Control.Monad.Trans.Resource
--- > import Data.Conduit
--- > import qualified Data.Conduit.List as CL
--- > import Data.Text (Text, unpack)
--- > import Data.XML.Types (Event)
--- > import Text.XML.Stream.Parse
--- >
--- > data Person = Person Int Text deriving Show
--- >
--- > parsePerson :: MonadThrow m => ConduitT Event o m (Maybe Person)
--- > parsePerson = tag' "person" (requireAttr "age") $ \age -> do
--- >     name <- content
--- >     return $ Person (read $ unpack age) name
--- >
--- > parsePeople :: MonadThrow m => Conduit Event m Person
--- > parsePeople = void $ tagNoAttr "people" $ manyYield parsePerson
--- >
--- > main = runResourceT $
--- >     parseFile def "people.xml" $$ parsePeople .| CL.mapM_ (lift . print)
+-- >>> import Data.Conduit.List as CL
+-- >>> :{
+-- let parsePeople' :: MonadThrow m => ConduitT Event Person m (Maybe ())
+--     parsePeople' = tagNoAttr "people" $ manyYield parsePerson
+-- :}
+--
+-- >>> runConduit $ parseLBS def inputXml .| force "people required" parsePeople' .| CL.mapM_ print
+-- Person 25 "Michael"
+-- Person 2 "Eliezer"
 --
 -- Previous versions of this module contained a number of more sophisticated
 -- functions written by Aristid Breitkreuz and Dmitry Olshansky. To keep this
@@ -837,6 +814,16 @@ ignoreTree :: MonadThrow m
 ignoreTree = ignoreTreeContent
 
 -- | Like 'ignoreTreeContent', but matches any name and also ignores content events.
+--
+-- >>> :set -XOverloadedStrings
+-- >>> import Data.Conduit
+-- >>> import Data.Conduit.List (consume)
+--
+-- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| (ignoreAnyTreeContent >> consume)
+-- [EventBeginElement (Name {nameLocalName = "b", ...}) [],EventEndElement (Name {nameLocalName = "b", ...}),EventEndDocument]
+--
+-- >>> runConduit $ parseLBS def "text<b></b>" .| (ignoreAnyTreeContent >> consume)
+-- [EventBeginElement (Name {nameLocalName = "b", ...}) [],EventEndElement (Name {nameLocalName = "b", ...}),EventEndDocument]
 ignoreAnyTreeContent :: MonadThrow m => ConduitT Event o m (Maybe ())
 ignoreAnyTreeContent = (void <$> contentMaybe) `orE` ignoreTreeContent anyName
 
@@ -1091,11 +1078,28 @@ takeContent = do
     Just e -> if isWhitespace e then yield e >> takeContent else leftover e >> return Nothing
     _ -> return Nothing
 
--- | Stream 'Event's corresponding to a single element that matches given 'NameMatcher' and 'AttrParser', from the opening- to the closing-tag.
+-- | Stream 'Event's corresponding to a single XML element that matches given 'NameMatcher' and 'AttrParser', from the opening- to the closing-tag.
+--
+-- >>> :set -XOverloadedStrings
+-- >>> import Control.Monad (void)
+-- >>> import Data.Conduit
+-- >>> import Data.Conduit.List (consume)
+--
+-- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| void (takeTree "a" ignoreAttrs) .| consume
+-- [EventBeginDocument,EventBeginElement (Name {nameLocalName = "a", ...}) [],EventContent (ContentText "content"),EventEndElement (Name {nameLocalName = "a", ...})]
+--
+-- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| void (takeTree "b" ignoreAttrs) .| consume
+-- [EventBeginDocument]
 --
 -- If next 'Event' isn't an element, nothing is consumed.
 --
+-- >>> runConduit $ parseLBS def "text<a></a>" .| void (takeTree "a" ignoreAttrs) .| consume
+-- [EventBeginDocument]
+--
 -- If an opening-tag is consumed but no matching closing-tag is found, an 'XmlException' is thrown.
+--
+-- >>> runConduit $ parseLBS def "<a><b></b>" .| void (takeTree "a" ignoreAttrs) .| consume
+-- *** Exception: InvalidEndElement (Name {nameLocalName = "a", nameNamespace = Nothing, namePrefix = Nothing}) Nothing
 --
 -- This function automatically ignores comments, instructions and whitespace.
 --
@@ -1134,14 +1138,19 @@ takeTreeContent nameMatcher attrParser = runMaybeT $ MaybeT (takeTree nameMatche
 
 -- | Like 'takeTreeContent', without checking for tag name or attributes.
 --
--- >>> runResourceT $ parseLBS def "text<a></a>" $$ takeAnyTreeContent .| consume
--- Just [ EventContent (ContentText "text") ]
+-- >>> :set -XOverloadedStrings
+-- >>> import Control.Monad (void)
+-- >>> import Data.Conduit ((.|), runConduit)
+-- >>> import Data.Conduit.List (consume)
 --
--- >>> runResourceT $ parseLBS def "</a><b></b>" $$ takeAnyTreeContent .| consume
--- Just [ ]
+-- >>> runConduit $ parseLBS def "text<a></a>" .| void takeAnyTreeContent .| consume
+-- [EventBeginDocument,EventContent (ContentText "text")]
 --
--- >>> runResourceT $ parseLBS def "<b><c></c></b></a>text" $$ takeAnyTreeContent .| consume
--- Just [ EventBeginElement "b" [], EventBeginElement "c" [], EventEndElement "c", EventEndElement "b" ]
+-- >>> runConduit $ parseLBS def "</a><b></b>" .| void takeAnyTreeContent .| consume
+-- [EventBeginDocument]
+--
+-- >>> runConduit $ parseLBS def "<b><c></c></b></a>text" .| void takeAnyTreeContent .| consume
+-- [EventBeginDocument,EventBeginElement (Name {nameLocalName = "b", ...}) [],EventBeginElement (Name {nameLocalName = "c", ...}) [],EventEndElement (Name {nameLocalName = "c", ...}),EventEndElement (Name {nameLocalName = "b", ...})]
 --
 -- Since 1.5.0
 takeAnyTreeContent :: MonadThrow m
