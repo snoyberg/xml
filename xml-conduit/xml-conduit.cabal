@@ -11,8 +11,7 @@ stability:       Stable
 cabal-version:   >= 1.8
 build-type:      Simple
 homepage:        http://github.com/snoyberg/xml
-extra-source-files: test/main.hs
-                    README.md
+extra-source-files: README.md
                     ChangeLog.md
 
 library
@@ -39,9 +38,9 @@ library
     other-modules:   Text.XML.Stream.Token
     ghc-options:     -Wall
 
-test-suite test
+test-suite unit
     type: exitcode-stdio-1.0
-    main-is: main.hs
+    main-is: unit.hs
     hs-source-dirs: test
     build-depends:          base
                           , containers
@@ -55,6 +54,13 @@ test-suite test
                           , conduit
                           , blaze-markup
                           , resourcet
+
+test-suite doctest
+    type: exitcode-stdio-1.0
+    main-is: doctest.hs
+    hs-source-dirs: test
+    build-depends:          base
+                          , doctest >= 0.8
 
 source-repository head
   type:     git
