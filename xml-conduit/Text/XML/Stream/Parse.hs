@@ -20,25 +20,26 @@
 -- >>> import Data.Conduit (runConduit, (.|))
 -- >>> import Data.Text (Text, unpack)
 -- >>> import Data.XML.Types (Event)
--- >>> data Person = Person Int Text deriving Show
+-- >>> data Person = Person Int Text Text deriving Show
 -- >>> :{
 -- let parsePerson :: MonadThrow m => ConduitT Event o m (Maybe Person)
---     parsePerson = tag' "person" (requireAttr "age") $ \age -> do
+--     parsePerson = tag' "person" parseAttributes $ \(age, goodAtHaskell) -> do
 --       name <- content
---       return $ Person (read $ unpack age) name
+--       return $ Person (read $ unpack age) name goodAtHaskell
+--       where parseAttributes = (,) <$> requireAttr "age" <*> requireAttr "goodAtHaskell" <* ignoreAttrs
 --     parsePeople :: MonadThrow m => ConduitT Event o m (Maybe [Person])
 --     parsePeople = tagNoAttr "people" $ many parsePerson
 --     inputXml = mconcat
 --       [ "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
 --       , "<people>"
---       , "  <person age=\"25\">Michael</person>"
---       , "  <person age=\"2\">Eliezer</person>"
+--       , "  <person age=\"25\" goodAtHaskell=\"yes\">Michael</person>"
+--       , "  <person age=\"2\" goodAtHaskell=\"might become\">Eliezer</person>"
 --       , "</people>"
 --       ]
 -- :}
 --
 -- >>> runConduit $ parseLBS def inputXml .| force "people required" parsePeople
--- [Person 25 "Michael",Person 2 "Eliezer"]
+-- [Person 25 "Michael" "yes",Person 2 "Eliezer" "might become"]
 --
 --
 -- This module also supports streaming results using 'yield'.
@@ -56,8 +57,8 @@
 -- :}
 --
 -- >>> runConduit $ parseLBS def inputXml .| force "people required" parsePeople' .| CL.mapM_ print
--- Person 25 "Michael"
--- Person 2 "Eliezer"
+-- Person 25 "Michael" "yes"
+-- Person 2 "Eliezer" "might become"
 --
 -- Previous versions of this module contained a number of more sophisticated
 -- functions written by Aristid Breitkreuz and Dmitry Olshansky. To keep this
