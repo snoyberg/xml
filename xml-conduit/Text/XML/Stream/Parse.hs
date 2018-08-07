@@ -9,7 +9,6 @@
 {-# LANGUAGE PatternGuards              #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE StandaloneDeriving         #-}
-{-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE TypeFamilies               #-}
 -- | This module provides both a native Haskell solution for parsing XML
 -- documents into a stream of events, and a set of parser combinators for
@@ -136,6 +135,7 @@ module Text.XML.Stream.Parse
     , PositionRange
     , EventPos
     ) where
+import           Conduit
 import           Control.Applicative          (Alternative (empty, (<|>)),
                                                Applicative (..), (<$>))
 import qualified Control.Applicative          as A
@@ -155,12 +155,10 @@ import qualified Data.Attoparsec.Text         as AT
 import qualified Data.ByteString              as S
 import qualified Data.ByteString.Lazy         as L
 import           Data.Char                    (isSpace)
-import           Conduit
-import qualified Data.Conduit.Text            as CT
 import           Data.Conduit.Attoparsec      (PositionRange, conduitParser)
+import qualified Data.Conduit.Text            as CT
 import           Data.Default.Class           (Default (..))
-import           Data.List                    (intercalate)
-import           Data.List                    (foldl')
+import           Data.List                    (foldl', intercalate)
 import qualified Data.Map                     as Map
 import           Data.Maybe                   (fromMaybe, isNothing)
 import           Data.String                  (IsString (..))
@@ -750,8 +748,8 @@ tag nameMatcher attrParser f = do
           _         -> return (x, leftovers')
     runAttrParser' p as =
         case runAttrParser p as of
-            Left e          -> Left e
-            Right ([], x)   -> Right x
+            Left e           -> Left e
+            Right ([], x)    -> Right x
             Right (attr', _) -> Left $ toException $ UnparsedAttributes attr'
 
 -- | A simplified version of 'tag' where the 'NameMatcher' result isn't forwarded to the attributes parser.
