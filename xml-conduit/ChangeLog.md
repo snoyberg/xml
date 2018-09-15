@@ -1,3 +1,7 @@
+## 1.8.0.1
+
+* Use doctest to validate code examples from documentation
+
 ## 1.8.0
 
 * Upgrade to conduit 1.3.0
