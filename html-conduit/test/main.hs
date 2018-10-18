@@ -120,9 +120,9 @@ main = hspec $ do
 
     describe "script tags" $ do
       it "ignores funny characters" $
-        let html = "<script>hello > world</script>"
+        let html = "<script>hello <> world</script>"
             doc = X.Document (X.Prologue [] Nothing []) root []
-            root = X.Element "script" Map.empty [X.NodeContent "hello > world"]
+            root = X.Element "script" Map.empty [X.NodeContent "hello <> world"]
          in H.parseLBS html @?= doc
 
       {-

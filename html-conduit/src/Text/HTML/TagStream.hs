@@ -167,7 +167,7 @@ tillScriptEnd open =
       chunk <- takeTill (== '<')
       let acc' = acc <> B.fromText chunk
           finish = pure [open, Text $ L.toStrict $ B.toLazyText acc', TagClose "script"]
-          hasContent = (string "/script>" *> finish) <|> loop acc'
+          hasContent = (string "/script>" *> finish) <|> loop (acc' <> "<")
       (char '<' *> hasContent) <|> finish
 
 tokens :: Parser [Token]
