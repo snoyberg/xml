@@ -1072,8 +1072,8 @@ takeContent :: MonadThrow m => ConduitT Event Event m (Maybe ())
 takeContent = do
   event <- await
   case event of
-    Just e@(EventContent ContentText{}) -> yield e >> return (Just ())
-    Just e@EventCDATA{}                 -> yield e >> return (Just ())
+    Just e@EventContent{} -> yield e >> return (Just ())
+    Just e@EventCDATA{}   -> yield e >> return (Just ())
     Just e -> if isWhitespace e then yield e >> takeContent else leftover e >> return Nothing
     _ -> return Nothing
 
