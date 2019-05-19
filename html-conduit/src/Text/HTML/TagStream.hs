@@ -149,7 +149,7 @@ decodeEntity :: MonadThrow m => Text -> m Text
 decodeEntity entity =
              runConduit
            $ CL.sourceList ["&",entity,";"]
-          .| XML.parseText' XML.def { XML.psDecodeEntities = XML.decodeHtmlEntities }
+          .| XML.parseText XML.def { XML.psDecodeEntities = XML.decodeHtmlEntities }
           .| XML.content
 
 token :: Parser Token

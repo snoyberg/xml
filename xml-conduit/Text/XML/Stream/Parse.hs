@@ -17,7 +17,7 @@
 -- As a simple example:
 --
 -- >>> :set -XOverloadedStrings
--- >>> import Data.Conduit (runConduit, (.|))
+-- >>> import Conduit (runConduit, (.|))
 -- >>> import Data.Text (Text, unpack)
 -- >>> import Data.XML.Types (Event)
 -- >>> data Person = Person Int Text Text deriving Show
@@ -68,7 +68,6 @@ module Text.XML.Stream.Parse
     ( -- * Parsing XML files
       parseBytes
     , parseBytesPos
-    , parseText'
     , parseText
     , parseTextPos
     , detectUtf
@@ -93,18 +92,16 @@ module Text.XML.Stream.Parse
     , content
     , contentMaybe
       -- * Ignoring tags/trees
-    , ignoreTag
     , ignoreEmptyTag
     , ignoreTree
+    , ignoreContent
     , ignoreTreeContent
     , ignoreAnyTreeContent
-    , ignoreAllTreesContent
       -- * Streaming events
     , takeContent
     , takeTree
     , takeTreeContent
     , takeAnyTreeContent
-    , takeAllTreesContent
       -- * Tag name matching
     , NameMatcher(..)
     , matching
@@ -314,7 +311,7 @@ type EventPos = (Maybe PositionRange, Event)
 -- provided by libxml-enumerator. However, this has the advantage of not
 -- relying on any C libraries.
 --
--- This relies on 'detectUtf' to determine character encoding, and 'parseText''
+-- This relies on 'detectUtf' to determine character encoding, and 'parseText'
 -- to do the actual parsing.
 parseBytes :: MonadThrow m
            => ParseSettings
@@ -347,18 +344,11 @@ dropBOM =
 -- advantage of not relying on any C libraries.
 --
 -- Since 1.2.4
-parseText' :: MonadThrow m
-           => ParseSettings
-           -> ConduitT T.Text Event m ()
-parseText' = mapOutput snd . parseTextPos
+parseText :: MonadThrow m => ParseSettings -> ConduitT T.Text Event m ()
+parseText = mapOutput snd . parseTextPos
 
-{-# DEPRECATED parseText "Please use 'parseText'' or 'parseTextPos'." #-}
-parseText :: MonadThrow m
-          => ParseSettings
-          -> ConduitT T.Text EventPos m ()
-parseText = parseTextPos
 
--- | Same as 'parseText'', but includes the position of each event.
+-- | Same as 'parseText', but includes the position of each event.
 --
 -- Since 1.2.4
 parseTextPos :: MonadThrow m
@@ -640,7 +630,7 @@ char' = void . char
 data ContentType = Ignore | IsContent Text | IsError String | NotContent
 
 -- | Grabs the next piece of content if available. This function skips over any
--- comments and instructions and concatenates all content until the next start
+-- comments, instructions or entities, and concatenates all content until the next start
 -- or end tag.
 contentMaybe :: MonadThrow m => ConduitT Event o m (Maybe Text)
 contentMaybe = do
@@ -789,46 +779,85 @@ ignoreEmptyTag :: MonadThrow m
 ignoreEmptyTag nameMatcher = tagIgnoreAttrs nameMatcher (return ())
 
 
-{-# DEPRECATED ignoreTag "Please use 'ignoreEmptyTag'." #-}
-ignoreTag :: MonadThrow m
-          => NameMatcher a -- ^ Check if this is a correct tag name
-          -> ConduitT Event o m (Maybe ())
-ignoreTag = ignoreEmptyTag
+ignored :: Monad m => ConduitT i o m ()
+ignored = fix $ \recurse -> do
+  event <- await
+  case event of
+    Just _ -> recurse
+    _      -> return ()
 
 
--- | Ignore a tag, its attributes and its children subtrees recursively.
---   Both content and text events are ignored.
---   This function returns @Just ()@ if the tag matched.
---
--- Since 1.5.0
-ignoreTreeContent :: MonadThrow m
-                  => NameMatcher a -- ^ Check if this is a correct tag name
-                  -> ConduitT Event o m (Maybe ())
-ignoreTreeContent namePred = tagIgnoreAttrs namePred (void $ many ignoreAnyTreeContent)
-
-{-# DEPRECATED ignoreTree "Please use 'ignoreTreeContent'." #-}
-ignoreTree :: MonadThrow m
-           => NameMatcher a -- ^ Check if this is a correct tag name
-           -> ConduitT Event o m (Maybe ())
-ignoreTree = ignoreTreeContent
-
--- | Like 'ignoreTreeContent', but matches any name and also ignores content events.
+-- | Same as `takeTree`, without yielding `Event`s.
 --
 -- >>> :set -XOverloadedStrings
--- >>> import Data.Conduit
--- >>> import Data.Conduit.List (consume)
+-- >>> import Conduit
 --
--- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| (ignoreAnyTreeContent >> consume)
+-- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| (ignoreTree "a" ignoreAttrs >> sinkList)
 -- [EventBeginElement (Name {nameLocalName = "b", ...}) [],EventEndElement (Name {nameLocalName = "b", ...}),EventEndDocument]
 --
--- >>> runConduit $ parseLBS def "text<b></b>" .| (ignoreAnyTreeContent >> consume)
--- [EventBeginElement (Name {nameLocalName = "b", ...}) [],EventEndElement (Name {nameLocalName = "b", ...}),EventEndDocument]
-ignoreAnyTreeContent :: MonadThrow m => ConduitT Event o m (Maybe ())
-ignoreAnyTreeContent = (void <$> contentMaybe) `orE` ignoreTreeContent anyName
+-- >>> runConduit $ parseLBS def "<a>content</a>" .| (ignoreTree "b" ignoreAttrs >> sinkList)
+-- [EventBeginElement (Name {nameLocalName = "a", ...}) [],EventContent (ContentText "content"),EventEndElement (Name {nameLocalName = "a", ...}),EventEndDocument]
+--
+-- >>> runConduit $ parseLBS def "content<a></a>" .| (ignoreTree anyName ignoreAttrs >> sinkList)
+-- [EventContent (ContentText "content"),EventBeginElement (Name {nameLocalName = "a", ...}) [],EventEndElement (Name {nameLocalName = "a", ...}),EventEndDocument]
+--
+-- Since 1.9.0
+ignoreTree :: MonadThrow m => NameMatcher a -> AttrParser b -> ConduitT Event o m (Maybe ())
+ignoreTree nameMatcher attrParser = fuseUpstream (takeTree nameMatcher attrParser) ignored
 
-{-# DEPRECATED ignoreAllTreesContent "Please use 'ignoreAnyTreeContent'." #-}
-ignoreAllTreesContent :: MonadThrow m => ConduitT Event o m (Maybe ())
-ignoreAllTreesContent = ignoreAnyTreeContent
+-- | Same as `takeContent`, without yielding `Event`s.
+--
+-- >>> :set -XOverloadedStrings
+-- >>> import Conduit
+--
+-- >>> runConduit $ parseLBS def "<a>content</a>" .| (ignoreContent >> sinkList)
+-- [EventBeginElement (Name {nameLocalName = "a", ...}) [],EventContent (ContentText "content"),EventEndElement (Name {nameLocalName = "a", ...}),EventEndDocument]
+--
+-- >>> runConduit $ parseLBS def "content<a></a>" .| (ignoreContent >> sinkList)
+-- [EventBeginElement (Name {nameLocalName = "a", ...}) [],EventEndElement (Name {nameLocalName = "a", ...}),EventEndDocument]
+--
+-- >>> runConduit $ parseLBS def "content<a></a>" .| (ignoreContent >> sinkList)
+-- [EventBeginElement (Name {nameLocalName = "a", ...}) [],EventEndElement (Name {nameLocalName = "a", ...}),EventEndDocument]
+--
+-- Since 1.9.0
+ignoreContent :: MonadThrow m => ConduitT Event o m (Maybe ())
+ignoreContent = fuseUpstream takeContent ignored
+
+
+-- | Same as `takeTreeContent`, without yielding `Event`s.
+--
+-- >>> :set -XOverloadedStrings
+-- >>> import Conduit
+--
+-- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| (ignoreTreeContent "a" ignoreAttrs >> sinkList)
+-- [EventBeginElement (Name {nameLocalName = "b", ...}) [],EventEndElement (Name {nameLocalName = "b", ...}),EventEndDocument]
+--
+-- >>> runConduit $ parseLBS def "<a>content</a>" .| (ignoreTreeContent "b" ignoreAttrs >> sinkList)
+-- [EventBeginElement (Name {nameLocalName = "a", ...}) [],EventContent (ContentText "content"),EventEndElement (Name {nameLocalName = "a", ...}),EventEndDocument]
+--
+-- >>> runConduit $ parseLBS def "content<a></a>" .| (ignoreTreeContent anyName ignoreAttrs >> sinkList)
+-- [EventBeginElement (Name {nameLocalName = "a", ...}) [],EventEndElement (Name {nameLocalName = "a", ...}),EventEndDocument]
+--
+-- Since 1.5.0
+ignoreTreeContent :: MonadThrow m => NameMatcher a -> AttrParser b -> ConduitT Event o m (Maybe ())
+ignoreTreeContent namePred attrParser = fuseUpstream (takeTreeContent namePred attrParser) ignored
+
+
+-- | Same as `takeAnyTreeContent`, without yielding `Event`s.
+--
+-- >>> :set -XOverloadedStrings
+-- >>> import Conduit
+--
+-- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| (ignoreAnyTreeContent >> sinkList)
+-- [EventBeginElement (Name {nameLocalName = "b", ...}) [],EventEndElement (Name {nameLocalName = "b", ...}),EventEndDocument]
+--
+-- >>> runConduit $ parseLBS def "text<b></b>" .| (ignoreAnyTreeContent >> sinkList)
+-- [EventBeginElement (Name {nameLocalName = "b", ...}) [],EventEndElement (Name {nameLocalName = "b", ...}),EventEndDocument]
+--
+-- Since 1.5.0
+ignoreAnyTreeContent :: MonadThrow m => ConduitT Event o m (Maybe ())
+ignoreAnyTreeContent = fuseUpstream takeAnyTreeContent ignored
+
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return @Just@), this function returns 'Nothing'.
@@ -1034,7 +1063,7 @@ manyIgnore i ignored = go id where
 many' :: MonadThrow m
       => ConduitT Event o m (Maybe a)
       -> ConduitT Event o m [a]
-many' consumer = manyIgnore consumer ignoreAllTreesContent
+many' consumer = manyIgnore consumer ignoreAnyTreeContent
 
 
 -- | Like 'many', but uses 'yield' so the result list can be streamed
@@ -1060,12 +1089,24 @@ manyIgnoreYield consumer ignoreParser = fix $ \loop ->
 manyYield' :: MonadThrow m
            => ConduitT Event b m (Maybe b)
            -> ConduitT Event b m ()
-manyYield' consumer = manyIgnoreYield consumer ignoreAllTreesContent
+manyYield' consumer = manyIgnoreYield consumer ignoreAnyTreeContent
 
 
--- | Stream a content 'Event'. If next event isn't a content, nothing is consumed.
+-- | Stream a single content 'Event'.
 --
 -- Returns @Just ()@ if a content 'Event' was consumed, @Nothing@ otherwise.
+--
+-- >>> :set -XOverloadedStrings
+-- >>> import Control.Monad (void)
+-- >>> import Conduit
+--
+-- >>> runConduit $ parseLBS def "content<a></a>" .| void takeContent .| sinkList
+-- [EventBeginDocument,EventContent (ContentText "content")]
+--
+-- If next event isn't a content, nothing is consumed.
+--
+-- >>> runConduit $ parseLBS def "<a>content</a>" .| void takeContent .| sinkList
+-- [EventBeginDocument]
 --
 -- Since 1.5.0
 takeContent :: MonadThrow m => ConduitT Event Event m (Maybe ())
@@ -1081,23 +1122,22 @@ takeContent = do
 --
 -- >>> :set -XOverloadedStrings
 -- >>> import Control.Monad (void)
--- >>> import Data.Conduit
--- >>> import Data.Conduit.List (consume)
+-- >>> import Conduit
 --
--- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| void (takeTree "a" ignoreAttrs) .| consume
+-- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| void (takeTree "a" ignoreAttrs) .| sinkList
 -- [EventBeginDocument,EventBeginElement (Name {nameLocalName = "a", ...}) [],EventContent (ContentText "content"),EventEndElement (Name {nameLocalName = "a", ...})]
 --
--- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| void (takeTree "b" ignoreAttrs) .| consume
+-- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| void (takeTree "b" ignoreAttrs) .| sinkList
 -- [EventBeginDocument]
 --
 -- If next 'Event' isn't an element, nothing is consumed.
 --
--- >>> runConduit $ parseLBS def "text<a></a>" .| void (takeTree "a" ignoreAttrs) .| consume
+-- >>> runConduit $ parseLBS def "text<a></a>" .| void (takeTree "a" ignoreAttrs) .| sinkList
 -- [EventBeginDocument]
 --
 -- If an opening-tag is consumed but no matching closing-tag is found, an 'XmlException' is thrown.
 --
--- >>> runConduit $ parseLBS def "<a><b></b>" .| void (takeTree "a" ignoreAttrs) .| consume
+-- >>> runConduit $ parseLBS def "<a><b></b>" .| void (takeTree "a" ignoreAttrs) .| sinkList
 -- *** Exception: InvalidEndElement (Name {nameLocalName = "a", nameNamespace = Nothing, namePrefix = Nothing}) Nothing
 --
 -- This function automatically ignores comments, instructions and whitespace.
@@ -1128,37 +1168,42 @@ takeTree nameMatcher attrParser = do
 
 -- | Like 'takeTree', but can also stream a content 'Event'.
 --
+-- >>> :set -XOverloadedStrings
+-- >>> import Control.Monad (void)
+-- >>> import Conduit
+--
+-- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| void (takeTreeContent "a" ignoreAttrs) .| sinkList
+-- [EventBeginDocument,EventBeginElement (Name {nameLocalName = "a", ...}) [],EventContent (ContentText "content"),EventEndElement (Name {nameLocalName = "a", ...})]
+--
+-- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| void (takeTreeContent "b" ignoreAttrs) .| sinkList
+-- [EventBeginDocument]
+--
+-- >>> runConduit $ parseLBS def "content<a></a><b></b>" .| void (takeTreeContent "a" ignoreAttrs) .| sinkList
+-- [EventBeginDocument,EventContent (ContentText "content")]
+--
 -- Since 1.5.0
-takeTreeContent :: MonadThrow m
-                => NameMatcher a
-                -> AttrParser b
-                -> ConduitT Event Event m (Maybe ())
+takeTreeContent :: MonadThrow m => NameMatcher a -> AttrParser b -> ConduitT Event Event m (Maybe ())
 takeTreeContent nameMatcher attrParser = runMaybeT $ MaybeT (takeTree nameMatcher attrParser) <|> MaybeT takeContent
 
 -- | Like 'takeTreeContent', without checking for tag name or attributes.
 --
 -- >>> :set -XOverloadedStrings
 -- >>> import Control.Monad (void)
--- >>> import Data.Conduit ((.|), runConduit)
--- >>> import Data.Conduit.List (consume)
+-- >>> import Conduit
 --
--- >>> runConduit $ parseLBS def "text<a></a>" .| void takeAnyTreeContent .| consume
+-- >>> runConduit $ parseLBS def "text<a></a>" .| void takeAnyTreeContent .| sinkList
 -- [EventBeginDocument,EventContent (ContentText "text")]
 --
--- >>> runConduit $ parseLBS def "</a><b></b>" .| void takeAnyTreeContent .| consume
+-- >>> runConduit $ parseLBS def "</a><b></b>" .| void takeAnyTreeContent .| sinkList
 -- [EventBeginDocument]
 --
--- >>> runConduit $ parseLBS def "<b><c></c></b></a>text" .| void takeAnyTreeContent .| consume
+-- >>> runConduit $ parseLBS def "<b><c></c></b></a>text" .| void takeAnyTreeContent .| sinkList
 -- [EventBeginDocument,EventBeginElement (Name {nameLocalName = "b", ...}) [],EventBeginElement (Name {nameLocalName = "c", ...}) [],EventEndElement (Name {nameLocalName = "c", ...}),EventEndElement (Name {nameLocalName = "b", ...})]
 --
 -- Since 1.5.0
 takeAnyTreeContent :: MonadThrow m
                 => ConduitT Event Event m (Maybe ())
 takeAnyTreeContent = takeTreeContent anyName ignoreAttrs
-
-{-# DEPRECATED takeAllTreesContent "Please use 'takeAnyTreeContent'." #-}
-takeAllTreesContent :: MonadThrow m => ConduitT Event Event m (Maybe ())
-takeAllTreesContent = takeAnyTreeContent
 
 
 -- | Default implementation of 'DecodeEntities', which leaves the
