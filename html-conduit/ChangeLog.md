@@ -1,3 +1,7 @@
+## 1.3.2.1
+
+* Upgrade to xml-conduit 1.9
+
 ## 1.3.2
 
 * Fix a bug that was removing `<` symbols in script tags.
