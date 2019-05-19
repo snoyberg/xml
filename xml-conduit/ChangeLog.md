@@ -1,3 +1,10 @@
+## 1.9.0
+
+* Remove deprecated functions (`ignoreTag`, `ignoreAllTreesContent`, `takeAllTreesContent`)
+* Rename `parseText'` into `parseText`
+* `takeContent` and `ignoreContent` now cover entities
+* Align behaviour of `take`* and `ignore`* functions
+
 ## 1.8.0.1
 
 * Use doctest to validate code examples from documentation
