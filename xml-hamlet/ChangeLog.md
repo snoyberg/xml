@@ -1,3 +1,9 @@
+# Changelog for xml-hamlet
+
+## 0.5.0.1
+
+* Compat with GHC 8.8.1 [#147](https://github.com/snoyberg/xml/issues/147)
+
 ## 0.5.0
 
 * Upgrade to conduit 1.3

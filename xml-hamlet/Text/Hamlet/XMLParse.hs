@@ -25,6 +25,9 @@ instance Monad Result where
     return = Ok
     Error s >>= _ = Error s
     Ok v >>= f = f v
+#if MIN_VERSION_base(4,13,0)
+instance MonadFail Result where
+#endif
     fail = Error
 instance Functor Result where
     fmap = liftM
