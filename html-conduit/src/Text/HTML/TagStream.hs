@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings, TupleSections, ViewPatterns #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE CPP #-}
 module Text.HTML.TagStream
   ( Token (..)
   , tokenStream
@@ -149,7 +150,11 @@ decodeEntity :: MonadThrow m => Text -> m Text
 decodeEntity entity =
              runConduit
            $ CL.sourceList ["&",entity,";"]
+#if MIN_VERSION_xml_conduit(1,9,0)
           .| XML.parseText XML.def { XML.psDecodeEntities = XML.decodeHtmlEntities }
+#else
+          .| XML.parseText' XML.def { XML.psDecodeEntities = XML.decodeHtmlEntities }
+#endif
           .| XML.content
 
 token :: Parser Token

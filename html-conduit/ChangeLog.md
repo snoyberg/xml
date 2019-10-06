@@ -1,6 +1,8 @@
+# ChangeLog for `html-conduit`
+
 ## 1.3.2.1
 
-* Upgrade to xml-conduit 1.9
+* Allow xml-conduit 1.9
 
 ## 1.3.2
 
