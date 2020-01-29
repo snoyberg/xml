@@ -132,6 +132,8 @@ module Text.XML.Stream.Parse
       -- * Other types
     , PositionRange
     , EventPos
+      -- * Other helpers
+    , isWhitespace
     ) where
 import           Conduit
 import           Control.Applicative          (Alternative (empty, (<|>)),
@@ -668,6 +670,8 @@ content :: MonadThrow m => ConduitT Event o m Text
 content = fromMaybe T.empty <$> contentMaybe
 
 
+-- | Tests if the current event could be considered a whitespace
+-- It could be useful when you write your own parsers
 isWhitespace :: Event -> Bool
 isWhitespace EventBeginDocument             = True
 isWhitespace EventEndDocument               = True
