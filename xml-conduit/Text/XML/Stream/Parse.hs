@@ -484,15 +484,8 @@ parseToken settings = (char '<' >> parseLt) <|> TokenContent <$> parseContent se
         skipSpace
         char' '>'
         return (i, t)
-    parsePublicID = do
-        _ <- string "PUBLIC"
-        x <- quotedText
-        y <- quotedText
-        return $ PublicID x y
-    parseSystemID = do
-        _ <- string "SYSTEM"
-        x <- quotedText
-        return $ SystemID x
+    parsePublicID = PublicID <$> (string "PUBLIC" *> quotedText) <*> quotedText
+    parseSystemID = SystemID <$> (string "SYSTEM" *> quotedText)
     quotedText = do
         skipSpace
         between '"' <|> between '\''
