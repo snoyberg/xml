@@ -171,6 +171,11 @@ import           Data.XML.Types               (Content (..), Event (..),
 import           Prelude                      hiding (takeWhile)
 import           Text.XML.Stream.Token
 
+-- $setup
+-- >>> :set -XOverloadedStrings
+-- >>> import Conduit
+-- >>> import Control.Monad (void)
+
 type Ents = [(Text, Text)]
 
 tokenToEvent :: ParseSettings -> Ents -> [NSLevel] -> Token -> (Ents, [NSLevel], [Event])
@@ -789,9 +794,6 @@ ignored = fix $ \recurse -> do
 
 -- | Same as `takeTree`, without yielding `Event`s.
 --
--- >>> :set -XOverloadedStrings
--- >>> import Conduit
---
 -- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| (ignoreTree "a" ignoreAttrs >> sinkList)
 -- [EventBeginElement (Name {nameLocalName = "b", ...}) [],EventEndElement (Name {nameLocalName = "b", ...}),EventEndDocument]
 --
@@ -806,9 +808,6 @@ ignoreTree :: MonadThrow m => NameMatcher a -> AttrParser b -> ConduitT Event o 
 ignoreTree nameMatcher attrParser = fuseUpstream (takeTree nameMatcher attrParser) ignored
 
 -- | Same as `takeContent`, without yielding `Event`s.
---
--- >>> :set -XOverloadedStrings
--- >>> import Conduit
 --
 -- >>> runConduit $ parseLBS def "<a>content</a>" .| (ignoreContent >> sinkList)
 -- [EventBeginElement (Name {nameLocalName = "a", ...}) [],EventContent (ContentText "content"),EventEndElement (Name {nameLocalName = "a", ...}),EventEndDocument]
@@ -826,9 +825,6 @@ ignoreContent = fuseUpstream takeContent ignored
 
 -- | Same as `takeTreeContent`, without yielding `Event`s.
 --
--- >>> :set -XOverloadedStrings
--- >>> import Conduit
---
 -- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| (ignoreTreeContent "a" ignoreAttrs >> sinkList)
 -- [EventBeginElement (Name {nameLocalName = "b", ...}) [],EventEndElement (Name {nameLocalName = "b", ...}),EventEndDocument]
 --
@@ -844,9 +840,6 @@ ignoreTreeContent namePred attrParser = fuseUpstream (takeTreeContent namePred a
 
 
 -- | Same as `takeAnyTreeContent`, without yielding `Event`s.
---
--- >>> :set -XOverloadedStrings
--- >>> import Conduit
 --
 -- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| (ignoreAnyTreeContent >> sinkList)
 -- [EventBeginElement (Name {nameLocalName = "b", ...}) [],EventEndElement (Name {nameLocalName = "b", ...}),EventEndDocument]
@@ -1096,10 +1089,6 @@ manyYield' consumer = manyIgnoreYield consumer ignoreAnyTreeContent
 --
 -- Returns @Just ()@ if a content 'Event' was consumed, @Nothing@ otherwise.
 --
--- >>> :set -XOverloadedStrings
--- >>> import Control.Monad (void)
--- >>> import Conduit
---
 -- >>> runConduit $ parseLBS def "content<a></a>" .| void takeContent .| sinkList
 -- [EventBeginDocument,EventContent (ContentText "content")]
 --
@@ -1119,10 +1108,6 @@ takeContent = do
     _ -> return Nothing
 
 -- | Stream 'Event's corresponding to a single XML element that matches given 'NameMatcher' and 'AttrParser', from the opening- to the closing-tag.
---
--- >>> :set -XOverloadedStrings
--- >>> import Control.Monad (void)
--- >>> import Conduit
 --
 -- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| void (takeTree "a" ignoreAttrs) .| sinkList
 -- [EventBeginDocument,EventBeginElement (Name {nameLocalName = "a", ...}) [],EventContent (ContentText "content"),EventEndElement (Name {nameLocalName = "a", ...})]
@@ -1168,10 +1153,6 @@ takeTree nameMatcher attrParser = do
 
 -- | Like 'takeTree', but can also stream a content 'Event'.
 --
--- >>> :set -XOverloadedStrings
--- >>> import Control.Monad (void)
--- >>> import Conduit
---
 -- >>> runConduit $ parseLBS def "<a>content</a><b></b>" .| void (takeTreeContent "a" ignoreAttrs) .| sinkList
 -- [EventBeginDocument,EventBeginElement (Name {nameLocalName = "a", ...}) [],EventContent (ContentText "content"),EventEndElement (Name {nameLocalName = "a", ...})]
 --
@@ -1186,10 +1167,6 @@ takeTreeContent :: MonadThrow m => NameMatcher a -> AttrParser b -> ConduitT Eve
 takeTreeContent nameMatcher attrParser = runMaybeT $ MaybeT (takeTree nameMatcher attrParser) <|> MaybeT takeContent
 
 -- | Like 'takeTreeContent', without checking for tag name or attributes.
---
--- >>> :set -XOverloadedStrings
--- >>> import Control.Monad (void)
--- >>> import Conduit
 --
 -- >>> runConduit $ parseLBS def "text<a></a>" .| void takeAnyTreeContent .| sinkList
 -- [EventBeginDocument,EventContent (ContentText "text")]
