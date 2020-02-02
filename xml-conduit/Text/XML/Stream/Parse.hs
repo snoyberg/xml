@@ -17,7 +17,7 @@
 -- As a simple example:
 --
 -- >>> :set -XOverloadedStrings
--- >>> import Conduit (runConduit, (.|))
+-- >>> import Conduit (ConduitT, MonadThrow, runConduit, (.|))
 -- >>> import Data.Text (Text, unpack)
 -- >>> import Data.XML.Types (Event)
 -- >>> data Person = Person Int Text Text deriving Show
