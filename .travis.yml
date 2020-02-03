@@ -100,9 +100,10 @@ matrix:
     compiler: ": #stack 8.0.1"
     addons: {apt: {packages: [libgmp-dev]}}
 
-  - env: BUILD=stack ARGS="--resolver lts-9"
-    compiler: ": #stack 8.0.2"
-    addons: {apt: {packages: [libgmp-dev]}}
+  # This breaks doctests
+  #- env: BUILD=stack ARGS="--resolver lts-9"
+  #  compiler: ": #stack 8.0.2"
+  #  addons: {apt: {packages: [libgmp-dev]}}
 
   - env: BUILD=stack ARGS="--resolver lts-10"
     compiler: ": #stack 8.2.1"
