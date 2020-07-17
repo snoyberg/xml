@@ -857,6 +857,16 @@ orE a b = a >>= \x -> maybe b (const $ return x) x
 
 -- | Get the value of the first parser which returns 'Just'. If no parsers
 -- succeed (i.e., return 'Just'), this function returns 'Nothing'.
+--
+-- Warning: 'choose' doesn't backtrack. If a parser consumed some events,
+-- subsequent parsers will continue from the following events. This can be a
+-- problem if parsers share an accepted prefix of events, so an earlier
+-- (failing) parser will discard the events that the later parser could
+-- potentially succeed on.
+--
+-- An other problematic case is using 'choose' to implement order-independent
+-- parsing using a set of parsers, with a final trailing ignore-anything-else
+-- action.  In this case, certain trees might be skipped.
 choose :: Monad m
        => [ConduitT Event o m (Maybe a)] -- ^ List of parsers that will be tried in order.
        -> ConduitT Event o m (Maybe a)   -- ^ Result of the first parser to succeed, or @Nothing@
