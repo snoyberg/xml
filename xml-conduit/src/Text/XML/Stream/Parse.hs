@@ -174,7 +174,7 @@ import           Text.XML.Stream.Token
 -- $setup
 -- >>> :set -XOverloadedStrings
 -- >>> import Conduit
--- >>> import Control.Monad (void)
+-- >>> import Control.Monad (void, join)
 
 type Ents = [(Text, Text)]
 
@@ -849,6 +849,8 @@ ignoreAnyTreeContent = fuseUpstream takeAnyTreeContent ignored
 -- succeed (i.e., return @Just@), this function returns 'Nothing'.
 --
 -- > orE a b = choose [a, b]
+--
+-- Warning: `orE` doesn't backtrack. See 'choose' for detailed explanation.
 orE :: Monad m
     => ConduitT Event o m (Maybe a) -- ^ The first (preferred) parser
     -> ConduitT Event o m (Maybe a) -- ^ The second parser, only executed if the first parser fails
@@ -867,6 +869,29 @@ orE a b = a >>= \x -> maybe b (const $ return x) x
 -- An other problematic case is using 'choose' to implement order-independent
 -- parsing using a set of parsers, with a final trailing ignore-anything-else
 -- action.  In this case, certain trees might be skipped.
+--
+-- >>> :{
+-- let parse2Tags name1 name2 = do
+--       tag1 <- tagNoAttr name1 (pure ())
+--       tag2 <- tagNoAttr name2 (pure tag1)
+--       return $ join tag2
+-- :}
+--
+-- >>> :{
+-- runConduit $ parseLBS def "<a></a><b></b>" .| choose
+--   [ parse2Tags "a" "b"
+--   , parse2Tags "a" "c"
+--   ]
+-- :}
+-- Just ()
+--
+-- >>> :{
+-- runConduit $ parseLBS def "<a></a><b></b>" .| choose
+--   [ parse2Tags "a" "c"
+--   , parse2Tags "a" "b"
+--   ]
+-- :}
+-- Nothing
 choose :: Monad m
        => [ConduitT Event o m (Maybe a)] -- ^ List of parsers that will be tried in order.
        -> ConduitT Event o m (Maybe a)   -- ^ Result of the first parser to succeed, or @Nothing@
