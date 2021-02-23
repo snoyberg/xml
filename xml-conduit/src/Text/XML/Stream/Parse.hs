@@ -474,7 +474,8 @@ parseToken settings = (char '<' >> parseLt) <|> TokenContent <$> parseContent se
     parseEntities front =
         (char ']' >> return (front [])) <|>
         (parseEntity >>= \e -> parseEntities (front . (e:))) <|>
-        (char '<' >> parseEntities front) <|>
+        (char '<' >> A.optional (char '!' >> parseComment) >>
+            parseEntities front) <|>
         (skipWhile (\t -> t /= ']' && t /= '<') >> parseEntities front)
     parseEntity = try $ do
         _ <- string "<!ENTITY"

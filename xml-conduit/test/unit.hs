@@ -81,6 +81,7 @@ main = hspec $ do
         it "works for resolvable entities" resolvedAllGood
         it "merges adjacent content nodes" resolvedMergeContent
         it "understands inline entity declarations" resolvedInline
+        it "doesn't break on [] in doctype comments" doctypeComment
     describe "pretty" $ do
         it "works" casePretty
     describe "top level namespaces" $ do
@@ -732,6 +733,13 @@ resolvedInline = do
     root @?= Res.Element "foo" Map.empty [Res.NodeContent "baz"]
     Res.Document _ root2 _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"baz\">]><foo bar='&bar;'/>"
     root2 @?= Res.Element "foo" (Map.singleton "bar" "baz") []
+
+doctypeComment :: Assertion
+doctypeComment = do
+    Res.Document _ root _ <- return $ Res.parseLBS_
+       Res.def "<!DOCTYPE foo [<!-- [comment] --> <!ENTITY bar \"baz\">]><foo>&bar;</foo>"
+    root @?= Res.Element "foo" Map.empty [Res.NodeContent "baz"]
+
 
 casePretty :: Assertion
 casePretty = do
