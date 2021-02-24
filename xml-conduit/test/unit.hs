@@ -81,6 +81,8 @@ main = hspec $ do
         it "works for resolvable entities" resolvedAllGood
         it "merges adjacent content nodes" resolvedMergeContent
         it "understands inline entity declarations" resolvedInline
+        it "can expand inline entities recursively" resolvedInlineRecursive
+        it "doesn't explode with an inline entity loop" resolvedInlineLoop
         it "doesn't break on [] in doctype comments" doctypeComment
     describe "pretty" $ do
         it "works" casePretty
@@ -733,6 +735,19 @@ resolvedInline = do
     root @?= Res.Element "foo" Map.empty [Res.NodeContent "baz"]
     Res.Document _ root2 _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"baz\">]><foo bar='&bar;'/>"
     root2 @?= Res.Element "foo" (Map.singleton "bar" "baz") []
+
+resolvedInlineRecursive :: Assertion
+resolvedInlineRecursive = do
+    Res.Document _ root _ <- return $ Res.parseLBS_ Res.def
+      "<!DOCTYPE foo [<!ENTITY bim \"baz\"><!ENTITY bar \"&bim;&#73;&amp;\">]><foo>&bar;</foo>"
+    root @?= Res.Element "foo" Map.empty [Res.NodeContent "bazI&"]
+
+resolvedInlineLoop :: Assertion
+resolvedInlineLoop = do
+    res <- return $ Res.parseLBS Res.def
+           "<!DOCTYPE foo [<!ENTITY bim \"&bim;\">]><foo>&bim;</foo>"
+    res `showEq` Left
+         (toException $ Res.UnresolvedEntityException (Set.fromList ["bim"]))
 
 doctypeComment :: Assertion
 doctypeComment = do

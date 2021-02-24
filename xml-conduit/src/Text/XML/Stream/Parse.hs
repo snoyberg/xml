@@ -196,7 +196,7 @@ tokenToEvent ps es n (TokenBeginElement name as isClosed _) =
 
         addNS
             | not (psRetainNamespaces ps) && (isPrefixed || isUnprefixed) = id
-            | otherwise = (((tname, map resolve val):) .)
+            | otherwise = (((tname, resolveEntities 0 ps es val):) .)
           where
             tname
                 | isPrefixed = TName Nothing ("xmlns:" `T.append` kname)
@@ -212,9 +212,6 @@ tokenToEvent ps es n (TokenBeginElement name as isClosed _) =
                                             else Just $ contentsToText val }
             | otherwise = l
 
-    resolve (ContentEntity e)
-        | Just t <- lookup e es = ContentText t
-    resolve c = c
     n' = if isClosed then n else l' : n
     fixAttName (name', val) = (tnameToName True l' name', val)
     elementName = tnameToName False l' name
@@ -227,12 +224,29 @@ tokenToEvent _ es n (TokenEndElement name) =
         case n of
             []   -> (NSLevel Nothing Map.empty, [])
             x:xs -> (x, xs)
-tokenToEvent _ es n (TokenContent (ContentEntity e))
-    | Just t <- lookup e es = (es, n, [EventContent $ ContentText t])
+tokenToEvent ps es n (TokenContent (ContentEntity e))
+    = (es, n, map EventContent (resolveEntities 0 ps es [ContentEntity e]))
 tokenToEvent _ es n (TokenContent c) = (es, n, [EventContent c])
 tokenToEvent _ es n (TokenComment c) = (es, n, [EventComment c])
 tokenToEvent _ es n (TokenDoctype t eid es') = (es ++ es', n, [EventBeginDoctype t eid, EventEndDoctype])
 tokenToEvent _ es n (TokenCDATA t) = (es, n, [EventCDATA t])
+
+resolveEntities :: Int             -- recursion depth
+                -> ParseSettings
+                -> [(Text, Text)]  -- entity table
+                -> [Content]
+                -> [Content]
+resolveEntities depth ps es (ContentEntity e : cs)
+    | depth < 10  -- avoid malicious recursive entity expansion
+    , Just t <- lookup e es =
+      case AT.parseOnly (manyTill
+                          (parseContent ps False False :: Parser Content)
+                          AT.endOfInput) t of
+        Left _   -> (ContentText t : resolveEntities depth ps es cs)
+        Right xs -> resolveEntities (depth + 1) ps es (xs ++ cs)
+resolveEntities depth ps es (c:cs) = c : resolveEntities depth ps es cs
+resolveEntities _ _ _ [] = []
+
 
 tnameToName :: Bool -> NSLevel -> TName -> Name
 tnameToName _ _ (TName (Just "xml") name) =
