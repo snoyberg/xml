@@ -81,6 +81,7 @@ module Text.XML.Stream.Parse
     , psDecodeEntities
     , psDecodeIllegalCharacters
     , psRetainNamespaces
+    , psEntityExpansionSizeLimit
       -- *** Entity decoding
     , decodeXmlEntities
     , decodeHtmlEntities
@@ -171,6 +172,8 @@ import           Data.XML.Types               (Content (..), Event (..),
 import           Prelude                      hiding (takeWhile)
 import           Text.XML.Stream.Token
 
+import Debug.Trace
+
 -- $setup
 -- >>> :set -XOverloadedStrings
 -- >>> import Conduit
@@ -196,7 +199,7 @@ tokenToEvent ps es n (TokenBeginElement name as isClosed _) =
 
         addNS
             | not (psRetainNamespaces ps) && (isPrefixed || isUnprefixed) = id
-            | otherwise = (((tname, map resolve val):) .)
+            | otherwise = (((tname, resolveEntities ps es val):) .)
           where
             tname
                 | isPrefixed = TName Nothing ("xmlns:" `T.append` kname)
@@ -212,9 +215,6 @@ tokenToEvent ps es n (TokenBeginElement name as isClosed _) =
                                             else Just $ contentsToText val }
             | otherwise = l
 
-    resolve (ContentEntity e)
-        | Just t <- lookup e es = ContentText t
-    resolve c = c
     n' = if isClosed then n else l' : n
     fixAttName (name', val) = (tnameToName True l' name', val)
     elementName = tnameToName False l' name
@@ -227,12 +227,47 @@ tokenToEvent _ es n (TokenEndElement name) =
         case n of
             []   -> (NSLevel Nothing Map.empty, [])
             x:xs -> (x, xs)
-tokenToEvent _ es n (TokenContent (ContentEntity e))
-    | Just t <- lookup e es = (es, n, [EventContent $ ContentText t])
+tokenToEvent ps es n (TokenContent (ContentEntity e))
+    = (es, n, map EventContent (resolveEntities ps es [ContentEntity e]))
 tokenToEvent _ es n (TokenContent c) = (es, n, [EventContent c])
 tokenToEvent _ es n (TokenComment c) = (es, n, [EventComment c])
 tokenToEvent _ es n (TokenDoctype t eid es') = (es ++ es', n, [EventBeginDoctype t eid, EventEndDoctype])
 tokenToEvent _ es n (TokenCDATA t) = (es, n, [EventCDATA t])
+
+resolveEntities :: ParseSettings
+                -> [(Text, Text)]  -- entity table
+                -> [Content]
+                -> [Content]
+resolveEntities ps entities = foldr go []
+ where
+  go c@(ContentEntity e) cs
+    = case expandEntity entities e of
+        Just xs -> foldr go cs xs
+        Nothing ->  c : cs
+  go c cs = c:cs
+  expandEntity es e
+    | Just t <- lookup e es =
+      case AT.parseOnly (manyTill
+                          (parseContent ps False False :: Parser Content)
+                          AT.endOfInput) t of
+        Left _      -> Nothing
+        Right xs    ->
+          -- we delete e from the entity map in resolving its contents,
+          -- to avoid infinite loops in recursive expansion:
+          case foldr (goent (filter (\(x,_) -> x /= e) es)) (Just ([], 0)) xs of
+            Just (cs, _) -> Just cs
+            Nothing -> Nothing
+    | otherwise     = Nothing
+  goent _ _ Nothing = Nothing
+  goent es c@(ContentEntity e) (Just (cs, size))
+    = case expandEntity es e of
+        Just xs -> foldr (goent es) (Just (cs, size)) xs
+        Nothing -> Nothing
+  goent _ c@(ContentText t) (Just (cs, size)) =
+    case size + T.length t of
+      n | n > psEntityExpansionSizeLimit ps -> Nothing
+        | otherwise -> Just (c:cs, size + T.length t)
+
 
 tnameToName :: Bool -> NSLevel -> TName -> Name
 tnameToName _ _ (TName (Just "xml") name) =
@@ -407,6 +442,14 @@ data ParseSettings = ParseSettings
     -- Default: @const Nothing@
     --
     -- Since 1.7.1
+    , psEntityExpansionSizeLimit :: Int
+    -- ^ Maximum number of characters allowed in expanding an
+    -- internal entity.  This is intended to protect against the
+    -- billion laughs attack.
+    --
+    -- Default: @8192@
+    --
+    -- Since 1.9.1
     }
 
 instance Default ParseSettings where
@@ -414,6 +457,7 @@ instance Default ParseSettings where
         { psDecodeEntities = decodeXmlEntities
         , psRetainNamespaces = False
         , psDecodeIllegalCharacters = const Nothing
+        , psEntityExpansionSizeLimit = 8192
         }
 
 conduitToken :: MonadThrow m => ParseSettings -> ConduitT T.Text (PositionRange, Token) m ()
@@ -555,7 +599,7 @@ parseContent :: ParseSettings
              -> Bool -- break on double quote
              -> Bool -- break on single quote
              -> Parser Content
-parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters) breakDouble breakSingle = parseReference <|> parseTextContent where
+parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _) breakDouble breakSingle = parseReference <|> parseTextContent where
   parseReference = do
     char' '&'
     t <- parseEntityRef <|> parseHexCharRef <|> parseDecCharRef

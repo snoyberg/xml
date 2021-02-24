@@ -81,6 +81,10 @@ main = hspec $ do
         it "works for resolvable entities" resolvedAllGood
         it "merges adjacent content nodes" resolvedMergeContent
         it "understands inline entity declarations" resolvedInline
+        it "can expand inline entities recursively" resolvedInlineRecursive
+        it "doesn't explode with an inline entity loop" resolvedInlineLoop
+        it "doesn't explode with the billion laughs attack" billionLaughs
+        it "allows entity expansion size limit to be adjusted" thousandLaughs
         it "doesn't break on [] in doctype comments" doctypeComment
         it "skips element declarations in doctype" doctypeElements
         it "skips processing instructions in doctype" doctypePI
@@ -735,6 +739,37 @@ resolvedInline = do
     root @?= Res.Element "foo" Map.empty [Res.NodeContent "baz"]
     Res.Document _ root2 _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"baz\">]><foo bar='&bar;'/>"
     root2 @?= Res.Element "foo" (Map.singleton "bar" "baz") []
+
+resolvedInlineRecursive :: Assertion
+resolvedInlineRecursive = do
+    Res.Document _ root _ <- return $ Res.parseLBS_ Res.def
+      "<!DOCTYPE foo [<!ENTITY bim \"baz\"><!ENTITY bar \"&bim;&#73;&amp;\">]><foo>&bar;</foo>"
+    root @?= Res.Element "foo" Map.empty [Res.NodeContent "bazI&"]
+
+resolvedInlineLoop :: Assertion
+resolvedInlineLoop = do
+    res <- return $ Res.parseLBS Res.def
+           "<!DOCTYPE foo [<!ENTITY bim \"&bim;\">]><foo>&bim;</foo>"
+    Left (toException $ Res.UnresolvedEntityException (Set.fromList ["bim"]))
+      `showEq` res
+
+billionLaughs :: Assertion
+billionLaughs = do
+    res <- return $ Res.parseLBS Res.def
+      "<?xml version=\"1.0\"?><!DOCTYPE lolz [<!ENTITY lol \"lol\"><!ELEMENT lolz (#PCDATA)><!ENTITY lol1 \"&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;\"><!ENTITY lol2 \"&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;\"><!ENTITY lol3 \"&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;\"><!ENTITY lol4 \"&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;\"><!ENTITY lol5 \"&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;\"><!ENTITY lol6 \"&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;\"><!ENTITY lol7 \"&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;\"><!ENTITY lol8 \"&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;\"><!ENTITY lol9 \"&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;\">]><lolz>&lol9;</lolz>"
+    Left (toException $ Res.UnresolvedEntityException (Set.fromList ["lol9"]))
+      `showEq` res
+
+thousandLaughs :: Assertion
+thousandLaughs = do
+    res <- return $ Res.parseLBS Res.def{ P.psEntityExpansionSizeLimit = 2999 }
+      "<?xml version=\"1.0\"?><!DOCTYPE lolz [<!ENTITY lol \"lol\"><!ELEMENT lolz (#PCDATA)><!ENTITY lol1 \"&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;\"><!ENTITY lol2 \"&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;\"><!ENTITY lol3 \"&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;\">]><lolz>&lol3;</lolz>"
+    Left (toException $ Res.UnresolvedEntityException (Set.fromList ["lol3"]))
+      `showEq` res
+    -- Raise the entity expansion limit and it should work:
+    Right (Res.Document {Res.documentRoot = Res.Element{ Res.elementNodes = [Res.NodeContent t] }}) <- return $ Res.parseLBS Res.def{ P.psEntityExpansionSizeLimit = 3001 } "<?xml version=\"1.0\"?><!DOCTYPE lolz [<!ENTITY lol \"lol\"><!ELEMENT lolz (#PCDATA)><!ENTITY lol1 \"&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;\"><!ENTITY lol2 \"&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;\"><!ENTITY lol3 \"&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;\">]><lolz>&lol3;</lolz>"
+    t @?= T.replicate 1000 "lol"
+
 
 doctypeComment :: Assertion
 doctypeComment = do
