@@ -82,6 +82,8 @@ main = hspec $ do
         it "merges adjacent content nodes" resolvedMergeContent
         it "understands inline entity declarations" resolvedInline
         it "doesn't break on [] in doctype comments" doctypeComment
+        it "skips element declarations in doctype" doctypeElements
+        it "skips processing instructions in doctype" doctypePI
     describe "pretty" $ do
         it "works" casePretty
     describe "top level namespaces" $ do
@@ -740,6 +742,17 @@ doctypeComment = do
        Res.def "<!DOCTYPE foo [<!-- [comment] --> <!ENTITY bar \"baz\">]><foo>&bar;</foo>"
     root @?= Res.Element "foo" Map.empty [Res.NodeContent "baz"]
 
+doctypeElements :: Assertion
+doctypeElements = do
+    Res.Document _ root _ <- return $ Res.parseLBS_
+       Res.def "<!DOCTYPE foo [<!ELEMENT assessment (#PCDATA)>\n<!ELEMENT textbooks(author,title)>\n<!ATTLIST assessment assessment_type (exam | assignment) #IMPLIED>\n<!ENTITY bar \"baz\">]><foo>&bar;</foo>"
+    root @?= Res.Element "foo" Map.empty [Res.NodeContent "baz"]
+
+doctypePI :: Assertion
+doctypePI = do
+    Res.Document _ root _ <- return $ Res.parseLBS_
+       Res.def "<!DOCTYPE foo [<?foobar \"[baz]\"?><!ENTITY bar \"baz\">]><foo>&bar;</foo>"
+    root @?= Res.Element "foo" Map.empty [Res.NodeContent "baz"]
 
 casePretty :: Assertion
 casePretty = do
