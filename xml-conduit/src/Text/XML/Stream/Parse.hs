@@ -474,8 +474,12 @@ parseToken settings = (char '<' >> parseLt) <|> TokenContent <$> parseContent se
     parseEntities front =
         (char ']' >> return (front [])) <|>
         (parseEntity >>= \e -> parseEntities (front . (e:))) <|>
-        (char '<' >> A.optional (char '!' >> parseComment) >>
-            parseEntities front) <|>
+        (string "<!--" >> manyTill anyChar (string "-->") >>
+           parseEntities front) <|>
+         -- this clause handles directives like <!ELEMENT
+         -- and processing instructions:
+        (char '<' >> AT.skipWhile (/= '>') >> char '>'
+                  >> parseEntities front) <|>
         (skipWhile (\t -> t /= ']' && t /= '<') >> parseEntities front)
     parseEntity = try $ do
         _ <- string "<!ENTITY"
