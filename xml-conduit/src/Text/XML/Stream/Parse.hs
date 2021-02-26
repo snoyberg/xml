@@ -172,8 +172,6 @@ import           Data.XML.Types               (Content (..), Event (..),
 import           Prelude                      hiding (takeWhile)
 import           Text.XML.Stream.Token
 
-import Debug.Trace
-
 -- $setup
 -- >>> :set -XOverloadedStrings
 -- >>> import Conduit
@@ -251,18 +249,14 @@ resolveEntities ps entities = foldr go []
                           (parseContent ps False False :: Parser Content)
                           AT.endOfInput) t of
         Left _      -> Nothing
-        Right xs    ->
+        Right xs    -> let es' = filter (\(x,_) -> x /= e) es
+                        in fst <$> foldr (goent es') (Just ([], 0)) xs
           -- we delete e from the entity map in resolving its contents,
-          -- to avoid infinite loops in recursive expansion:
-          case foldr (goent (filter (\(x,_) -> x /= e) es)) (Just ([], 0)) xs of
-            Just (cs, _) -> Just cs
-            Nothing -> Nothing
+          -- to avoid infinite loops in recursive expansion.
     | otherwise     = Nothing
   goent _ _ Nothing = Nothing
-  goent es c@(ContentEntity e) (Just (cs, size))
-    = case expandEntity es e of
-        Just xs -> foldr (goent es) (Just (cs, size)) xs
-        Nothing -> Nothing
+  goent es (ContentEntity e) (Just (cs, size))
+    = expandEntity es e >>= foldr (goent es) (Just (cs, size))
   goent _ c@(ContentText t) (Just (cs, size)) =
     case size + T.length t of
       n | n > psEntityExpansionSizeLimit ps -> Nothing
