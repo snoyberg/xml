@@ -1,3 +1,9 @@
+## 1.9.1
+
+* `]` characters inside doctype are now correctly handled
+* Entity expansion loops are now detected and avoided
+* Add field `psEntityExpansionSizeLimit` in `ParseSettings` to limit the length of an entity expansion; set to 8192 characters by default
+
 ## 1.9.0
 
 * Remove deprecated functions (`ignoreTag`, `ignoreAllTreesContent`, `takeAllTreesContent`)
