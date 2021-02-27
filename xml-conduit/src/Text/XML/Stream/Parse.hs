@@ -177,9 +177,9 @@ import           Text.XML.Stream.Token
 -- >>> import Conduit
 -- >>> import Control.Monad (void, join)
 
-type Ents = [(Text, Text)]
+type EntityTable = [(Text, Text)]
 
-tokenToEvent :: ParseSettings -> Ents -> [NSLevel] -> Token -> (Ents, [NSLevel], [Event])
+tokenToEvent :: ParseSettings -> EntityTable -> [NSLevel] -> Token -> (EntityTable, [NSLevel], [Event])
 tokenToEvent _ es n (TokenXMLDeclaration _) = (es, n, [])
 tokenToEvent _ es n (TokenInstruction i) = (es, n, [EventInstruction i])
 tokenToEvent ps es n (TokenBeginElement name as isClosed _) =
@@ -233,7 +233,7 @@ tokenToEvent _ es n (TokenDoctype t eid es') = (es ++ es', n, [EventBeginDoctype
 tokenToEvent _ es n (TokenCDATA t) = (es, n, [EventCDATA t])
 
 resolveEntities :: ParseSettings
-                -> [(Text, Text)]  -- entity table
+                -> EntityTable
                 -> [Content]
                 -> [Content]
 resolveEntities ps entities = foldr go []
@@ -320,10 +320,10 @@ checkXMLDecl bs0 Nothing =
   where
     loop chunks0 parser nextChunk =
         case parser $ decodeUtf8With lenientDecode nextChunk of
-            AT.Fail{} -> fallback
-            AT.Partial f -> await >>= maybe fallback (loop chunks f)
+            AT.Fail{}                             -> fallback
+            AT.Partial f                          -> await >>= maybe fallback (loop chunks f)
             AT.Done _ (TokenXMLDeclaration attrs) -> findEncoding attrs
-            AT.Done{} -> fallback
+            AT.Done{}                             -> fallback
       where
         chunks = nextChunk : chunks0
         fallback = complete CT.utf8
@@ -614,7 +614,7 @@ parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _) breakDou
     n <- AT.hexadecimal
     case toValidXmlChar n <|> decodeIllegalCharacters n of
       Nothing -> fail "Invalid character from hexadecimal character reference."
-      Just c -> return $ ContentText $ T.singleton c
+      Just c  -> return $ ContentText $ T.singleton c
   parseDecCharRef = do
     void $ string "#"
     n <- AT.decimal
@@ -684,17 +684,17 @@ contentMaybe = do
   where
     pc' Nothing  = NotContent
     pc' (Just x) = pc x
-    pc (EventContent (ContentText t)) = IsContent t
+    pc (EventContent (ContentText t))   = IsContent t
     pc (EventContent (ContentEntity e)) = IsError $ "Unknown entity: " ++ show e
-    pc (EventCDATA t) = IsContent t
-    pc EventBeginElement{} = NotContent
-    pc EventEndElement{} = NotContent
-    pc EventBeginDocument{} = Ignore
-    pc EventEndDocument = Ignore
-    pc EventBeginDoctype{} = Ignore
-    pc EventEndDoctype = Ignore
-    pc EventInstruction{} = Ignore
-    pc EventComment{} = Ignore
+    pc (EventCDATA t)                   = IsContent t
+    pc EventBeginElement{}              = NotContent
+    pc EventEndElement{}                = NotContent
+    pc EventBeginDocument{}             = Ignore
+    pc EventEndDocument                 = Ignore
+    pc EventBeginDoctype{}              = Ignore
+    pc EventEndDoctype                  = Ignore
+    pc EventInstruction{}               = Ignore
+    pc EventComment{}                   = Ignore
     takeContents front = do
         x <- peekC
         case pc' x of
@@ -764,7 +764,7 @@ tag nameMatcher attrParser f = do
     Nothing -> mapM_ leftover leftovers
     -- Parse succeeded, discard all of those whitespace events and the
     -- first parsed event
-    Just _  -> return ()
+    _       -> return ()
 
   return res
   where
@@ -1175,8 +1175,8 @@ takeContent = do
   case event of
     Just e@EventContent{} -> yield e >> return (Just ())
     Just e@EventCDATA{}   -> yield e >> return (Just ())
-    Just e -> if isWhitespace e then yield e >> takeContent else leftover e >> return Nothing
-    _ -> return Nothing
+    Just e                -> if isWhitespace e then yield e >> takeContent else leftover e >> return Nothing
+    _                     -> return Nothing
 
 -- | Stream 'Event's corresponding to a single XML element that matches given 'NameMatcher' and 'AttrParser', from the opening- to the closing-tag.
 --
@@ -1213,7 +1213,7 @@ takeTree nameMatcher attrParser = do
           endEvent <- await
           case endEvent of
             Just e'@(EventEndElement name') | name == name' -> yield e' >> return (Just ())
-            _ -> lift $ throwM $ InvalidEndElement name endEvent
+            _                                               -> lift $ throwM $ InvalidEndElement name endEvent
         _ -> leftover e >> return Nothing
       _ -> leftover e >> return Nothing
 

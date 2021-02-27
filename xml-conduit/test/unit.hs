@@ -591,7 +591,7 @@ name :: [Cu.Cursor] -> [Text]
 name [] = []
 name (c:cs) = ($ name cs) $ case Cu.node c of
                               Res.NodeElement e -> ((Res.nameLocalName $ Res.elementName e) :)
-                              _ -> id
+                              _                 -> id
 
 cursor :: Cu.Cursor
 cursor =
@@ -647,7 +647,7 @@ cursorCheck = null (cursor $.// Cu.check (const False)) @?= True
 cursorPredicate = (name $ cursor $.// Cu.check Cu.descendant) @?= T.words "foo bar2 baz3 bar3"
 cursorCheckNode = (name $ cursor $// Cu.checkNode f) @?= T.words "bar1 bar2 bar3"
     where f (Res.NodeElement e) = "bar" `T.isPrefixOf` Res.nameLocalName (Res.elementName e)
-          f _               = False
+          f _                   = False
 cursorCheckElement = (name $ cursor $// Cu.checkElement f) @?= T.words "bar1 bar2 bar3"
     where f e = "bar" `T.isPrefixOf` Res.nameLocalName (Res.elementName e)
 cursorCheckName = (name $ cursor $// Cu.checkName f) @?= T.words "bar1 bar2 bar3"
