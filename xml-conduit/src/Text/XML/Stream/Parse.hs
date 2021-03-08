@@ -153,13 +153,14 @@ import           Data.Attoparsec.Text         (Parser, anyChar, char, manyTill,
 import qualified Data.Attoparsec.Text         as AT
 import qualified Data.ByteString              as S
 import qualified Data.ByteString.Lazy         as L
+import qualified Data.ByteString.Builder      as Builder
 import           Data.Char                    (isSpace)
 import           Data.Conduit.Attoparsec      (PositionRange, conduitParser)
 import qualified Data.Conduit.Text            as CT
 import           Data.Default.Class           (Default (..))
 import           Data.List                    (foldl', intercalate)
 import qualified Data.Map                     as Map
-import           Data.Maybe                   (fromMaybe, isNothing)
+import           Data.Maybe                   (fromMaybe, isNothing, mapMaybe)
 import           Data.String                  (IsString (..))
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
@@ -197,8 +198,15 @@ tokenToEvent ps es n (TokenBeginElement name as isClosed _) =
 
         addNS
             | not (psRetainNamespaces ps) && (isPrefixed || isUnprefixed) = id
-            | otherwise = (((tname, resolveEntities ps es val):) .)
+            | otherwise = (((tname, resolveEntities' ps es val):) .)
           where
+            resolveEntities' ps' es' xs =
+              mapMaybe extractTokenContent
+                (resolveEntities ps' es'
+                  (map TokenContent xs))
+            extractTokenContent (TokenContent c) = Just c
+            extractTokenContent _ = Nothing
+
             tname
                 | isPrefixed = TName Nothing ("xmlns:" `T.append` kname)
                 | otherwise = TName kpref kname
@@ -225,8 +233,15 @@ tokenToEvent _ es n (TokenEndElement name) =
         case n of
             []   -> (NSLevel Nothing Map.empty, [])
             x:xs -> (x, xs)
-tokenToEvent ps es n (TokenContent (ContentEntity e))
-    = (es, n, map EventContent (resolveEntities ps es [ContentEntity e]))
+tokenToEvent ps es n tok@(TokenContent c@(ContentEntity e))
+  = case lookup e es of
+      Just _  -> (es, n, concatMap toEvents newtoks)
+      Nothing -> (es, n, [EventContent c])
+ where
+  toEvents t =
+    let (_, _, events) = tokenToEvent ps [] n t
+     in events
+  newtoks = resolveEntities ps es [tok]
 tokenToEvent _ es n (TokenContent c) = (es, n, [EventContent c])
 tokenToEvent _ es n (TokenComment c) = (es, n, [EventComment c])
 tokenToEvent _ es n (TokenDoctype t eid es') = (es ++ es', n, [EventBeginDoctype t eid, EventEndDoctype])
@@ -234,33 +249,36 @@ tokenToEvent _ es n (TokenCDATA t) = (es, n, [EventCDATA t])
 
 resolveEntities :: ParseSettings
                 -> EntityTable
-                -> [Content]
-                -> [Content]
+                -> [Token]
+                -> [Token]
 resolveEntities ps entities = foldr go []
  where
-  go c@(ContentEntity e) cs
+  go tok@(TokenContent (ContentEntity e)) toks
     = case expandEntity entities e of
-        Just xs -> foldr go cs xs
-        Nothing ->  c : cs
-  go c cs = c:cs
+        Just xs -> foldr go toks xs
+        Nothing ->  tok : toks
+  go tok toks = tok : toks
   expandEntity es e
     | Just t <- lookup e es =
       case AT.parseOnly (manyTill
-                          (parseContent ps False False :: Parser Content)
+                          (parseToken ps :: Parser Token)
                           AT.endOfInput) t of
         Left _      -> Nothing
-        Right xs    -> let es' = filter (\(x,_) -> x /= e) es
+        Right xs    -> -- recursively expand
+                       let es' = filter (\(x,_) -> x /= e) es
                         in fst <$> foldr (goent es') (Just ([], 0)) xs
           -- we delete e from the entity map in resolving its contents,
           -- to avoid infinite loops in recursive expansion.
     | otherwise     = Nothing
   goent _ _ Nothing = Nothing
-  goent es (ContentEntity e) (Just (cs, size))
+  goent es (TokenContent (ContentEntity e)) (Just (cs, size))
     = expandEntity es e >>= foldr (goent es) (Just (cs, size))
-  goent _ c@(ContentText t) (Just (cs, size)) =
-    case size + T.length t of
+  goent _ tok (Just (toks, size)) =
+    let toksize = fromIntegral $
+                  L.length (Builder.toLazyByteString (tokenToBuilder tok))
+     in case size + toksize of
       n | n > psEntityExpansionSizeLimit ps -> Nothing
-        | otherwise -> Just (c:cs, size + T.length t)
+        | otherwise -> Just (tok:toks, n)
 
 
 tnameToName :: Bool -> NSLevel -> TName -> Name
