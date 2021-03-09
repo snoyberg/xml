@@ -81,6 +81,7 @@ main = hspec $ do
         it "works for resolvable entities" resolvedAllGood
         it "merges adjacent content nodes" resolvedMergeContent
         it "understands inline entity declarations" resolvedInline
+        it "understands complex inline with markup" resolvedInlineComplex
         it "can expand inline entities recursively" resolvedInlineRecursive
         it "doesn't explode with an inline entity loop" resolvedInlineLoop
         it "doesn't explode with the billion laughs attack" billionLaughs
@@ -740,6 +741,14 @@ resolvedInline = do
     Res.Document _ root2 _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"baz\">]><foo bar='&bar;'/>"
     root2 @?= Res.Element "foo" (Map.singleton "bar" "baz") []
 
+resolvedInlineComplex :: Assertion
+resolvedInlineComplex = do
+    Res.Document _ root _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"<p>baz &bim;</p>\"><!ENTITY bim \"Hello\">]><foo>&bar;</foo>"
+    root @?= Res.Element "foo" Map.empty [Res.NodeElement (Res.Element "p" Map.empty [Res.NodeContent "baz Hello"])]
+    Res.Document _ root2 _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"<p>baz</p>\">]><foo class=\"&bar;\"/>"
+    root2 @?= Res.Element "foo" (Map.fromList [("class","baz")]) []
+
+
 resolvedInlineRecursive :: Assertion
 resolvedInlineRecursive = do
     Res.Document _ root _ <- return $ Res.parseLBS_ Res.def
@@ -752,6 +761,10 @@ resolvedInlineLoop = do
            "<!DOCTYPE foo [<!ENTITY bim \"&bim;\">]><foo>&bim;</foo>"
     Left (toException $ Res.UnresolvedEntityException (Set.fromList ["bim"]))
       `showEq` res
+    res2 <- return $ Res.parseLBS Res.def
+           "<!DOCTYPE foo [<!ENTITY bim \"&bim;\">]><foo class=\"&bim;\"/>"
+    Left (toException $ Res.UnresolvedEntityException (Set.fromList ["bim"]))
+      `showEq` res2
 
 billionLaughs :: Assertion
 billionLaughs = do
