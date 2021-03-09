@@ -1,7 +1,8 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE OverloadedStrings  #-}
 
-import           Control.Exception            (Exception, toException)
+import           Control.Exception            (Exception, toException,
+                                               fromException)
 import           Control.Monad.IO.Class       (liftIO)
 import qualified Data.ByteString.Char8        as S
 import qualified Data.ByteString.Lazy.Char8   as L
@@ -23,7 +24,9 @@ import           Text.XML.Cursor              (($.//), ($/), ($//), ($|),
                                                (&.//), (&/), (&//))
 
 import qualified Control.Monad.Trans.Resource as C
-import           Data.Conduit                 ((.|), runConduit, runConduitRes, ConduitT)
+import           Data.Conduit                 ((.|), runConduit,
+                                               runConduitRes, ConduitT)
+import           Data.Conduit.Attoparsec      (ParseError(..))
 import qualified Data.Conduit                 as C
 import qualified Data.Conduit.List            as CL
 import qualified Data.Map                     as Map
@@ -49,6 +52,7 @@ main = hspec $ do
         it "displays comments" testRenderComments
         it "conduit parser" testConduitParser
         it "can omit the XML declaration" omitXMLDeclaration
+        it "can doesn't hang on malformed entity declarations" malformedEntityDeclaration
         context "correctly parses hexadecimal entities" hexEntityParsing
     describe "XML Cursors" $ do
         it "has correct parent" cursorParent
@@ -543,6 +547,15 @@ omitXMLDeclaration = Res.renderLBS settings input @?= spec
               (Res.Element "foo" Map.empty [Res.NodeContent "bar"])
               []
     spec = "<foo>bar</foo>"
+
+malformedEntityDeclaration :: Assertion
+malformedEntityDeclaration = do -- missing > after bim
+    assertBool "raises ParseError" $
+      case Res.parseLBS Res.def "<!DOCTYPE foo [<!ENTITY bim \"Hello\"]><foo></foo>" of
+        Left e -> case fromException e of
+                    Just (ParseError ["DOCTYPE"] _ _) -> True
+                    _ -> False
+        _ -> False
 
 hexEntityParsing :: Spec
 hexEntityParsing = do

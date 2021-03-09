@@ -149,7 +149,9 @@ import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..),
                                                throwM)
 import           Data.Attoparsec.Text         (Parser, anyChar, char, manyTill,
                                                skipWhile, string, takeWhile,
-                                               takeWhile1, try)
+                                               takeWhile1, (<?>),
+                                               notInClass, skipMany, skipMany1,
+                                               satisfy, peekChar)
 import qualified Data.Attoparsec.Text         as AT
 import qualified Data.ByteString              as S
 import qualified Data.ByteString.Lazy         as L
@@ -476,14 +478,21 @@ conduitToken :: MonadThrow m => ParseSettings -> ConduitT T.Text (PositionRange,
 conduitToken = conduitParser . parseToken
 
 parseToken :: ParseSettings -> Parser Token
-parseToken settings = (char '<' >> parseLt) <|> TokenContent <$> parseContent settings False False
+parseToken settings = do
+  mbc <- peekChar
+  case mbc of
+    Just '<' -> char '<' >> parseLt
+    _        -> TokenContent <$> parseContent settings False False
   where
-    parseLt =
-        (char '?' >> parseInstr) <|>
-        (char '!' >> (parseComment <|> parseCdata <|> parseDoctype)) <|>
-        parseBegin <|>
-        (char '/' >> parseEnd)
-    parseInstr = do
+    parseLt = do
+        mbc <- peekChar
+        case mbc of
+          Just '?' -> char' '?' >> parseInstr
+          Just '!' -> char' '!' >>
+                        (parseComment <|> parseCdata <|> parseDoctype)
+          Just '/' -> char' '/' >> parseEnd
+          _        -> parseBegin
+    parseInstr = (do
         name <- parseIdent
         if name == "xml"
             then do
@@ -495,18 +504,19 @@ parseToken settings = (char '<' >> parseLt) <|> TokenContent <$> parseContent se
                 return $ TokenXMLDeclaration as
             else do
                 skipSpace
-                x <- T.pack <$> manyTill anyChar (try $ string "?>")
-                return $ TokenInstruction $ Instruction name x
-    parseComment = do
+                x <- T.pack <$> manyTill anyChar (string "?>")
+                return $ TokenInstruction $ Instruction name x)
+          <?> "instruction"
+    parseComment = (do
         char' '-'
         char' '-'
-        c <- T.pack <$> manyTill anyChar (string "-->") -- FIXME use takeWhile instead
-        return $ TokenComment c
-    parseCdata = do
+        c <- T.pack <$> manyTill anyChar (string "-->")
+        return $ TokenComment c) <?> "comment"
+    parseCdata = (do
         _ <- string "[CDATA["
-        t <- T.pack <$> manyTill anyChar (string "]]>") -- FIXME use takeWhile instead
-        return $ TokenCDATA t
-    parseDoctype = do
+        t <- T.pack <$> manyTill anyChar (string "]]>")
+        return $ TokenCDATA t) <?> "CDATA"
+    parseDoctype = (do
         _ <- string "DOCTYPE"
         skipSpace
         name <- parseName
@@ -519,80 +529,86 @@ parseToken settings = (char '<' >> parseLt) <|> TokenContent <$> parseContent se
                fmap Just parseSystemID <|>
                return Nothing
         skipSpace
-        ents <- (do
-            char' '['
-            ents <- parseEntities id
-            skipSpace
-            return ents) <|> return []
+        mbc <- peekChar
+        ents <- case mbc of
+                  Just '[' ->
+                    do char' '['
+                       ents <- parseDeclarations id
+                       skipSpace
+                       return ents
+                  _ -> return []
         char' '>'
         newline <|> return ()
-        return $ TokenDoctype i eid ents
-    parseEntities front =
-        (char ']' >> return (front [])) <|>
-        (parseEntity >>= \e -> parseEntities (front . (e:))) <|>
+        return $ TokenDoctype i eid ents) <?> "DOCTYPE"
+    parseDeclarations front =  -- we ignore everything but ENTITY
+        (char' ']' >> return (front [])) <|>
+        (parseEntity >>= \e -> parseDeclarations (front . (e:))) <|>
         (string "<!--" >> manyTill anyChar (string "-->") >>
-           parseEntities front) <|>
+           parseDeclarations front) <|>
          -- this clause handles directives like <!ELEMENT
          -- and processing instructions:
-        (char '<' >> AT.skipWhile (/= '>') >> char '>'
-                  >> parseEntities front) <|>
-        (skipWhile (\t -> t /= ']' && t /= '<') >> parseEntities front)
-    parseEntity = try $ do
+        (do char' '<'
+            skipMany
+               (void (takeWhile1 (notInClass "]<>'\"")) <|> void quotedText)
+            char' '>'
+            parseDeclarations front) <|>
+        (skipMany1 (satisfy (notInClass "]<>")) >>
+            parseDeclarations front)
+    parseEntity = (do
         _ <- string "<!ENTITY"
         skipSpace
         i <- parseIdent
         t <- quotedText
         skipSpace
         char' '>'
-        return (i, t)
+        return (i, t)) <?> "entity"
     parsePublicID = PublicID <$> (string "PUBLIC" *> quotedText) <*> quotedText
     parseSystemID = SystemID <$> (string "SYSTEM" *> quotedText)
-    quotedText = do
+    quotedText = (do
         skipSpace
-        between '"' <|> between '\''
+        between '"' <|> between '\'') <?> "quoted text"
     between c = do
         char' c
         x <- takeWhile (/=c)
         char' c
         return x
-    parseEnd = do
+    parseEnd = (do
         skipSpace
         n <- parseName
         skipSpace
         char' '>'
-        return $ TokenEndElement n
-    parseBegin = do
+        return $ TokenEndElement n) <?> "close tag"
+    parseBegin = (do
         skipSpace
         n <- parseName
         as <- A.many $ parseAttribute settings
         skipSpace
         isClose <- (char '/' >> skipSpace >> return True) <|> return False
         char' '>'
-        return $ TokenBeginElement n as isClose 0
+        return $ TokenBeginElement n as isClose 0) <?> "open tag"
 
 parseAttribute :: ParseSettings -> Parser TAttribute
-parseAttribute settings = do
+parseAttribute settings = (do
     skipSpace
     key <- parseName
     skipSpace
     char' '='
     skipSpace
     val <- squoted <|> dquoted
-    return (key, val)
+    return (key, val)) <?> "attribute"
   where
     squoted = char '\'' *> manyTill (parseContent settings False True) (char '\'')
     dquoted = char  '"' *> manyTill (parseContent settings True False) (char  '"')
 
 parseName :: Parser TName
 parseName =
-  name <$> parseIdent <*> A.optional (char ':' >> parseIdent)
+  (name <$> parseIdent <*> A.optional (char ':' >> parseIdent)) <?> "name"
   where
     name i1 Nothing   = TName Nothing i1
     name i1 (Just i2) = TName (Just i1) i2
 
 parseIdent :: Parser Text
-parseIdent =
-    takeWhile1 valid
+parseIdent = takeWhile1 valid <?> "identifier"
   where
     valid '&'  = False
     valid '<'  = False
@@ -639,7 +655,7 @@ parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _) breakDou
     case toValidXmlChar n <|> decodeIllegalCharacters n of
       Nothing -> fail "Invalid character from decimal character reference."
       Just c  -> return $ ContentText $ T.singleton c
-  parseTextContent = ContentText <$> takeWhile1 valid
+  parseTextContent = ContentText <$> takeWhile1 valid <?> "text content"
   valid '"'  = not breakDouble
   valid '\'' = not breakSingle
   valid '&'  = False -- amp
@@ -1135,10 +1151,10 @@ manyIgnore :: Monad m
            => ConduitT Event o m (Maybe a)
            -> ConduitT Event o m (Maybe b)
            -> ConduitT Event o m [a]
-manyIgnore i ignored = go id where
+manyIgnore i ignored' = go id where
   go front = i >>= maybe (onFail front) (\y -> go $ front . (:) y)
   -- onFail is called if the main parser fails
-  onFail front = ignored >>= maybe (return $ front []) (const $ go front)
+  onFail front = ignored' >>= maybe (return $ front []) (const $ go front)
 
 -- | Like @many@, but any tags and content the consumer doesn't match on
 --   are silently ignored.
