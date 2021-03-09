@@ -59,6 +59,7 @@ test-suite unit
                           , HUnit
                           , xml-types >= 0.3.1
                           , conduit
+                          , conduit-extra
                           , blaze-markup
                           , resourcet
     default-language: Haskell2010
