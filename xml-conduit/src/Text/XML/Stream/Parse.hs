@@ -542,7 +542,7 @@ parseToken settings = do
         return $ TokenDoctype i eid ents) <?> "DOCTYPE"
     parseDeclarations front =  -- we ignore everything but ENTITY
         (char' ']' >> return (front [])) <|>
-        (parseEntity >>= \e -> parseDeclarations (front . (e:))) <|>
+        (parseEntity >>= \f -> parseDeclarations (front . f)) <|>
         (string "<!--" >> manyTill anyChar (string "-->") >>
            parseDeclarations front) <|>
          -- this clause handles directives like <!ELEMENT
@@ -557,11 +557,15 @@ parseToken settings = do
     parseEntity = (do
         _ <- string "<!ENTITY"
         skipSpace
+        isParameterEntity <- AT.option False (True <$ (char' '%' *> skipSpace))
         i <- parseIdent
         t <- quotedText
         skipSpace
         char' '>'
-        return (i, t)) <?> "entity"
+        return $
+          if isParameterEntity
+             then id
+             else ((i, t):)) <?> "entity"
     parsePublicID = PublicID <$> (string "PUBLIC" *> quotedText) <*> quotedText
     parseSystemID = SystemID <$> (string "SYSTEM" *> quotedText)
     quotedText = (do
