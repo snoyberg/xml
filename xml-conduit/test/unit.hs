@@ -52,7 +52,7 @@ main = hspec $ do
         it "displays comments" testRenderComments
         it "conduit parser" testConduitParser
         it "can omit the XML declaration" omitXMLDeclaration
-        it "can doesn't hang on malformed entity declarations" malformedEntityDeclaration
+        it "doesn't hang on malformed entity declarations" malformedEntityDeclaration
         context "correctly parses hexadecimal entities" hexEntityParsing
     describe "XML Cursors" $ do
         it "has correct parent" cursorParent
