@@ -90,6 +90,7 @@ main = hspec $ do
         it "doesn't explode with an inline entity loop" resolvedInlineLoop
         it "doesn't explode with the billion laughs attack" billionLaughs
         it "allows entity expansion size limit to be adjusted" thousandLaughs
+        it "ignores parameter entity declarations" parameterEntity
         it "doesn't break on [] in doctype comments" doctypeComment
         it "skips element declarations in doctype" doctypeElements
         it "skips processing instructions in doctype" doctypePI
@@ -796,6 +797,11 @@ thousandLaughs = do
     Right (Res.Document {Res.documentRoot = Res.Element{ Res.elementNodes = [Res.NodeContent t] }}) <- return $ Res.parseLBS Res.def{ P.psEntityExpansionSizeLimit = 3001 } "<?xml version=\"1.0\"?><!DOCTYPE lolz [<!ENTITY lol \"lol\"><!ELEMENT lolz (#PCDATA)><!ENTITY lol1 \"&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;\"><!ENTITY lol2 \"&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;\"><!ENTITY lol3 \"&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;\">]><lolz>&lol3;</lolz>"
     t @?= T.replicate 1000 "lol"
 
+parameterEntity :: Assertion
+parameterEntity = do
+    let res = Res.parseLBS Res.def "<!DOCTYPE foo [<!ENTITY % bim \"Hello\">]><foo>&bim;</foo>"
+    Left (toException $ Res.UnresolvedEntityException (Set.fromList ["bim"]))
+      `showEq` res
 
 doctypeComment :: Assertion
 doctypeComment = do
