@@ -1,3 +1,9 @@
+## 1.9.1.1
+
+* Entity declarations with tags inside are now correctly handled
+* Parser now fails gracefully on malformed entity declarations
+* Parameter entity declarations are now ignored
+
 ## 1.9.1
 
 * `]` characters inside doctype are now correctly handled
