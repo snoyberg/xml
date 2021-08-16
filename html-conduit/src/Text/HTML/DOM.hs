@@ -77,7 +77,10 @@ eventConduit' =
     toName l = XT.Name l Nothing Nothing
     closeStack = mapM_ (yield . XT.EventEndElement)
 
-    isVoid = flip Set.member $ Set.fromList
+    isVoid name = Set.member (T.toLower name) voidSet
+
+voidSet :: Set.Set T.Text
+voidSet = Set.fromList
         [ "area"
         , "base"
         , "br"

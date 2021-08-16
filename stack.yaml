@@ -1,5 +1,5 @@
+resolver: lts-18.5
 packages:
 - xml-conduit/
 - xml-hamlet/
 - html-conduit/
-resolver: lts-17.4

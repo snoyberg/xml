@@ -1,5 +1,9 @@
 # ChangeLog for `html-conduit`
 
+## 1.3.2.2
+
+* Fix handling of mixed case void tags [#167](https://github.com/snoyberg/xml/issues/167)
+
 ## 1.3.2.1
 
 * Allow xml-conduit 1.9

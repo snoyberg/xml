@@ -97,6 +97,23 @@ main = hspec $ do
                         ]
                     ]
              in H.parseLBS html @?= doc
+        it "Mixed case br #167" $
+            let html = "<html><head><title>foo</title></head><body><bR><p>Hello World</p><BR>done</body></html>"
+                doc = X.Document (X.Prologue [] Nothing []) root []
+                root = X.Element "html" Map.empty
+                    [ X.NodeElement $ X.Element "head" Map.empty
+                        [ X.NodeElement $ X.Element "title" Map.empty
+                            [X.NodeContent "foo"]
+                        ]
+                    , X.NodeElement $ X.Element "body" Map.empty
+                        [ X.NodeElement $ X.Element "bR" Map.empty []
+                        , X.NodeElement $ X.Element "p" Map.empty
+                            [X.NodeContent "Hello World"]
+                        , X.NodeElement $ X.Element "BR" Map.empty []
+                        , X.NodeContent "done"
+                        ]
+                    ]
+             in H.parseLBS html @?= doc
 
     it "doesn't double unescape" $
         let html = "<p>Hello &amp;gt; World</p>"
