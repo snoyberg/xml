@@ -1,4 +1,4 @@
 Status : 
-[![Build Status](https://api.travis-ci.org/snoyberg/xml.svg?branch=master)](https://travis-ci.org/snoyberg/xml)
+[![Tests](https://github.com/snoyberg/xml/actions/workflows/tests.yml/badge.svg)](https://github.com/snoyberg/xml/actions/workflows/tests.yml)
 
 mega-repo for XML related utilities
