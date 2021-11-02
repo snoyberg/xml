@@ -10,14 +10,11 @@ synopsis:        Pure-Haskell utilities for dealing with XML with the conduit pa
 description:     Hackage documentation generation is not reliable. For up to date documentation, please see: <http://www.stackage.org/package/xml-conduit>.
 category:        XML, Conduit
 stability:       Stable
-build-type:      Custom
+build-type:      Simple
 homepage:        http://github.com/snoyberg/xml
 extra-source-files: README.md
                     ChangeLog.md
 tested-with:     GHC >=8.0 && <8.12
-
-custom-setup
-    setup-depends:   base >= 4 && <5, Cabal, cabal-doctest >= 1 && <1.1
 
 library
     build-depends:   base                      >= 4.12     && < 5
@@ -62,15 +59,6 @@ test-suite unit
                           , conduit-extra
                           , blaze-markup
                           , resourcet
-    default-language: Haskell2010
-
-test-suite doctest
-    type: exitcode-stdio-1.0
-    main-is: doctest.hs
-    hs-source-dirs: test
-    build-depends:          base
-                          , doctest >= 0.8
-                          , xml-conduit
     default-language: Haskell2010
 
 source-repository head
