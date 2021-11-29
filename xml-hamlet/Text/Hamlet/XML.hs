@@ -29,6 +29,13 @@ import qualified Data.Map as Map
 import Control.Arrow (first, (***))
 import Data.List (intercalate)
 
+conP :: Name -> [Pat] -> Pat
+#if MIN_VERSION_template_haskell(2,18,0)
+conP name = ConP name []
+#else
+conP = ConP
+#endif
+
 -- | Convert some value to a list of attribute pairs.
 class ToAttributes a where
     toAttributes :: a -> Map.Map X.Name Text
@@ -77,7 +84,7 @@ bindingPattern (BindList is) = do
     return (ListP patterns, concat scopes)
 bindingPattern (BindConstr con is) = do
     (patterns, scopes) <- fmap unzip $ mapM bindingPattern is
-    return (ConP (mkConName con) patterns, concat scopes)
+    return (conP (mkConName con) patterns, concat scopes)
 bindingPattern (BindRecord con fields wild) = do
     let f (Ident field,b) =
            do (p,s) <- bindingPattern b
