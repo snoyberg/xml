@@ -53,6 +53,7 @@ main = hspec $ do
         it "conduit parser" testConduitParser
         it "can omit the XML declaration" omitXMLDeclaration
         it "doesn't hang on malformed entity declarations" malformedEntityDeclaration
+        it "escapes <>'\"& as necessary" caseEscapesAsNecessary
         context "correctly parses hexadecimal entities" hexEntityParsing
     describe "XML Cursors" $ do
         it "has correct parent" cursorParent
@@ -111,7 +112,6 @@ main = hspec $ do
     it "handles iso-8859-1" caseIso8859_1
     it "renders CDATA when asked" caseRenderCDATA
     it "escapes CDATA closing tag in CDATA" caseEscapesCDATA
-    it "escapes \" in attributes" caseEscapesQuot
 
 documentParseRender :: IO ()
 documentParseRender =
@@ -558,6 +558,15 @@ malformedEntityDeclaration = do -- missing > after bim
                     Just (ParseError ["DOCTYPE"] _ _) -> True
                     _ -> False
         _ -> False
+
+caseEscapesAsNecessary :: Assertion
+caseEscapesAsNecessary = do
+    let doc = Res.Document (Res.Prologue [] Nothing [])
+                (Res.Element "a" (Map.fromList [("attr", "'<&val>'")])
+                    [Res.NodeContent "'\"<&test]]>\"'"])
+                []
+        result = Res.renderLBS def doc
+    result `shouldBe` "<?xml version=\"1.0\" encoding=\"UTF-8\"?><a attr=\"'&lt;&amp;val>'\">'\"&lt;&amp;test]]&gt;\"'</a>"
 
 hexEntityParsing :: Spec
 hexEntityParsing = do
@@ -1042,12 +1051,3 @@ caseEscapesCDATA = do
                 []
         result = Res.renderLBS (def { Res.rsUseCDATA = const True }) doc
     result `shouldBe` "<?xml version=\"1.0\" encoding=\"UTF-8\"?><a><![CDATA[]]]]><![CDATA[>]]></a>"
-
-caseEscapesQuot :: Assertion
-caseEscapesQuot = do
-    let doc = Res.Document (Res.Prologue [] Nothing [])
-                (Res.Element "a" (Map.fromList [("attr", "\"val\"")])
-                    [])
-                []
-        result = Res.renderLBS def doc
-    result `shouldBe` "<?xml version=\"1.0\" encoding=\"UTF-8\"?><a attr=\"&quot;val&quot;\"/>"
