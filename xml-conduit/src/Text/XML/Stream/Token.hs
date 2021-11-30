@@ -89,18 +89,24 @@ tnameToText (TName (Just prefix) name) =
   encodeUtf8Builder prefix <> ":" <> encodeUtf8Builder name
 
 contentToText :: Content -> Builder
-contentToText (ContentText t) = encodeUtf8BuilderEscaped charUtf8XmlEscaped t
+contentToText (ContentText t) = encodeUtf8BuilderEscaped (charUtf8XmlEscaped ECContent) t
 contentToText (ContentEntity e) = "&" <> encodeUtf8Builder e <> ";"
 
+-- | What usage are we escaping for?
+data EscapeContext = ECContent   -- ^ <el>..</el>
+                   | ECDoubleArg -- ^ <el arg=".." />
+                   | ECSingleArg -- ^ <el arg='..' />
+  deriving (Show, Eq)
+
 {-# INLINE charUtf8XmlEscaped #-}
-charUtf8XmlEscaped :: E.BoundedPrim Word8
-charUtf8XmlEscaped =
-    condB (>  _gt) (E.liftFixedToBounded E.word8) $
-    condB (== _lt) (fixed4 (_am,(_l,(_t,_sc)))) $           -- &lt;
-    condB (== _gt) (fixed4 (_am,(_g,(_t,_sc)))) $           -- &gt;
-    condB (== _am) (fixed5 (_am,(_a,(_m,(_p,_sc))))) $      -- &amp;
-    condB (== _dq) (fixed6 (_am,(_q,(_u,(_o,(_t,_sc)))))) $ -- &quot;
-    condB (== _sq) (fixed6 (_am,(_a,(_p,(_o,(_s,_sc)))))) $ -- &apos;
+charUtf8XmlEscaped :: EscapeContext -> E.BoundedPrim Word8
+charUtf8XmlEscaped ec =
+                          (condB (>  _gt) (E.liftFixedToBounded E.word8)) $
+                          (condB (== _lt) (fixed4 (_am,(_l,(_t,_sc))))) $           -- &lt;
+    escapeFor ECContent   (condB (== _gt) (fixed4 (_am,(_g,(_t,_sc))))) $           -- &gt;
+                          (condB (== _am) (fixed5 (_am,(_a,(_m,(_p,_sc)))))) $      -- &amp;
+    escapeFor ECDoubleArg (condB (== _dq) (fixed6 (_am,(_q,(_u,(_o,(_t,_sc))))))) $ -- &quot;
+    escapeFor ECSingleArg (condB (== _sq) (fixed6 (_am,(_a,(_p,(_o,(_s,_sc))))))) $ -- &apos;
     (E.liftFixedToBounded E.word8)         -- fallback for Chars smaller than '>'
   where
     _gt = 62 -- >
@@ -119,6 +125,13 @@ charUtf8XmlEscaped =
     _q  = 113 -- q
     _u  = 117 -- u
     _sc = 59  -- ;
+
+    {-# INLINE escapeFor #-}
+    escapeFor :: EscapeContext -> (a -> a) -> a -> a
+    escapeFor ec' f a
+      | ec == ec' = f a
+      | otherwise = a
+
     {-# INLINE fixed4 #-}
     fixed4 x = E.liftFixedToBounded $ const x >$<
       E.word8 >*< E.word8 >*< E.word8 >*< E.word8
@@ -146,7 +159,7 @@ foldAttrs before =
       foldMap go' val <>
       "\""
     go' (ContentText t) =
-      encodeUtf8BuilderEscaped charUtf8XmlEscaped t
+      encodeUtf8BuilderEscaped (charUtf8XmlEscaped ECDoubleArg) t
     go' (ContentEntity t) = "&" <> encodeUtf8Builder t <> ";"
 
 instance IsString TName where
