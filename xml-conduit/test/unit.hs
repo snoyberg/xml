@@ -111,6 +111,7 @@ main = hspec $ do
     it "handles iso-8859-1" caseIso8859_1
     it "renders CDATA when asked" caseRenderCDATA
     it "escapes CDATA closing tag in CDATA" caseEscapesCDATA
+    it "escapes \" in attributes" caseEscapesQuot
 
 documentParseRender :: IO ()
 documentParseRender =
@@ -1041,3 +1042,12 @@ caseEscapesCDATA = do
                 []
         result = Res.renderLBS (def { Res.rsUseCDATA = const True }) doc
     result `shouldBe` "<?xml version=\"1.0\" encoding=\"UTF-8\"?><a><![CDATA[]]]]><![CDATA[>]]></a>"
+
+caseEscapesQuot :: Assertion
+caseEscapesQuot = do
+    let doc = Res.Document (Res.Prologue [] Nothing [])
+                (Res.Element "a" (Map.fromList [("attr", "\"val\"")])
+                    [])
+                []
+        result = Res.renderLBS def doc
+    result `shouldBe` "<?xml version=\"1.0\" encoding=\"UTF-8\"?><a attr=\"&quot;val&quot;\"/>"

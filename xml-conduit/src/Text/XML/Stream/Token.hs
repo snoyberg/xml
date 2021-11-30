@@ -96,11 +96,11 @@ contentToText (ContentEntity e) = "&" <> encodeUtf8Builder e <> ";"
 charUtf8XmlEscaped :: E.BoundedPrim Word8
 charUtf8XmlEscaped =
     condB (>  _gt) (E.liftFixedToBounded E.word8) $
-    condB (== _lt) (fixed4 (_am,(_l,(_t,_sc)))) $       -- &lt;
-    condB (== _gt) (fixed4 (_am,(_g,(_t,_sc)))) $       -- &gt;
-    condB (== _am) (fixed5 (_am,(_a,(_m,(_p,_sc))))) $  -- &amp;
-    condB (== _dq) (fixed5 (_am,(_ha,(_3,(_4,_sc))))) $ -- &#34;
-    condB (== _sq) (fixed5 (_am,(_ha,(_3,(_9,_sc))))) $ -- &#39;
+    condB (== _lt) (fixed4 (_am,(_l,(_t,_sc)))) $           -- &lt;
+    condB (== _gt) (fixed4 (_am,(_g,(_t,_sc)))) $           -- &gt;
+    condB (== _am) (fixed5 (_am,(_a,(_m,(_p,_sc))))) $      -- &amp;
+    condB (== _dq) (fixed6 (_am,(_q,(_u,(_o,(_t,_sc)))))) $ -- &quot;
+    condB (== _sq) (fixed6 (_am,(_a,(_p,(_o,(_s,_sc)))))) $ -- &apos;
     (E.liftFixedToBounded E.word8)         -- fallback for Chars smaller than '>'
   where
     _gt = 62 -- >
@@ -114,10 +114,10 @@ charUtf8XmlEscaped =
     _a  = 97  -- a
     _m  = 109 -- m
     _p  = 112 -- p
-    _3  = 51  -- 3
-    _4  = 52  -- 4
-    _ha = 35  -- #, hash
-    _9  = 57  -- 9
+    _o  = 111 -- o
+    _s  = 115 -- s
+    _q  = 113 -- q
+    _u  = 117 -- u
     _sc = 59  -- ;
     {-# INLINE fixed4 #-}
     fixed4 x = E.liftFixedToBounded $ const x >$<
@@ -126,6 +126,10 @@ charUtf8XmlEscaped =
     {-# INLINE fixed5 #-}
     fixed5 x = E.liftFixedToBounded $ const x >$<
       E.word8 >*< E.word8 >*< E.word8 >*< E.word8 >*< E.word8
+
+    {-# INLINE fixed6 #-}
+    fixed6 x = E.liftFixedToBounded $ const x >$<
+      E.word8 >*< E.word8 >*< E.word8 >*< E.word8 >*< E.word8 >*< E.word8
 
 type TAttribute = (TName, [Content])
 
