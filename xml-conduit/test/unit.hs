@@ -54,6 +54,7 @@ main = hspec $ do
         it "can omit the XML declaration" omitXMLDeclaration
         it "doesn't hang on malformed entity declarations" malformedEntityDeclaration
         it "escapes <>'\"& as necessary" caseEscapesAsNecessary
+        it "preserves the order of attributes" casePreservesAttrOrder
         context "correctly parses hexadecimal entities" hexEntityParsing
     describe "XML Cursors" $ do
         it "has correct parent" cursorParent
@@ -567,6 +568,20 @@ caseEscapesAsNecessary = do
                 []
         result = Res.renderLBS def doc
     result `shouldBe` "<?xml version=\"1.0\" encoding=\"UTF-8\"?><a attr=\"'&lt;&amp;val>'\">'\"&lt;&amp;test]]&gt;\"'</a>"
+
+casePreservesAttrOrder :: Assertion
+casePreservesAttrOrder = do
+    let doc = Document (Prologue [] Nothing [])
+                (Element "doc" [] [
+                  NodeElement (Element "el" [("attr1", ["1"]), ("attr2", ["2"])] []),
+                  NodeElement (Element "el" [("attr2", ["2"]), ("attr1", ["1"])] [])
+                ])
+                []
+        rendered = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><doc><el attr1=\"1\" attr2=\"2\"/><el attr2=\"2\" attr1=\"1\"/></doc>"
+        renderResult = D.renderLBS def doc
+        parseResult = D.parseLBS def rendered
+    renderResult `shouldBe` rendered
+    parseResult `shouldSatisfy` either (const False) (doc==)
 
 hexEntityParsing :: Spec
 hexEntityParsing = do
