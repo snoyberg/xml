@@ -200,7 +200,7 @@ tokenToEvent ps es n (TokenBeginElement name as isClosed _) =
 
         addNS
             | not (psRetainNamespaces ps) && (isPrefixed || isUnprefixed) = id
-            | otherwise = (((tname, resolveEntities' ps es val):) .)
+            | otherwise = (. ((tname, resolveEntities' ps es val):))
           where
             resolveEntities' ps' es' xs =
               mapMaybe extractTokenContent
