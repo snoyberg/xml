@@ -573,8 +573,8 @@ casePreservesAttrOrder :: Assertion
 casePreservesAttrOrder = do
     let doc = Document (Prologue [] Nothing [])
                 (Element "doc" [] [
-                  NodeElement (Element "el" [("attr1", ["1"]), ("attr2", ["2"])] []),
-                  NodeElement (Element "el" [("attr2", ["2"]), ("attr1", ["1"])] [])
+                  NodeElement (Element "el" [("attr1", [ContentText "1"]), ("attr2", [ContentText "2"])] []),
+                  NodeElement (Element "el" [("attr2", [ContentText "2"]), ("attr1", [ContentText "1"])] [])
                 ])
                 []
         rendered = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><doc><el attr1=\"1\" attr2=\"2\"/><el attr2=\"2\" attr1=\"1\"/></doc>"
