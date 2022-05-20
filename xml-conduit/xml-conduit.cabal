@@ -29,7 +29,7 @@ library
                    , containers                >= 0.2
                    , xml-types                 >= 0.3.4    && < 0.4
                    , attoparsec                >= 0.10
-                   , transformers              >= 0.2      && < 0.6
+                   , transformers              >= 0.2      && < 0.7
                    , data-default-class
                    , blaze-markup              >= 0.5
                    , blaze-html                >= 0.5
