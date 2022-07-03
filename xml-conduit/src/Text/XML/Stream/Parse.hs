@@ -82,6 +82,7 @@ module Text.XML.Stream.Parse
     , psDecodeIllegalCharacters
     , psRetainNamespaces
     , psEntityExpansionSizeLimit
+    , psShouldSkipAttributeReferenceParsing
       -- *** Entity decoding
     , decodeXmlEntities
     , decodeHtmlEntities
@@ -164,7 +165,7 @@ import           Data.List                    (foldl', intercalate)
 import qualified Data.Map                     as Map
 import           Data.Maybe                   (fromMaybe, isNothing, mapMaybe)
 import           Data.String                  (IsString (..))
-import           Data.Text                    (Text, pack)
+import           Data.Text                    (Text, pack, singleton)
 import qualified Data.Text                    as T
 import           Data.Text.Encoding           (decodeUtf8With)
 import           Data.Text.Encoding.Error     (lenientDecode)
@@ -464,6 +465,12 @@ data ParseSettings = ParseSettings
     -- Default: @8192@
     --
     -- Since 1.9.1
+    , psShouldSkipAttributeReferenceParsing :: Bool
+    -- ^ Allows for skipping reference parsing in attributes.
+    -- Intended for use with certain references like new lines 
+    -- `&#xA;` that would break the xml on rendering. 
+    --
+    -- Default: False
     }
 
 instance Default ParseSettings where
@@ -472,6 +479,7 @@ instance Default ParseSettings where
         , psRetainNamespaces = False
         , psDecodeIllegalCharacters = const Nothing
         , psEntityExpansionSizeLimit = 8192
+        , psShouldSkipAttributeReferenceParsing = False
         }
 
 conduitToken :: MonadThrow m => ParseSettings -> ConduitT T.Text (PositionRange, Token) m ()
@@ -482,7 +490,7 @@ parseToken settings = do
   mbc <- peekChar
   case mbc of
     Just '<' -> char '<' >> parseLt
-    _        -> TokenContent <$> parseContent settings False False
+    _        -> TokenContent <$> parseContent settings False False False
   where
     parseLt = do
         mbc <- peekChar
@@ -601,8 +609,8 @@ parseAttribute settings = (do
     val <- squoted <|> dquoted
     return (key, val)) <?> "attribute"
   where
-    squoted = char '\'' *> manyTill (parseContent settings False True) (char '\'')
-    dquoted = char  '"' *> manyTill (parseContent settings True False) (char  '"')
+    squoted = char '\'' *> manyTill (parseContent settings False True $ psShouldSkipAttributeReferenceParsing settings) (char '\'')
+    dquoted = char  '"' *> manyTill (parseContent settings True False $ psShouldSkipAttributeReferenceParsing settings) (char  '"')
 
 parseName :: Parser TName
 parseName =
@@ -630,9 +638,10 @@ parseIdent = takeWhile1 valid <?> "identifier"
 parseContent :: ParseSettings
              -> Bool -- break on double quote
              -> Bool -- break on single quote
+             -> Bool -- should skip reference parsing
              -> Parser Content
-parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _) breakDouble breakSingle = parseReference <|> parseTextContent where
-  parseReference = do
+parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _ _) breakDouble breakSingle shouldSkip = parseReference <|> parseTextContent where
+  parseReference = if shouldSkip then parseBare else do
     char' '&'
     t <- parseEntityRef <|> parseHexCharRef <|> parseDecCharRef
     char' ';'
@@ -659,6 +668,11 @@ parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _) breakDou
     case toValidXmlChar n <|> decodeIllegalCharacters n of
       Nothing -> fail "Invalid character from decimal character reference."
       Just c  -> return $ ContentText $ T.singleton c
+  parseBare = do
+    b <- Data.Text.singleton <$> char '&'
+    t <- takeWhile1 (/=';')
+    e <- Data.Text.singleton <$> char ';'
+    return (ContentText (b <> t <> e))
   parseTextContent = ContentText <$> takeWhile1 valid <?> "text content"
   valid '"'  = not breakDouble
   valid '\'' = not breakSingle
@@ -1560,3 +1574,5 @@ htmlEntities = Map.fromList
     , ("hearts", "\9829")
     , ("diams", "\9830")
     ]
+
+
