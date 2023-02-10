@@ -56,6 +56,7 @@ main = hspec $ do
         it "escapes <>'\"& as necessary" caseEscapesAsNecessary
         it "preserves the order of attributes" casePreservesAttrOrder
         context "correctly parses hexadecimal entities" hexEntityParsing
+        it "normalizes line endings" crlfToLfConversion
     describe "XML Cursors" $ do
         it "has correct parent" cursorParent
         it "has correct ancestor" cursorAncestor
@@ -1066,3 +1067,10 @@ caseEscapesCDATA = do
                 []
         result = Res.renderLBS (def { Res.rsUseCDATA = const True }) doc
     result `shouldBe` "<?xml version=\"1.0\" encoding=\"UTF-8\"?><a><![CDATA[]]]]><![CDATA[>]]></a>"
+
+crlfToLfConversion :: Assertion
+crlfToLfConversion = (elementContent $ documentRoot crlfDoc) `shouldBe` crlfContent
+    where
+        crlfDoc = D.parseLBS_ def "<crlf>Hello,\rWorld!\r\nWe don't like your kind of line endings around here.\r\n</crlf>"
+        crlfContent = [ContentText "Hello,\nWorld!\nWe don't like your kind of line endings around here.\n"]
+
