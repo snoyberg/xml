@@ -659,12 +659,20 @@ parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _) breakDou
     case toValidXmlChar n <|> decodeIllegalCharacters n of
       Nothing -> fail "Invalid character from decimal character reference."
       Just c  -> return $ ContentText $ T.singleton c
-  parseTextContent = ContentText <$> takeWhile1 valid <?> "text content"
+  parseTextContent = ContentText . normalizeLineEndings <$> takeWhile1 valid <?> "text content"
   valid '"'  = not breakDouble
   valid '\'' = not breakSingle
   valid '&'  = False -- amp
   valid '<'  = False -- lt
   valid _    = True
+
+-- | Turns @\r\n@ and @\r@ into @\n@. See
+-- <https://www.w3.org/TR/REC-xml/#sec-line-ends>.
+normalizeLineEndings :: Text -> Text
+normalizeLineEndings =
+  -- NOTE: The order of these 'T.replace' calls is important.
+  -- If it was reversed, @\r\n@ would become @\n\n@.
+  T.replace "\r" "\n" . T.replace "\r\n" "\r"
 
 -- | Is this codepoint a valid XML character? See
 -- <https://www.w3.org/TR/xml/#charsets>. This is proudly XML 1.0 only.
