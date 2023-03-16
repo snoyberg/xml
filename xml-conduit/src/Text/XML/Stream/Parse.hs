@@ -147,6 +147,7 @@ import           Control.Monad.Trans.Class    (lift)
 import           Control.Monad.Trans.Maybe    (MaybeT (..))
 import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..),
                                                throwM)
+import           Data.Attoparsec.Internal     (concatReverse)
 import           Data.Attoparsec.Text         (Parser, anyChar, char, manyTill,
                                                skipWhile, string, takeWhile,
                                                takeWhile1, (<?>),
@@ -631,7 +632,7 @@ parseContent :: ParseSettings
              -> Bool -- break on double quote
              -> Bool -- break on single quote
              -> Parser Content
-parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _) breakDouble breakSingle = parseReference <|> parseTextContent where
+parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _) breakDouble breakSingle = parseReference <|> (parseTextContent <?> "text content") where
   parseReference = do
     char' '&'
     t <- parseEntityRef <|> parseHexCharRef <|> parseDecCharRef
@@ -659,20 +660,41 @@ parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _) breakDou
     case toValidXmlChar n <|> decodeIllegalCharacters n of
       Nothing -> fail "Invalid character from decimal character reference."
       Just c  -> return $ ContentText $ T.singleton c
-  parseTextContent = ContentText . normalizeLineEndings <$> takeWhile1 valid <?> "text content"
+
+  -- Turns @\r\n@ and @\r@ into @\n@. See
+  -- <https://www.w3.org/TR/REC-xml/#sec-line-ends>.
+  parseTextContent = do
+    firstChunk <- takeWhile valid
+    parseTextContentAcc [firstChunk]
+
+  parseTextContentAcc chunks = do
+    mbC <- peekChar
+    case mbC of
+      Nothing -> exit chunks
+      Just '\r' -> do
+        _ <- anyChar
+        mbD <- peekChar
+        chunk <- takeWhile valid
+        case mbD of
+          Nothing -> exit chunks
+          Just '\n' -> do
+            exit $ chunk : chunks
+          Just _ ->
+            exit $ chunk : "\n" : chunks
+
+      Just _ ->
+        exit chunks
+    where
+      exit cs
+        | T.null (concatReverse cs) = fail "parseTextContent"
+        | otherwise = pure $ ContentText (concatReverse cs)
+
   valid '"'  = not breakDouble
   valid '\'' = not breakSingle
   valid '&'  = False -- amp
   valid '<'  = False -- lt
+  valid '\r' = False
   valid _    = True
-
--- | Turns @\r\n@ and @\r@ into @\n@. See
--- <https://www.w3.org/TR/REC-xml/#sec-line-ends>.
-normalizeLineEndings :: Text -> Text
-normalizeLineEndings =
-  -- NOTE: The order of these 'T.replace' calls is important.
-  -- If it was reversed, @\r\n@ would become @\n\n@.
-  T.replace "\r" "\n" . T.replace "\r\n" "\r"
 
 -- | Is this codepoint a valid XML character? See
 -- <https://www.w3.org/TR/xml/#charsets>. This is proudly XML 1.0 only.
