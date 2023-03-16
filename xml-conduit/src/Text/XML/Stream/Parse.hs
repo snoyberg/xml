@@ -665,29 +665,38 @@ parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _) breakDou
   -- <https://www.w3.org/TR/REC-xml/#sec-line-ends>.
   parseTextContent = do
     firstChunk <- takeWhile valid
-    parseTextContentAcc [firstChunk]
+    mbC <- peekChar
+    case mbC of
+      Nothing ->
+        exit firstChunk
+      Just '\r' ->
+        parseTextContentAcc [firstChunk]
+      Just _ ->
+        exit firstChunk
 
   parseTextContentAcc chunks = do
     mbC <- peekChar
     case mbC of
-      Nothing -> exit chunks
+      Nothing -> exit' chunks
       Just '\r' -> do
         _ <- anyChar
         mbD <- peekChar
         chunk <- takeWhile valid
         case mbD of
-          Nothing -> exit chunks
+          Nothing -> exit' chunks
           Just '\n' -> do
-            exit $ chunk : chunks
+            exit' $ chunk : chunks
           Just _ ->
-            exit $ chunk : "\n" : chunks
+            exit' $ chunk : "\n" : chunks
 
       Just _ ->
-        exit chunks
-    where
-      exit cs
-        | T.null (concatReverse cs) = fail "parseTextContent"
-        | otherwise = pure $ ContentText (concatReverse cs)
+        exit' chunks
+
+  exit c
+    | T.null c = fail "parseTextContent"
+    | otherwise = pure $ ContentText c
+
+  exit' cs = exit $ T.concat $ reverse cs
 
   valid '"'  = not breakDouble
   valid '\'' = not breakSingle
