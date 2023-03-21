@@ -672,9 +672,7 @@ parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _) breakDou
     case mbC of
       Just '\r' ->
         handleCR [firstChunk]
-      Just _ ->
-        exit firstChunk
-      Nothing ->
+      _ ->
         exit firstChunk
 
   -- This is a duplication of the logic above and could be used instead.
@@ -685,9 +683,7 @@ parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _) breakDou
     case mbC of
       Just '\r' ->
         handleCR chunks
-      Just _ ->
-        exit' chunks
-      Nothing ->
+      _ ->
         exit' chunks
 
   handleCR chunks = do
