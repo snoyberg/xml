@@ -664,40 +664,66 @@ parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _) breakDou
   -- Turns @\r\n@ and @\r@ into @\n@. See
   -- <https://www.w3.org/TR/REC-xml/#sec-line-ends>.
   parseTextContent = do
+    -- Read until the end of this piece of content
+    -- OR until a carriage return. In the second case, we use
+    -- handleCR to normalize \r and \r\n into \n.
     firstChunk <- takeWhile valid
     mbC <- peekChar
     case mbC of
+      Just '\r' ->
+        handleCR [firstChunk]
+      Just _ ->
+        exit firstChunk
       Nothing ->
         exit firstChunk
-      Just '\r' ->
-        parseTextContentAcc [firstChunk]
-      Just _ ->
-        exit firstChunk
 
-  parseTextContentAcc chunks = do
+  -- This is a duplication of the logic above and could be used instead.
+  -- Specialising these cases to the case "full text content contains no carriage return"
+  -- considerably speeds up execution when no carriage returns are in the original source.
+  handleCRPeek chunks = do
     mbC <- peekChar
     case mbC of
-      Nothing -> exit' chunks
-      Just '\r' -> do
-        _ <- anyChar
-        mbD <- peekChar
-        chunk <- takeWhile valid
-        case mbD of
-          Nothing -> exit' chunks
-          Just '\n' -> do
-            exit' $ chunk : chunks
-          Just _ ->
-            exit' $ chunk : "\n" : chunks
-
+      Just '\r' ->
+        handleCR chunks
       Just _ ->
         exit' chunks
+      Nothing ->
+        exit' chunks
 
+  handleCR chunks = do
+    -- We know that the next character is a carriage return. Discard it.
+    _ <- anyChar
+    -- Read the next chunk.
+    chunk <- takeWhile valid
+    case T.uncons chunk of
+      -- If it starts with newline, we're good:
+      -- We've already discarded the carriage return.
+      -- This is the case that replaces \r\n by \n.
+      Just ('\n', _) ->
+        handleCRPeek $ chunk : chunks
+      -- Otherwise, we'll have to insert a newline.
+      -- This is the case that replaces \r by \n.
+      Just _ ->
+        handleCRPeek $ chunk : "\n" : chunks
+      -- If the chunk is empty, we've either hit another carriage
+      -- return or the end of this piece of content. Since we've discarded
+      -- a carriage return we need to insert a newline.
+      Nothing ->
+        handleCRPeek $ "\n" : chunks
+
+
+  -- exit and exit' fail if the emitted text content is empty.
+  -- exit' uses Data.Text.concat to efficiently concatenate the collected
+  -- chunks.
   exit c
     | T.null c = fail "parseTextContent"
     | otherwise = pure $ ContentText c
 
   exit' cs = exit $ T.concat $ reverse cs
 
+  -- Check whether a character is valid text content (e.g. not a <)
+  -- OR a carriage return. The latter is used above in parseTextContent
+  -- to normalize line endings.
   valid '"'  = not breakDouble
   valid '\'' = not breakSingle
   valid '&'  = False -- amp
