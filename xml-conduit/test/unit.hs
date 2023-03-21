@@ -57,6 +57,8 @@ main = hspec $ do
         it "preserves the order of attributes" casePreservesAttrOrder
         context "correctly parses hexadecimal entities" hexEntityParsing
         it "normalizes line endings" crlfToLfConversion
+        it "normalizes \\r at the end of a content" crlfToLfConversionCrAtEnd
+        it "normalizes multiple \\rs and \\r\\ns" crlfToLfConversionCrCrCr
     describe "XML Cursors" $ do
         it "has correct parent" cursorParent
         it "has correct ancestor" cursorAncestor
@@ -1074,3 +1076,14 @@ crlfToLfConversion = (elementContent $ documentRoot crlfDoc) `shouldBe` crlfCont
         crlfDoc = D.parseLBS_ def "<crlf>Hello,\rWorld!\r\nWe don't like your kind of line endings around here.\r\n</crlf>"
         crlfContent = [ContentText "Hello,\nWorld!\nWe don't like your kind of line endings around here.\n"]
 
+crlfToLfConversionCrAtEnd :: Assertion
+crlfToLfConversionCrAtEnd = (elementContent $ documentRoot doc) `shouldBe` content
+    where
+        doc = D.parseLBS_ def "<crlf>Hello, World!\r</crlf>"
+        content = [ContentText "Hello, World!\n"]
+
+crlfToLfConversionCrCrCr :: Assertion
+crlfToLfConversionCrCrCr = (elementContent $ documentRoot doc) `shouldBe` content
+    where
+        doc = D.parseLBS_ def "<crlf>\r\r\r\n\r\r\r</crlf>"
+        content = [ContentText "\n\n\n\n\n\n"]
