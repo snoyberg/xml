@@ -88,6 +88,7 @@ main = hspec $ do
         it "identifies unresolved entities" resolvedIdentifies
         it "decodeHtmlEntities" testHtmlEntities
         it "works for resolvable entities" resolvedAllGood
+        it "ignores custom entities when psResolveEntities is False" dontResolveEntities
         it "merges adjacent content nodes" resolvedMergeContent
         it "understands inline entity declarations" resolvedInline
         it "understands complex inline with markup" resolvedInlineComplex
@@ -671,8 +672,8 @@ cursorParent, cursorAncestor, cursorOrSelf, cursorPreceding, cursorFollowing,
     cursorAnyElement, cursorElement, cursorLaxElement, cursorContent,
     cursorAttribute, cursorLaxAttribute, cursorHasAttribute,
     cursorAttributeIs, cursorDeep, cursorForce, cursorForceM,
-    resolvedIdentifies, resolvedAllGood, resolvedMergeContent,
-    testHtmlEntities
+    resolvedIdentifies, resolvedAllGood, dontResolveEntities,
+    resolvedMergeContent, testHtmlEntities
     :: Assertion
 cursorParent = name (Cu.parent bar2) @?= ["foo"]
 cursorAncestor = name (Cu.ancestor baz2) @?= ["bar2", "foo"]
@@ -748,6 +749,25 @@ resolvedAllGood =
     Res.toXMLDocument (Res.parseLBS_ def xml)
   where
     xml = "<foo><bar/><baz/></foo>"
+
+dontResolveEntities =
+  D.parseLBS_ settings xml @=? expectedDocument
+  where
+    settings = def { P.psIgnoreInternalEntityDeclarations = True }
+    xml = mconcat
+      [ "<!DOCTYPE mydt [ <!ENTITY foo \"fooby\" > ]>"
+      , "<root>&gt;&foo;&bar;</root>"
+      ]
+
+    expectedDocument =
+      Document
+        (Prologue [] (Just (Doctype "mydt" Nothing)) [])
+        (Element "root" mempty
+          [ NodeContent (ContentText ">")
+          , NodeContent (ContentEntity "foo")
+          , NodeContent (ContentEntity "bar")
+          ])
+        []
 
 resolvedMergeContent =
     Res.documentRoot (Res.parseLBS_ def xml) @=?

@@ -82,6 +82,7 @@ module Text.XML.Stream.Parse
     , psDecodeIllegalCharacters
     , psRetainNamespaces
     , psEntityExpansionSizeLimit
+    , psIgnoreInternalEntityDeclarations
       -- *** Entity decoding
     , decodeXmlEntities
     , decodeHtmlEntities
@@ -465,6 +466,10 @@ data ParseSettings = ParseSettings
     -- Default: @8192@
     --
     -- Since 1.9.1
+    , psIgnoreInternalEntityDeclarations :: Bool
+    -- ^ Whether to resolve any but the predefined entities.
+    --
+    -- Default: @False@
     }
 
 instance Default ParseSettings where
@@ -473,6 +478,7 @@ instance Default ParseSettings where
         , psRetainNamespaces = False
         , psDecodeIllegalCharacters = const Nothing
         , psEntityExpansionSizeLimit = 8192
+        , psIgnoreInternalEntityDeclarations = False
         }
 
 conduitToken :: MonadThrow m => ParseSettings -> ConduitT T.Text (PositionRange, Token) m ()
@@ -536,7 +542,10 @@ parseToken settings = do
                     do char' '['
                        ents <- parseDeclarations id
                        skipSpace
-                       return ents
+                       if psIgnoreInternalEntityDeclarations settings then
+                         return []
+                       else
+                         return ents
                   _ -> return []
         char' '>'
         newline <|> return ()
@@ -632,7 +641,7 @@ parseContent :: ParseSettings
              -> Bool -- break on double quote
              -> Bool -- break on single quote
              -> Parser Content
-parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _) breakDouble breakSingle = parseReference <|> (parseTextContent <?> "text content") where
+parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _ _) breakDouble breakSingle = parseReference <|> (parseTextContent <?> "text content") where
   parseReference = do
     char' '&'
     t <- parseEntityRef <|> parseHexCharRef <|> parseDecCharRef
