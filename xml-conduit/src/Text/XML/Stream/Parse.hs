@@ -587,6 +587,8 @@ parseIdent =
     valid '/'  = False
     valid ';'  = False
     valid '#'  = False
+    valid '['  = False
+    valid ']'  = False
     valid c    = not $ isXMLSpace c
 
 parseContent :: ParseSettings

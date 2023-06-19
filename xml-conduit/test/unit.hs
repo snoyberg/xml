@@ -735,7 +735,7 @@ testRenderComments =do
 
 resolvedInline :: Assertion
 resolvedInline = do
-    Res.Document _ root _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"baz\">]><foo>&bar;</foo>"
+    Res.Document _ root _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo[<!ENTITY bar \"baz\">]><foo>&bar;</foo>"
     root @?= Res.Element "foo" Map.empty [Res.NodeContent "baz"]
     Res.Document _ root2 _ <- return $ Res.parseLBS_ Res.def "<!DOCTYPE foo [<!ENTITY bar \"baz\">]><foo bar='&bar;'/>"
     root2 @?= Res.Element "foo" (Map.singleton "bar" "baz") []
