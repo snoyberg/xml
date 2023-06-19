@@ -635,6 +635,8 @@ parseIdent = takeWhile1 valid <?> "identifier"
     valid '/'  = False
     valid ';'  = False
     valid '#'  = False
+    valid '['  = False
+    valid ']'  = False
     valid c    = not $ isXMLSpace c
 
 parseContent :: ParseSettings
