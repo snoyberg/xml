@@ -17,3 +17,12 @@ package](http://www.stackage.org/package/xml-hamlet) provides a more convenient
 syntax for creating XML documents. For a more thorough tutorial on this
 library, please see
 [http://www.yesodweb.com/book/xml](http://www.yesodweb.com/book/xml).
+
+### Ensuring constant memory usage
+
+If you experience unnecessarily high/increasing memory usage with `Text.XML.Stream.Parse`, you may want to compile `xml-conduit` with `-fno-full-laziness`. You can tell `stack` to use the flag only for this package by putting the following lines into `stack.yaml`:
+
+```
+ghc-options:
+    xml-conduit: -fno-full-laziness
+```
