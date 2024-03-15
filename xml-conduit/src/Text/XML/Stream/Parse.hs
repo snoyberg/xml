@@ -390,8 +390,7 @@ dropBOM =
                 let output
                         | c == '\xfeef' = cs
                         | otherwise = t
-                 in yield output >> idConduit
-    idConduit = await >>= maybe (return ()) (\x -> yield x >> idConduit)
+                 in yield output >> awaitForever yield
 
 -- | Parses a character stream into 'Event's. This function is implemented
 -- fully in Haskell using attoparsec-text for parsing. The produced error
@@ -417,10 +416,10 @@ parseTextPos de =
         .| addBeginEnd
   where
     tokenize = conduitToken de
-    addBeginEnd = yield (Nothing, EventBeginDocument) >> addEnd
-    addEnd = await >>= maybe
-        (yield (Nothing, EventEndDocument))
-        (\e -> yield e >> addEnd)
+    addBeginEnd = do
+      yield (Nothing, EventBeginDocument)
+      awaitForever yield
+      yield (Nothing, EventEndDocument)
 
 toEventC :: Monad m => ParseSettings -> ConduitT (PositionRange, Token) EventPos m ()
 toEventC ps =
