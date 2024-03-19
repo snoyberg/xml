@@ -19,6 +19,8 @@ jobs:
         - windows-latest
         resolver:
         - nightly
+        - lts-22
+        - lts-20
         - lts-18
         - lts-16
         - lts-14

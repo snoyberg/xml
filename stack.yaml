@@ -4,4 +4,5 @@ packages:
 - xml-hamlet/
 - html-conduit/
 extra-deps:
-- cabal-doctest-1.0.9@sha256:b1fe3f3cc590c6d2c5ce8d5845e41a8a7d72621ed897b6c53312c1e772c2ab29,1467
+- git: https://github.com/haskellari/cabal-doctest.git
+  commit: '49e73ef34a82360c1664d20fb8adb56e2ce6e76e'
