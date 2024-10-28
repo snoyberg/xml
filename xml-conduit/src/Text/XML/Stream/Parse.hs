@@ -161,7 +161,7 @@ import qualified Data.ByteString.Builder      as Builder
 import           Data.Char                    (isSpace)
 import           Data.Conduit.Attoparsec      (PositionRange, conduitParser)
 import qualified Data.Conduit.Text            as CT
-import           Data.Default.Class           (Default (..))
+import           Data.Default           (Default (..))
 import           Data.List                    (foldl', intercalate)
 import qualified Data.Map                     as Map
 import           Data.Maybe                   (fromMaybe, isNothing, mapMaybe)
