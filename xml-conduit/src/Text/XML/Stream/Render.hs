@@ -35,7 +35,7 @@ import           Control.Monad.Trans.Resource (MonadThrow)
 import           Data.ByteString              (ByteString)
 import           Data.ByteString.Builder      (Builder)
 import           Conduit
-import           Data.Default.Class           (Default (def))
+import           Data.Default           (Default (def))
 import           Data.List                    (foldl')
 import           Data.Map                     (Map)
 import qualified Data.Map                     as Map

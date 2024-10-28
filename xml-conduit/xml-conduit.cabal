@@ -30,7 +30,7 @@ library
                    , xml-types                 >= 0.3.4    && < 0.4
                    , attoparsec                >= 0.10
                    , transformers              >= 0.2      && < 0.7
-                   , data-default-class
+                   , data-default
                    , blaze-markup              >= 0.5
                    , blaze-html                >= 0.5
                    , deepseq                   >= 1.1.0.0
