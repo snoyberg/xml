@@ -10,6 +10,7 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
 -- | This module provides both a native Haskell solution for parsing XML
 -- documents into a stream of events, and a set of parser combinators for
 -- dealing with a stream of events.
@@ -148,7 +149,6 @@ import           Control.Monad.Trans.Class    (lift)
 import           Control.Monad.Trans.Maybe    (MaybeT (..))
 import           Control.Monad.Trans.Resource (MonadResource, MonadThrow (..),
                                                throwM)
-import           Data.Attoparsec.Internal     (concatReverse)
 import           Data.Attoparsec.Text         (Parser, anyChar, char, manyTill,
                                                skipWhile, string, takeWhile,
                                                takeWhile1, (<?>),
@@ -1151,13 +1151,12 @@ anyOf values = matching (`elem` values)
 newtype AttrParser a = AttrParser { runAttrParser :: [(Name, [Content])] -> Either SomeException ([(Name, [Content])], a) }
 
 instance Monad AttrParser where
-    return a = AttrParser $ \as -> Right (as, a)
     (AttrParser f) >>= g = AttrParser $ \as ->
         either Left (\(as', f') -> runAttrParser (g f') as') (f as)
 instance Functor AttrParser where
     fmap = liftM
 instance Applicative AttrParser where
-    pure = return
+    pure a = AttrParser $ \as -> Right (as, a)
     (<*>) = ap
 instance Alternative AttrParser where
     empty = AttrParser $ const $ Left $ toException $ XmlException "AttrParser.empty" Nothing
