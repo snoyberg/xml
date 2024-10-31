@@ -62,6 +62,7 @@ renderBytes rs = renderBuilder rs .| builderToByteString
 renderText :: (PrimMonad m, MonadThrow m) => RenderSettings -> ConduitT Event Text m ()
 renderText rs = renderBytes rs .| decodeUtf8C
 
+{-# DEPRECATED rsPretty "Will be removed in future versions of `xml-conduit`. See <https://github.com/snoyberg/xml/issues/196>." #-}
 data RenderSettings = RenderSettings
     { rsPretty     :: Bool
     , rsNamespaces :: [(Text, Text)]
@@ -293,6 +294,7 @@ getPrefix ppref nsmap ns =
 
 -- | Convert a stream of 'Event's into a prettified one, adding extra
 -- whitespace. Note that this can change the meaning of your XML.
+{-# DEPRECATED prettify "Will be removed in future versions of `xml-conduit`. See <https://github.com/snoyberg/xml/issues/196>." #-}
 prettify :: Monad m => ConduitT (Flush Event) (Flush Event) m ()
 prettify = prettify' 0
 
