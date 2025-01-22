@@ -15,6 +15,7 @@ import qualified Text.XML.Cursor              as Cu
 import           Text.XML.Stream.Parse        (def)
 import qualified Text.XML.Stream.Parse        as P
 import qualified Text.XML.Unresolved          as D
+import qualified Text.XML.Stream.Render.Internal as R
 
 import           Control.Monad
 import qualified Data.Set                     as Set
@@ -143,7 +144,7 @@ documentParseRender =
 
 documentParsePrettyRender :: IO ()
 documentParsePrettyRender =
-    L.unpack (D.renderLBS def { D.rsPretty = True } (D.parseLBS_ def doc)) @?= L.unpack doc
+    L.unpack (D.renderLBS def { R.rsPretty = True } (D.parseLBS_ def doc)) @?= L.unpack doc
   where
     doc = L.unlines
         [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
@@ -901,7 +902,7 @@ casePretty = do
                 , Res.NodeComment "foo bar\n\r\nbaz    \tbin "
                 , Res.NodeElement $ Res.Element "bar" Map.empty [Res.NodeContent "bar content"]
                 ]
-    pretty @=? S.concat (L.toChunks $ Res.renderLBS def { D.rsPretty = True } doc)
+    pretty @=? S.concat (L.toChunks $ Res.renderLBS def { R.rsPretty = True } doc)
 
 caseTopLevelNamespace :: Assertion
 caseTopLevelNamespace = do
