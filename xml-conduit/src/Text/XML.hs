@@ -59,7 +59,6 @@ module Text.XML
     , P.decodeHtmlEntities
       -- ** Rendering
     , R.RenderSettings
-    , R.rsPretty
     , R.rsNamespaces
     , R.rsAttrOrder
     , R.rsUseCDATA

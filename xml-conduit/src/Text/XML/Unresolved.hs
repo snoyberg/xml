@@ -38,9 +38,8 @@ module Text.XML.Unresolved
     , P.psDecodeEntities
     , P.psRetainNamespaces
       -- ** Render
-    , R.RenderSettings
-    , R.rsPretty
-    , R.rsNamespaces
+    , RI.RenderSettings
+    , RI.rsNamespaces
     ) where
 
 import           Conduit
@@ -67,6 +66,7 @@ import           System.IO.Unsafe             (unsafePerformIO)
 import           Text.XML.Stream.Parse        (ParseSettings)
 import qualified Text.XML.Stream.Parse        as P
 import qualified Text.XML.Stream.Render       as R
+import qualified Text.XML.Stream.Render.Internal       as RI
 
 readFile :: P.ParseSettings -> FilePath -> IO Document
 readFile ps fp = runConduitRes $ CB.sourceFile fp .| sinkDoc ps
