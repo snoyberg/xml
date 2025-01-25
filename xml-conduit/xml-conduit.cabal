@@ -17,7 +17,7 @@ extra-source-files: README.md
 tested-with:     GHC >=8.0 && <8.12
 
 custom-setup
-    setup-depends:   base >= 4 && <5, Cabal <4, cabal-doctest >= 1.0.9 && <1.1
+    setup-depends:   base >= 4 && <5, Cabal <4, cabal-doctest >= 1 && <1.1
 
 library
     build-depends:   base                      >= 4.12     && < 5
