@@ -219,7 +219,7 @@ elementFromEvents = goE
     goN = do
         x <- CL.peek
         case x of
-            Just (_, EventBeginElement n as) -> (Just . NodeElement) <$> goE' n as
+            Just (_, EventBeginElement n as) -> Just . NodeElement <$> goE' n as
             Just (_, EventInstruction i) -> dropReturn $ Just $ NodeInstruction i
             Just (_, EventContent c) -> dropReturn $ Just $ NodeContent c
             Just (_, EventComment t) -> dropReturn $ Just $ NodeComment t

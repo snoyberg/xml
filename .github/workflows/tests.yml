@@ -48,10 +48,19 @@ jobs:
           enable-stack: true
           stack-version: 'latest'
           stack-no-global: true
+
+      - name: 'Set up HLint'
+        uses: haskell-actions/hlint-setup@v2
+
+      - name: 'Run HLint'
+        uses: haskell-actions/hlint-run@v2
+        with:
+          path: xml-conduit/src/
+          # fail-on: warning
+
       - name: Build and run tests
         shell: bash
         run: |
             set -ex
-            # stack upgrade --force-download
             stack --version
             stack test --fast --no-terminal --resolver=${{ matrix.resolver }}

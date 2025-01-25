@@ -405,7 +405,7 @@ content :: (Monad m) => Text -> ConduitT i Event m ()
 content = yield . EventContent . ContentText
 
 -- | A list of attributes.
-data Attributes = Attributes [(Name, [Content])]
+newtype Attributes = Attributes [(Name, [Content])]
 
 instance Monoid Attributes where
   mempty = Attributes mempty
