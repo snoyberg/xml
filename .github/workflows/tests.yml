@@ -25,6 +25,18 @@ jobs:
         - lts-18
         - lts-16
         - lts-14
+        exclude:
+          # No setup information found for ghc-8.6.5 on your platform. This probably means a GHC binary distribution has not yet been added for OS key macosx-aarch64.
+          - os: macos-latest
+            resolver: lts-14
+          # No setup information found for ghc-8.8.4 on your platform. This probably means a GHC binary distribution has not yet been added for OS key macosx-aarch64.
+          - os: macos-latest
+            resolver: lts-16
+          # Warning: Couldn't figure out LLVM version!
+          # Make sure you have installed LLVM between [9 and 13)
+          # ghc: could not execute: opt
+          - os: macos-latest
+            resolver: lts-18
 
     steps:
       - name: Clone project
