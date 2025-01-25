@@ -195,7 +195,7 @@ laxAttribute n c =
     case node c of
         NodeElement e -> do
             (n', v) <- Map.toList $ elementAttributes e
-            guard $ (on (==) T.toCaseFold) n (nameLocalName n')
+            guard $ on (==) T.toCaseFold n (nameLocalName n')
             return v
         _ -> []
 
