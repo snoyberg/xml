@@ -1,3 +1,16 @@
+## 1.10.0.0
+
+* `rsPretty` is now exported only from the new module `Text.XML.Render.Internal`
+  - Migration path: Import it from its new home.
+  - Since it is now internal, be prepared for it to be changed or removed in some future version.
+* `prettify` is no longer exported at all.
+  - Migration path: Use `rsPretty = True` in your `RenderSettings` when you finally render the stream instead of inserting the `prettify` combinator into your conduit pipeline.
+  - Same caveat as above about `rsPretty` now being internal
+  - If you require having the prettified version of an XML event stream as a conduit before rendering (we hope this use case occurs rarely if ever), things will be more awkward:
+    - The hack of rendering with `rsPretty = True` and re-parsing might work.
+    - Another hack could be to fork this library and add `prettify` to the export list in `Text.XML.Render.Internal`.
+    - Otherwise, you might need to implement pretty-printing yourself. The source code of `Text.XML.Render.Internal` might be helpful in that case.
+
 ## 1.9.1.1
 
 * Entity declarations with tags inside are now correctly handled
