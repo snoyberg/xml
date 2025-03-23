@@ -1301,9 +1301,19 @@ takeContent = do
 --
 -- If an opening-tag is consumed but no matching closing-tag is found, an 'XmlException' is thrown.
 --
--- >>> runConduit $ parseLBS def "<a><b></b>" .| void (takeTree "a" ignoreAttrs) .| sinkList
--- *** Exception: InvalidEndElement (Name {nameLocalName = "a", nameNamespace = Nothing, namePrefix = Nothing}) Nothing
---
+{-
+>>> runConduit $ parseLBS def "<a><b></b>" .| void (takeTree "a" ignoreAttrs) .| sinkList
+#if MIN_VERSION_base(4, 21, 0)
+*** Exception: Error while parsing XML event: expected </Name {nameLocalName = "a", nameNamespace = Nothing, namePrefix = Nothing}>, got nothing
+
+^
+HasCallStack backtrace:
+  throwIO, called at libraries/exceptions/src/Control/Monad/Catch.hs:308:12 in exceptions-0.10.9-inplace:Control.Monad.Catch
+  throwM, called at /home/alexfmpe/profiles/alexfmpe/repos/xml/xml-conduit/src/Text/XML/Stream/Parse.hs:1324:71 in main:Text.XML.Stream.Parse
+#else
+*** Exception: InvalidEndElement (Name {nameLocalName = "a", nameNamespace = Nothing, namePrefix = Nothing}) Nothing
+#endif
+-}
 -- This function automatically ignores comments, instructions and whitespace.
 --
 -- Returns @Just ()@ if an element was consumed, 'Nothing' otherwise.
