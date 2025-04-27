@@ -272,7 +272,7 @@ fromEvents = do
     d <- D.fromEvents
     either (lift . throwM . UnresolvedEntityException) return $ fromXMLDocument d
 
-data UnresolvedEntityException = UnresolvedEntityException (Set Text)
+newtype UnresolvedEntityException = UnresolvedEntityException (Set Text)
     deriving (Show, Typeable)
 instance Exception UnresolvedEntityException
 
