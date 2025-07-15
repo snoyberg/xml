@@ -1,3 +1,6 @@
+## 1.10.0.1
+* Fix doctest on GHC 9.12
+
 ## 1.10.0.0
 
 * `rsPretty` is now exported only from the new module `Text.XML.Render.Internal`
