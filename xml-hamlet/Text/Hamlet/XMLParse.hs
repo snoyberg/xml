@@ -22,7 +22,9 @@ import Text.ParserCombinators.Parsec hiding (Line)
 data Result v = Error String | Ok v
     deriving (Show, Eq, Read, Data, Typeable)
 instance Monad Result where
-    return = Ok
+#if !MIN_VERSION_base(4,8,0)
+    return = pure
+#endif
     Error s >>= _ = Error s
     Ok v >>= f = f v
 #if MIN_VERSION_base(4,13,0)
@@ -32,7 +34,7 @@ instance MonadFail Result where
 instance Functor Result where
     fmap = liftM
 instance Applicative Result where
-    pure = return
+    pure = Ok
     (<*>) = ap
 
 data Content = ContentRaw String
