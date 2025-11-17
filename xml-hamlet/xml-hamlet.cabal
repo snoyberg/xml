@@ -18,7 +18,7 @@ Library
   Other-modules:       Text.Hamlet.XMLParse
   
   Build-depends:       base                       >= 4.12     && < 5
-                     , shakespeare                >= 1.0      && < 2.2
+                     , shakespeare                >= 1.0      && < 2.3
                      , xml-conduit                >= 1.0
                      , text                       >= 0.10
                      , template-haskell
