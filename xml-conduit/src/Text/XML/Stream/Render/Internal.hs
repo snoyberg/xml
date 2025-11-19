@@ -21,7 +21,7 @@ module Text.XML.Stream.Render.Internal
     , rsXMLDeclaration
     , orderAttrs
       -- * Event rendering
-    , xmlDeclaration
+    , document
     , tag
     , content
       -- * Attribute rendering
@@ -86,9 +86,8 @@ data RenderSettings = RenderSettings
       -- ^ Determines whether the XML declaration will be output. Note that when
       -- using the streaming API the XML declaration will be output only if this
       -- is set to true /and/ the stream includes an 'EventBeginDocument' event.
-      -- This can be achieved with the 'xmlDeclaration' function.
-      --
-      -- See <https://github.com/snoyberg/xml/issues/129>.
+      -- Apart from yielding it explicitly, this can be achieved by wrapping the
+      -- stream in the 'document' function.
       --
       -- Default: @True@
       --
@@ -397,12 +396,14 @@ nubAttrs orig =
         | k `Set.member` used = (dlist, used)
         | otherwise = (dlist . ((k, v):), Set.insert k used)
 
--- | Generate an 'EventBeginDocument' which results in an XML declaration being
--- output when rendered.
+-- | Wrap the given stream in an 'EventBeginDocument'/'EventEndDocument' pair.
 --
 -- @since TODO
-xmlDeclaration :: (Monad m) => ConduitT i Event m ()
-xmlDeclaration = yield EventBeginDocument
+document :: (Monad m) => ConduitT i Event m () -> ConduitT i Event m ()
+document content' = do
+  yield EventBeginDocument
+  content'
+  yield EventEndDocument
 
 -- | Generate a complete XML 'Element'.
 tag :: (Monad m) => Name -> Attributes -> ConduitT i Event m ()  -- ^ 'Element''s subnodes.
