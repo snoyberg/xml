@@ -25,6 +25,7 @@ import           Text.XML.Cursor              (($.//), ($/), ($//), ($|),
                                                (&.//), (&/), (&//))
 
 import qualified Control.Monad.Trans.Resource as C
+import           Conduit                      (foldC, sinkList, yieldMany)
 import           Data.Conduit                 ((.|), runConduit,
                                                runConduitRes, ConduitT)
 import           Data.Conduit.Attoparsec      (ParseError(..))
@@ -60,6 +61,8 @@ main = hspec $ do
         it "normalizes line endings" crlfToLfConversion
         it "normalizes \\r at the end of a content" crlfToLfConversionCrAtEnd
         it "normalizes multiple \\rs and \\r\\ns" crlfToLfConversionCrCrCr
+        context "generates events for rendering in a stream" streamRenderGenerateEvents
+        it "renders events from a stream" streamRender
     describe "XML Cursors" $ do
         it "has correct parent" cursorParent
         it "has correct ancestor" cursorAncestor
@@ -1108,3 +1111,47 @@ crlfToLfConversionCrCrCr = (elementContent $ documentRoot doc) `shouldBe` conten
     where
         doc = D.parseLBS_ def "<crlf>\r\r\r\n\r\r\r</crlf>"
         content = [ContentText "\n\n\n\n\n\n"]
+
+streamRenderGenerateEvents :: Spec
+streamRenderGenerateEvents = do
+    it "generates events for a document" $ do
+        emptyDoc <- runConduit $ R.document mempty .| sinkList
+        emptyDoc @?= [EventBeginDocument, EventEndDocument]
+        nonEmptyDoc <- runConduit $
+            R.document (R.tag "foo" mempty $ R.content "...") .| sinkList
+        nonEmptyDoc @?=
+            [ EventBeginDocument
+            , EventBeginElement "foo" []
+            , EventContent "..."
+            , EventEndElement "foo"
+            , EventEndDocument
+            ]
+    it "generates events for a tag" $ do
+        emptyTag <- runConduit $ R.tag "foo" mempty mempty .| sinkList
+        emptyTag @?= [EventBeginElement "foo" [], EventEndElement "foo"]
+        nonEmptyTag <- runConduit $
+            R.tag "foo" (R.attr "bar" "baz") (R.content "...") .| sinkList
+        nonEmptyTag @?=
+            [ EventBeginElement "foo" [("bar", ["baz"])]
+            , EventContent "..."
+            , EventEndElement "foo"
+            ]
+
+streamRender :: Assertion
+streamRender = do
+    x <- runConduit $ input .| R.renderBytes def .| foldC
+    x @?= output
+  where
+    input = yieldMany
+        [ EventBeginDocument
+        , EventBeginElement "foo" [("bar", ["baz"])]
+        , EventContent "..."
+        , EventEndElement "foo"
+        , EventEndDocument
+        ]
+    output = S.concat
+        [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+        , "<foo bar=\"baz\">"
+        , "..."
+        , "</foo>"
+        ]
