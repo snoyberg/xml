@@ -19,6 +19,7 @@ module Text.XML.Stream.Render (
     orderAttrs,
 
     -- * Event rendering
+    document,
     tag,
     content,
 
