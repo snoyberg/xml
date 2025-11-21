@@ -1122,7 +1122,7 @@ streamRenderGenerateEvents = do
         nonEmptyDoc @?=
             [ EventBeginDocument
             , EventBeginElement "foo" []
-            , EventContent "..."
+            , EventContent $ ContentText "..."
             , EventEndElement "foo"
             , EventEndDocument
             ]
@@ -1133,7 +1133,7 @@ streamRenderGenerateEvents = do
             R.tag "foo" (R.attr "bar" "baz") (R.content "...") .| sinkList
         nonEmptyTag @?=
             [ EventBeginElement "foo" [("bar", ["baz"])]
-            , EventContent "..."
+            , EventContent $ ContentText "..."
             , EventEndElement "foo"
             ]
 
@@ -1144,8 +1144,8 @@ streamRender = do
   where
     input = yieldMany
         [ EventBeginDocument
-        , EventBeginElement "foo" [("bar", ["baz"])]
-        , EventContent "..."
+        , EventBeginElement "foo" [("bar", [ContentText "baz"])]
+        , EventContent $ ContentText "..."
         , EventEndElement "foo"
         , EventEndDocument
         ]
