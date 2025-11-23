@@ -1132,7 +1132,7 @@ streamRenderGenerateEvents = do
         nonEmptyTag <- runConduit $
             R.tag "foo" (R.attr "bar" "baz") (R.content "...") .| sinkList
         nonEmptyTag @?=
-            [ EventBeginElement "foo" [("bar", ["baz"])]
+            [ EventBeginElement "foo" [("bar", [ContentText "baz"])]
             , EventContent $ ContentText "..."
             , EventEndElement "foo"
             ]
