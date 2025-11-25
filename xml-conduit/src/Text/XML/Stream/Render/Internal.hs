@@ -398,7 +398,7 @@ nubAttrs orig =
 
 -- | Wrap the given stream in an 'EventBeginDocument'/'EventEndDocument' pair.
 --
--- @since TODO
+-- @since 1.10.1.0
 document :: (Monad m) => ConduitT i Event m () -> ConduitT i Event m ()
 document content' = do
   yield EventBeginDocument
