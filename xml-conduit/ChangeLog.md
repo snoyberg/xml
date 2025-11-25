@@ -1,3 +1,7 @@
+## 1.10.1.0
+* Add `document` function to wrap a stream of XML events in an 'EventBeginDocument'/'EventEndDocument' pair.
+* Ensure compatibility with GHC 9.10
+
 ## 1.10.0.1
 * Fix doctest on GHC 9.12
 
