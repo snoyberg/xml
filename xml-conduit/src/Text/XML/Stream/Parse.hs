@@ -84,6 +84,7 @@ module Text.XML.Stream.Parse
     , psRetainNamespaces
     , psEntityExpansionSizeLimit
     , psIgnoreInternalEntityDeclarations
+    , psRecoverFromParseFailure
       -- *** Entity decoding
     , decodeXmlEntities
     , decodeHtmlEntities
@@ -469,6 +470,7 @@ data ParseSettings = ParseSettings
     -- ^ Whether to resolve any but the predefined entities.
     --
     -- Default: @False@
+    , psRecoverFromParseFailure :: Bool
     }
 
 instance Default ParseSettings where
@@ -478,6 +480,7 @@ instance Default ParseSettings where
         , psDecodeIllegalCharacters = const Nothing
         , psEntityExpansionSizeLimit = 8192
         , psIgnoreInternalEntityDeclarations = False
+        , psRecoverFromParseFailure = False
         }
 
 conduitToken :: MonadThrow m => ParseSettings -> ConduitT T.Text (PositionRange, Token) m ()
@@ -487,7 +490,9 @@ parseToken :: ParseSettings -> Parser Token
 parseToken settings = do
   mbc <- peekChar
   case mbc of
-    Just '<' -> char '<' >> parseLt
+    Just '<' -> if psRecoverFromParseFailure settings
+                then (char '<' >> parseLt) <|> (TokenContent <$> parseContent settings False False)
+                else char '<' >> parseLt
     _        -> TokenContent <$> parseContent settings False False
   where
     parseLt = do
@@ -642,7 +647,14 @@ parseContent :: ParseSettings
              -> Bool -- break on double quote
              -> Bool -- break on single quote
              -> Parser Content
-parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _ _) breakDouble breakSingle = parseReference <|> (parseTextContent <?> "text content") where
+parseContent (ParseSettings decodeEntities _ decodeIllegalCharacters _ _ recover) breakDouble breakSingle = parseReference <|> contentParser where
+  contentParser =
+      if recover
+      then (parseTextContent <?> "text content") <|> parseFailingChar
+      else parseTextContent <?> "text content"
+  parseFailingChar = do
+    c <- char '&' <|> char '<' <|> char '>'
+    return $ ContentText $ T.singleton c
   parseReference = do
     char' '&'
     t <- parseEntityRef <|> parseHexCharRef <|> parseDecCharRef
